@@ -1,0 +1,179 @@
+// engine/midi-out.js
+// Web MIDI API output — schedules note on/off and CC64 (sustain pedal) via
+// MIDIOutput.send() with performance.now() timestamps.
+
+import { state, interpolateCurveAtTick } from './state.js';
+
+// Articulation duration multipliers. Legato/legatissimo are handled separately
+// because they extend to the next note's onset rather than scaling duration.
+function articulationFactor(art) {
+  switch (art) {
+    case 'stacc':      return 0.50;
+    case 'staccatiss': return 0.25;
+    default:           return 1.00;
+  }
+}
+
+// Effective MIDI off-tick for a note, applying articulation. Legato/legatissimo
+// extend the note past `endTick` to the next same-channel onset plus a small
+// overlap (tpb/16 for legato, tpb/8 for legatissimo). Mutates nothing.
+function effectiveEndTick(note, index, notes) {
+  if (note.articulation === 'legato' || note.articulation === 'legatissimo') {
+    let nextStart = null;
+    for (let j = index + 1; j < notes.length; j++) {
+      if (notes[j].channel === note.channel && notes[j].startTick > note.startTick) {
+        nextStart = notes[j].startTick;
+        break;
+      }
+    }
+    if (nextStart === null) return note.endTick;
+    const overlap = Math.round(state.ticksPerBeat / (note.articulation === 'legatissimo' ? 8 : 16));
+    return Math.max(note.endTick, nextStart + overlap);
+  }
+  const dur = note.endTick - note.startTick;
+  return note.startTick + Math.round(dur * articulationFactor(note.articulation));
+}
+
+export class MidiOut {
+  constructor() {
+    this._access           = null;
+    this.outputId          = null;
+    this._scheduleInterval = null;
+  }
+
+  get available()  { return 'requestMIDIAccess' in navigator; }
+  get connected()  { return this._access !== null; }
+  get outputs()    { return this._access ? [...this._access.outputs.values()] : []; }
+
+  get selectedOutput() {
+    return this._access?.outputs.get(this.outputId) ?? null;
+  }
+
+  async requestAccess() {
+    this._access = await navigator.requestMIDIAccess({ sysex: false });
+    this._access.onstatechange = () => {
+      if (this.outputId && !this._access.outputs.has(this.outputId)) {
+        this.outputId = this.outputs[0]?.id ?? null;
+      }
+      state.dispatch('midiportschanged');
+    };
+    if (!this.outputId) this.outputId = this.outputs[0]?.id ?? null;
+    state.dispatch('midiportschanged');
+  }
+
+  // ── Playback scheduling ────────────────────────────────────────────
+  // Lookahead scheduler: every 30ms, schedule any events in the next 150ms window.
+  // startTime: piece time in seconds to start from.
+  // getPieceTime(): returns current playback position in piece-seconds.
+
+  schedulePlayback(startTime, getPieceTime) {
+    this.stopPlayback();
+
+    // Collect unique MIDI channels used by notes (for CC64 broadcast)
+    const channels = [...new Set(state.notes.map(n => (n.channel ?? 0) & 0xf))];
+    if (channels.length === 0) channels.push(0);
+
+    const sortedNotes = state.notes
+      .map((n, i) => ({
+        n,
+        noteStart: state.tickToTime(n.startTick),
+        noteEnd:   state.tickToTime(effectiveEndTick(n, i, state.notes)),
+      }))
+      .filter(({ noteStart }) => noteStart >= startTime - 0.05)
+      .sort((a, b) => a.noteStart - b.noteStart);
+
+    // Pedal events: initial value at seek point + one event per control point after it
+    const pedalEvents = buildPedalEvents(startTime);
+
+    let notePtr  = 0;
+    let pedalPtr = 0;
+    const LOOKAHEAD = 0.15; // seconds
+
+    const schedule = () => {
+      const out = this.selectedOutput;
+      if (!out) return;
+
+      const nowMs     = performance.now();
+      const pieceNow  = getPieceTime();
+      const windowEnd = pieceNow + LOOKAHEAD;
+
+      // Notes
+      while (notePtr < sortedNotes.length && sortedNotes[notePtr].noteStart <= windowEnd) {
+        const { n, noteStart, noteEnd } = sortedNotes[notePtr++];
+
+        const onMs  = nowMs + (noteStart - pieceNow) * 1000;
+        const offMs = nowMs + (noteEnd   - pieceNow) * 1000;
+
+        const safeOnMs  = Math.max(onMs,  nowMs + 5);
+        const safeOffMs = Math.max(offMs, safeOnMs + 10);
+
+        if (offMs + 200 <= nowMs) continue; // already ended
+
+        const ch       = (n.channel ?? 0) & 0xf;
+        const curveAdj = state.velocityCurve[n.pitch - 21] ?? 0;
+        const vel      = Math.max(1, Math.min(127, n.velocity + curveAdj));
+
+        try {
+          out.send([0x90 | ch, n.pitch, vel], safeOnMs);
+          out.send([0x80 | ch, n.pitch, 0],   safeOffMs);
+        } catch {}
+      }
+
+      // Pedal CC64 — sent on all active channels
+      while (pedalPtr < pedalEvents.length && pedalEvents[pedalPtr].time <= windowEnd) {
+        const { time, value } = pedalEvents[pedalPtr++];
+
+        if (time + 0.1 < pieceNow) continue; // already past
+
+        const evMs   = nowMs + (time - pieceNow) * 1000;
+        const safeMs = Math.max(evMs, nowMs + 2);
+        const cc64   = Math.round(value * 127);
+
+        for (const ch of channels) {
+          try { out.send([0xb0 | ch, 64, cc64], safeMs); } catch {}
+        }
+      }
+    };
+
+    schedule();
+    this._scheduleInterval = setInterval(schedule, 30);
+  }
+
+  stopPlayback() {
+    if (this._scheduleInterval !== null) {
+      clearInterval(this._scheduleInterval);
+      this._scheduleInterval = null;
+    }
+    const out = this.selectedOutput;
+    if (!out) return;
+    try { out.clear(); } catch {}
+    for (let ch = 0; ch < 16; ch++) {
+      try {
+        out.send([0xb0 | ch, 64,  0]); // CC64 pedal release
+        out.send([0xb0 | ch, 123, 0]); // All Notes Off
+        out.send([0xb0 | ch, 120, 0]); // All Sound Off
+      } catch {}
+    }
+  }
+}
+
+// ── Pedal helpers ──────────────────────────────────────────────────────────
+
+// Returns [{time, value}] sorted by time: initial value at startTime,
+// then one entry per control point that falls after startTime.
+function buildPedalEvents(startTime) {
+  const pts = state.pedalPoints;
+  const events = [];
+
+  const startTick = state.timeToTick(startTime);
+  events.push({ time: startTime, value: interpolateCurveAtTick(pts, startTick, 0) });
+
+  for (const p of pts) {
+    const t = state.tickToTime(p.tick);
+    if (t > startTime) events.push({ time: t, value: p.value });
+  }
+
+  return events; // pts is already sorted by tick so this is already sorted by time
+}
+
+export const midiOut = new MidiOut();

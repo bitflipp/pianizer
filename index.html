@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pianizer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: #1a1a1a;
+      color: #ccc;
+      font: 12px monospace;
+      overflow: hidden;
+    }
+
+    ph-toolbar {
+      flex: 0 0 auto;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    #main {
+      display: flex;
+      flex: 1 1 0;
+      min-height: 0;
+    }
+
+    #roll-column {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    #roll-container {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+
+    #roll-column canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+    #roll-column #minimap { cursor: grab; }
+
+    #tempo-container,
+    #pedal-container {
+      flex: 0 0 100px;
+      min-height: 0;
+      border-top: 1px solid #555;
+    }
+
+    #minimap-container {
+      flex: 0 0 75px;
+      min-height: 0;
+      border-top: 1px solid #555;
+    }
+
+    #status {
+      flex: 0 0 20px;
+      background: #111;
+      border-top: 1px solid #555;
+      font-size: 11px;
+      color: #888;
+      display: flex;
+      align-items: center;
+      padding: 0 5px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    /* Tool windows */
+    .tool-window {
+      position: fixed;
+      z-index: 200;
+      background: #111;
+      border: 1px solid #444;
+      font: 12px monospace;
+      color: #fff;
+    }
+    .tool-window-title {
+      background: #222;
+      padding: 3px 4px;
+      font-size: 11px;
+      color: #888;
+      border-bottom: 1px solid #333;
+      user-select: none;
+    }
+    .tool-window-body {
+      padding: 5px;
+    }
+    .tool-info {
+      padding: 2px 0 5px;
+      color: #888;
+      font-size: 11px;
+    }
+    .velocity-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 2px;
+    }
+    .velocity-grid button {
+      border-style: solid;
+      color: #fff;
+      font: 11px monospace;
+      padding: 4px 0;
+      cursor: pointer;
+      text-align: right;
+      padding-right: 4px;
+      min-width: 34px;
+    }
+    .art-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      background: #222;
+      border: 1px solid #444;
+      color: #ddd;
+      font: 12px monospace;
+      padding: 4px 8px;
+      cursor: pointer;
+      text-align: left;
+      margin-bottom: 2px;
+    }
+    .art-btn:last-child { margin-bottom: 0; }
+    .art-btn:hover { background: #333; border-color: #888; }
+    .art-btn.selected { background: #2a4a6a; border-color: #4a8abf; color: #fff; }
+    .art-symbol { display: inline-block; width: 18px; color: #a0ecec; }
+    .delta-grid {
+      display: flex;
+      gap: 2px;
+    }
+    .delta-btn {
+      background: #222;
+      border: 1px solid #444;
+      color: #ddd;
+      font: 12px monospace;
+      padding: 4px 8px;
+      cursor: pointer;
+      min-width: 34px;
+      text-align: center;
+    }
+    .delta-btn:hover { background: #333; border-color: #888; }
+
+    /* Help overlay */
+    .help-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 300;
+      background: #111;
+      border: 1px solid #444;
+      font: 12px monospace;
+      color: #ddd;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .help-overlay-title {
+      background: #222;
+      padding: 4px 10px;
+      font-size: 11px;
+      color: #888;
+      border-bottom: 1px solid #333;
+      user-select: none;
+    }
+    .help-overlay-body { padding: 8px 12px; }
+    .help-section { margin: 0 0 10px; }
+    .help-section:last-child { margin-bottom: 0; }
+    .help-section h4 {
+      margin: 0 0 4px;
+      font: 11px monospace;
+      color: #5a9fd4;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .help-rows { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; row-gap: 2px; }
+    .help-key { color: #fff; white-space: nowrap; }
+    .help-desc { color: #aaa; }
+
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <ph-toolbar></ph-toolbar>
+  <div id="main">
+    <div id="roll-column">
+      <div id="roll-container">
+        <canvas id="roll"></canvas>
+      </div>
+      <div id="tempo-container">
+        <canvas id="tempo"></canvas>
+      </div>
+      <div id="pedal-container">
+        <canvas id="pedal"></canvas>
+      </div>
+      <div id="minimap-container">
+        <canvas id="minimap"></canvas>
+      </div>
+    </div>
+  </div>
+  <div id="status">Load MusicXML or a project file to begin · Press [?] for help</div>
+</div>
+
+<script type="module">
+  import { state, SNAP_GRIDS }       from './engine/state.js';
+  import { loadMusicXmlBuffer }      from './engine/musicxml.js';
+  import { midiOut }                 from './engine/midi-out.js';
+  import { PianoRoll, noteHSL }      from './ui/roll.js';
+  import { PedalLane }               from './ui/pedal-lane.js';
+  import { TempoLane }               from './ui/tempo-lane.js';
+  import { MiniMap }                 from './ui/minimap.js';
+  import { canvasPos, isFormFocused } from './ui/dom-utils.js';
+  import './ui/toolbar.js';
+
+  // Best-effort localStorage write — swallows quota / private-mode errors.
+  const safeSet = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+  };
+
+  // ── Canvas setup ───────────────────────────────────────────────────
+  const canvas             = document.getElementById('roll');
+  const rollContainer      = document.getElementById('roll-container');
+  const tempoCanvas        = document.getElementById('tempo');
+  const tempoContainer     = document.getElementById('tempo-container');
+  const pedalCanvas        = document.getElementById('pedal');
+  const pedalContainer     = document.getElementById('pedal-container');
+  const minimapCanvas      = document.getElementById('minimap');
+  const minimapContainer   = document.getElementById('minimap-container');
+
+  const roll      = new PianoRoll(canvas);
+  const tempoLane = new TempoLane(tempoCanvas, roll);
+  const pedalLane = new PedalLane(pedalCanvas, roll);
+  const miniMap   = new MiniMap(minimapCanvas, roll);
+
+  roll.onPostRender = () => { tempoLane.render(); pedalLane.render(); miniMap.render(); scheduleViewSave(); };
+  roll.pedalLane = pedalLane;
+  roll.tempoLane = tempoLane;
+
+  function observeResize(cv, container, render) {
+    new ResizeObserver(() => {
+      cv.width  = container.clientWidth;
+      cv.height = container.clientHeight;
+      render();
+    }).observe(container);
+  }
+  observeResize(canvas,        rollContainer,    () => roll.render());
+  observeResize(tempoCanvas,   tempoContainer,   () => tempoLane.render());
+  observeResize(pedalCanvas,   pedalContainer,   () => pedalLane.render());
+  observeResize(minimapCanvas, minimapContainer, () => miniMap.render());
+
+  // ── Status bar ────────────────────────────────────────────────────
+  const statusEl = document.getElementById('status');
+
+  function updateStatus() {
+    if (!state.loaded) {
+      statusEl.textContent = 'Load MusicXML or a project file to begin · Press [?] for help';
+      return;
+    }
+    const sel = state.selectedNoteIndices.size;
+    const tail = sel > 0 ? ` · ${sel} selected` : '';
+    statusEl.textContent = `${state.notes.length} notes${tail} · Press [?] for help`;
+  }
+
+  state.addEventListener('loaded',           updateStatus);
+  state.addEventListener('selectionchanged', updateStatus);
+  updateStatus();
+
+  // ── Tool window system ────────────────────────────────────────────
+  let _currentTool = null;
+  let _velCurveWin = null;
+  let _mouseX = 0, _mouseY = 0;
+
+  window.addEventListener('mousemove', e => { _mouseX = e.clientX; _mouseY = e.clientY; });
+
+  function closeVelCurveWin() {
+    if (!_velCurveWin) return;
+    _velCurveWin.remove();
+    _velCurveWin = null;
+  }
+
+  function positionWindow(win) {
+    const PAD = 15;
+    win.style.visibility = 'hidden';
+    document.body.appendChild(win);
+    const rect = win.getBoundingClientRect();
+    win.style.left = Math.min(Math.max(PAD, _mouseX), window.innerWidth  - rect.width  - PAD) + 'px';
+    win.style.top  = Math.min(Math.max(PAD, _mouseY), window.innerHeight - rect.height - PAD) + 'px';
+    win.style.visibility = 'visible';
+  }
+
+  // Opens a tool window. buildContent receives (body, close) — call close() to
+  // dismiss the window from inside button handlers. Returns nothing useful.
+  function openToolWindow(title, buildContent) {
+    closeTool();
+
+    const win = document.createElement('div');
+    win.className = 'tool-window';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'tool-window-title';
+    titleEl.textContent = title;
+    win.appendChild(titleEl);
+
+    const body = document.createElement('div');
+    body.className = 'tool-window-body';
+    win.appendChild(body);
+
+    buildContent(body, closeTool);
+    positionWindow(win);
+    _currentTool = win;
+  }
+
+  function closeTool() {
+    if (!_currentTool) return;
+    _currentTool.remove();
+    _currentTool = null;
+  }
+
+  // Close on click outside the tool window
+  document.addEventListener('mousedown', e => {
+    if (_currentTool && !_currentTool.contains(e.target)) closeTool();
+    if (_velCurveWin  && !_velCurveWin.contains(e.target))  closeVelCurveWin();
+  }, true);
+
+  // ── Help overlay ──────────────────────────────────────────────────
+  const HELP_SECTIONS = [
+    ['Selection', [
+      ['Click note',           'Select only that note (toggles off if sole selection)'],
+      ['Shift+click note',     'Toggle note in/out of selection'],
+      ['Drag',                 'Rectangle select (replaces)'],
+      ['Shift+drag',           'Rectangle select (extends)'],
+      ['Escape',               'Clear selection'],
+    ]],
+    ['Editing', [
+      ['1',                       'Velocity tool'],
+      ['2',                       'Linear velocity scale tool'],
+      ['3',                       'Articulation tool'],
+      ['4',                       'Velocity delta tool'],
+      ['Alt+click empty',         'Insert note at cursor'],
+      ['Drag note body',          'Move selection horizontally'],
+      ['Shift+drag note body',    'Move selection horizontally + pitch'],
+      ['Drag left / right edge',  'Resize note start / end'],
+      ['Delete / Backspace',      'Delete selected notes'],
+      ['Ctrl+Z / Ctrl+Y',         'Undo / redo'],
+    ]],
+    ['View', [
+      ['Scroll',               'Pan horizontal'],
+      ['Ctrl+scroll',          'Zoom horizontal'],
+      ['Ctrl+drag',            'Pan (horizontal + vertical)'],
+      ['Home / End',           'Scroll to start / end'],
+    ]],
+    ['Playback', [
+      ['Space',                       'Play / pause'],
+      ['Click empty roll / ruler',    'Seek playhead'],
+      ['Drag ruler',                  'Scrub playhead'],
+      ['Ctrl+click ruler',            'Add bookmark'],
+      ['Ctrl+right-click bookmark',   'Remove bookmark'],
+      ['← / →',                       'Seek to prev / next bookmark'],
+    ]],
+    ['Curve lanes (pedal / tempo)', [
+      ['Click empty',          'Add control point (snaps to grid and Y to neighbours / baseline)'],
+      ['Ctrl+click',           'Add without snapping'],
+      ['Drag point',           'Move control point (snaps to grid and Y; hold Ctrl to disable)'],
+      ['Right-click',          'Remove nearest control point'],
+    ]],
+  ];
+
+  let _helpOverlay = null;
+
+  function openHelpOverlay() {
+    closeTool();
+    const overlay = document.createElement('div');
+    overlay.className = 'help-overlay';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'help-overlay-title';
+    titleEl.textContent = 'Keyboard & mouse shortcuts — press [?] or [Esc] to close';
+    overlay.appendChild(titleEl);
+
+    const body = document.createElement('div');
+    body.className = 'help-overlay-body';
+    for (const [section, rows] of HELP_SECTIONS) {
+      const sec = document.createElement('div');
+      sec.className = 'help-section';
+      const h = document.createElement('h4');
+      h.textContent = section;
+      sec.appendChild(h);
+      const grid = document.createElement('div');
+      grid.className = 'help-rows';
+      for (const [key, desc] of rows) {
+        const k = document.createElement('span'); k.className = 'help-key';  k.textContent = key;
+        const d = document.createElement('span'); d.className = 'help-desc'; d.textContent = desc;
+        grid.appendChild(k); grid.appendChild(d);
+      }
+      sec.appendChild(grid);
+      body.appendChild(sec);
+    }
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+    _helpOverlay = overlay;
+  }
+
+  function closeHelpOverlay() {
+    if (!_helpOverlay) return;
+    _helpOverlay.remove();
+    _helpOverlay = null;
+  }
+
+  document.addEventListener('mousedown', e => {
+    if (_helpOverlay && !_helpOverlay.contains(e.target)) closeHelpOverlay();
+  }, true);
+
+  // ── Velocity curve window ─────────────────────────────────────────
+  const VCL_MARGIN = 24;   // left margin width for delta labels
+  const VCL_CW     = 7;    // cell width  (88 cols → 616 px)
+  const VCL_CH     = 6;    // cell height (45 rows → 270 px)
+  const VCL_ROWS     = 45;
+  const VCL_COLS     = 88;
+  const VCL_ZERO_ROW = 23;
+  const VCL_W      = VCL_MARGIN + VCL_COLS * VCL_CW;  // 640
+  const VCL_H      = VCL_ROWS * VCL_CH;               // 270
+
+  function saveVelCurve() { safeSet('pianizer-vel-curve', state.velocityCurve); }
+
+  function renderVCL(canvas) {
+    const ctx   = canvas.getContext('2d');
+    const curve = state.velocityCurve;
+
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, VCL_W, VCL_H);
+
+    ctx.strokeStyle = '#252525';
+    ctx.lineWidth = 1;
+    for (let r = 0; r <= VCL_ROWS; r += 5) {
+      const y = r * VCL_CH + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(VCL_MARGIN, y);
+      ctx.lineTo(VCL_W, y);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#2e2e2e';
+    ctx.fillRect(VCL_MARGIN, VCL_ZERO_ROW * VCL_CH, VCL_COLS * VCL_CW, VCL_CH);
+
+    ctx.fillStyle = '#555';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let d = -20; d <= 20; d += 5) {
+      const row = VCL_ZERO_ROW - d;
+      if (row < 0 || row > VCL_ROWS) continue;
+      ctx.fillText(d === 0 ? '0' : d > 0 ? `+${d}` : String(d),
+                   VCL_MARGIN - 2, row * VCL_CH + VCL_CH / 2);
+    }
+
+    ctx.fillStyle = '#d4a840';
+    for (let c = 0; c < VCL_COLS; c++) {
+      const row = VCL_ZERO_ROW - (curve[c] ?? 0);
+      ctx.fillRect(VCL_MARGIN + c * VCL_CW + 1, row * VCL_CH + 1, VCL_CW - 1, VCL_CH - 1);
+    }
+
+    ctx.strokeStyle = 'rgba(212,168,64,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let c = 0; c < VCL_COLS; c++) {
+      const row = VCL_ZERO_ROW - (curve[c] ?? 0);
+      const x = VCL_MARGIN + c * VCL_CW + VCL_CW / 2;
+      const y = row * VCL_CH + VCL_CH / 2;
+      if (c === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function vclCell(canvas, e) {
+    const { x, y } = canvasPos(canvas, e);
+    return {
+      col: Math.floor((x - VCL_MARGIN) / VCL_CW),
+      row: Math.floor(y / VCL_CH),
+    };
+  }
+
+  function vclPaint(canvas, fromCol, fromRow, toCol, toRow) {
+    if (fromCol < 0) { fromCol = toCol; fromRow = toRow; }
+    const newCurve = state.velocityCurve.slice();
+    const c0 = Math.max(0, Math.min(VCL_COLS - 1, Math.min(fromCol, toCol)));
+    const c1 = Math.max(0, Math.min(VCL_COLS - 1, Math.max(fromCol, toCol)));
+    for (let c = c0; c <= c1; c++) {
+      const t   = fromCol === toCol ? 0 : (c - fromCol) / (toCol - fromCol);
+      const row = Math.max(0, Math.min(VCL_ROWS - 1,
+                    Math.round(fromRow + (toRow - fromRow) * t)));
+      newCurve[c] = VCL_ZERO_ROW - row;
+    }
+    state.setVelocityCurve(newCurve);
+    renderVCL(canvas);
+    saveVelCurve();
+  }
+
+  function openVelocityCurveWindow() {
+    if (_velCurveWin) { closeVelCurveWin(); return; }
+
+    const win = document.createElement('div');
+    win.className = 'tool-window';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'tool-window-title';
+    titleEl.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
+    const titleTxt = document.createElement('span');
+    titleTxt.textContent = 'Velocity curve';
+    const closeX = document.createElement('span');
+    closeX.textContent = '✕';
+    closeX.style.cssText = 'cursor:pointer;color:#888;padding:0 2px;user-select:none';
+    closeX.addEventListener('mousedown', e => { e.stopPropagation(); closeVelCurveWin(); });
+    titleEl.appendChild(titleTxt);
+    titleEl.appendChild(closeX);
+    win.appendChild(titleEl);
+
+    const body = document.createElement('div');
+    body.className = 'tool-window-body';
+    win.appendChild(body);
+
+    const vcCanvas = document.createElement('canvas');
+    vcCanvas.width  = VCL_W;
+    vcCanvas.height = VCL_H;
+    vcCanvas.style.cssText = `display:block;cursor:crosshair;width:${VCL_W}px;height:${VCL_H}px;border:1px solid #444`;
+    body.appendChild(vcCanvas);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:4px';
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'delta-btn';
+    resetBtn.textContent = 'Reset all';
+    resetBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      state.setVelocityCurve(new Array(VCL_COLS).fill(0));
+      renderVCL(vcCanvas);
+      saveVelCurve();
+    });
+    btnRow.appendChild(resetBtn);
+    body.appendChild(btnRow);
+
+    renderVCL(vcCanvas);
+
+    positionWindow(win);
+    _velCurveWin = win;
+
+    let _vcPainting = false;
+    let _vcLastCol  = -1;
+    let _vcLastRow  = -1;
+
+    vcCanvas.addEventListener('mousedown', e => {
+      if (e.button === 2) {
+        const { col } = vclCell(vcCanvas, e);
+        if (col >= 0 && col < VCL_COLS) vclPaint(vcCanvas, col, VCL_ZERO_ROW, col, VCL_ZERO_ROW);
+        return;
+      }
+      if (e.button !== 0) return;
+      _vcPainting = true;
+      _vcLastCol  = -1;
+      const { col, row } = vclCell(vcCanvas, e);
+      vclPaint(vcCanvas, -1, -1, col, row);
+      _vcLastCol = col; _vcLastRow = row;
+    });
+
+    vcCanvas.addEventListener('mousemove', e => {
+      if (!_vcPainting) return;
+      const { col, row } = vclCell(vcCanvas, e);
+      vclPaint(vcCanvas, _vcLastCol, _vcLastRow, col, row);
+      _vcLastCol = col; _vcLastRow = row;
+    });
+
+    window.addEventListener('mouseup', () => { _vcPainting = false; });
+  }
+
+  document.addEventListener('vel-curve', openVelocityCurveWindow);
+
+  // ── Tool keyboard shortcuts (capture phase — runs before roll.js) ──
+  window.addEventListener('keydown', e => {
+    // Escape closes velocity curve window
+    if (e.key === 'Escape' && _velCurveWin) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeVelCurveWin();
+      return;
+    }
+
+    // Escape closes active tool without clearing selection
+    if (e.key === 'Escape' && _currentTool) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeTool();
+      return;
+    }
+
+    // '?' toggles the help overlay; Escape also closes it
+    if (e.key === '?' && !_currentTool && !isFormFocused(e.target)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (_helpOverlay) closeHelpOverlay(); else openHelpOverlay();
+      return;
+    }
+    if (e.key === 'Escape' && _helpOverlay) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeHelpOverlay();
+      return;
+    }
+
+    // Undo / redo
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && state.loaded) {
+      e.preventDefault();
+      state.undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && state.loaded) {
+      e.preventDefault();
+      state.redo();
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isFormFocused(e.target)) return;
+
+    if (e.key === '1' && state.loaded) { e.preventDefault(); openVelocityTool(); }
+    if (e.key === '2' && state.loaded) { e.preventDefault(); openLinearScaleTool(); }
+    if (e.key === '3' && state.loaded) { e.preventDefault(); openArticulationTool(); }
+    if (e.key === '4' && state.loaded) { e.preventDefault(); openDeltaTool(); }
+  }, true);
+
+  // Applies velocity-based background/border to a velocity grid button.
+  // `mode`: 'normal' | 'hover' | 'selected'
+  function styleVelBtn(btn, v, mode) {
+    btn.style.background  = noteHSL(v, mode === 'normal' ? 'normal' : 'hovered');
+    btn.style.borderColor = mode === 'selected' ? '#fff' : mode === 'hover' ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)';
+    btn.style.borderWidth = mode === 'selected' ? '2px' : '1px';
+  }
+
+  function makeVelBtn(v) {
+    const btn = document.createElement('button');
+    btn.textContent = String(v);
+    styleVelBtn(btn, v, 'normal');
+    btn.addEventListener('mouseenter', () => { if (btn.dataset.sel !== '1') styleVelBtn(btn, v, 'hover'); });
+    btn.addEventListener('mouseleave', () => { if (btn.dataset.sel !== '1') styleVelBtn(btn, v, 'normal'); });
+    return btn;
+  }
+
+  // ── Tool: Note velocity [1] ───────────────────────────────────────
+  function openVelocityTool() {
+    if (state.selectedNoteIndices.size === 0) return;
+    openToolWindow('Note velocity', (body, close) => {
+      const grid = document.createElement('div');
+      grid.className = 'velocity-grid';
+      for (let v = 5; v <= 120; v += 5) {
+        const btn = makeVelBtn(v);
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          state.setNoteVelocities([...state.selectedNoteIndices], v);
+          close();
+        });
+        grid.appendChild(btn);
+      }
+      body.appendChild(grid);
+    });
+  }
+
+  // ── Tool: Linear velocity scale [2] ──────────────────────────────
+  function openLinearScaleTool() {
+    if (state.selectedNoteIndices.size === 0) return;
+
+    const indices = [...state.selectedNoteIndices];
+
+    openToolWindow('Linear velocity scale', (body, close) => {
+      let firstValue = null;
+
+      const info = document.createElement('div');
+      info.className = 'tool-info';
+      info.textContent = 'Select start velocity';
+      body.appendChild(info);
+
+      const grid = document.createElement('div');
+      grid.className = 'velocity-grid';
+
+      for (let v = 5; v <= 120; v += 5) {
+        const btn = makeVelBtn(v);
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          if (firstValue === null) {
+            firstValue = v;
+            btn.dataset.sel = '1';
+            styleVelBtn(btn, v, 'selected');
+            info.textContent = `From ${firstValue} — select end velocity`;
+          } else if (v !== firstValue) {
+            const sorted = indices.slice().sort(
+              (i, j) => state.notes[i].startTick - state.notes[j].startTick
+            );
+            const minTick = state.notes[sorted[0]].startTick;
+            const maxTick = state.notes[sorted[sorted.length - 1]].startTick;
+            const range   = maxTick - minTick;
+            const pairs   = sorted.map(ni => {
+              const t = range === 0 ? 0 : (state.notes[ni].startTick - minTick) / range;
+              return [ni, firstValue + (v - firstValue) * t];
+            });
+            state.setNoteVelocitiesMap(pairs);
+            close();
+          }
+        });
+        grid.appendChild(btn);
+      }
+      body.appendChild(grid);
+    });
+  }
+
+  // ── Tool: Articulations [3] ──────────────────────────────────────
+  const ARTICULATION_OPTIONS = [
+    { value: 'stacc',       label: 'stacc.',      symbol: '•'  },
+    { value: 'staccatiss',  label: 'staccatiss.', symbol: '▼'  },
+    { value: 'legato',      label: 'legato',      symbol: '—'  },
+    { value: 'legatissimo', label: 'legatissimo', symbol: '——' },
+  ];
+
+  function openArticulationTool() {
+    if (state.selectedNoteIndices.size === 0) return;
+    const indices = [...state.selectedNoteIndices];
+    const arts    = indices.map(i => state.notes[i].articulation ?? null);
+    const uniform = arts.every(a => a === arts[0]) ? arts[0] : undefined;
+
+    openToolWindow('Articulations', (body, close) => {
+      for (const opt of ARTICULATION_OPTIONS) {
+        const btn = document.createElement('button');
+        btn.className = 'art-btn';
+        if (uniform === opt.value) btn.classList.add('selected');
+
+        const sym = document.createElement('span');
+        sym.className = 'art-symbol';
+        sym.textContent = opt.symbol;
+        btn.appendChild(sym);
+        btn.appendChild(document.createTextNode(opt.label));
+
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          state.setNoteArticulations(indices, uniform === opt.value ? null : opt.value);
+          close();
+        });
+        body.appendChild(btn);
+      }
+    });
+  }
+
+  // ── Tool: Velocity delta [4] ─────────────────────────────────────
+  function openDeltaTool() {
+    if (state.selectedNoteIndices.size === 0) return;
+    openToolWindow('Velocity delta', (body, close) => {
+      const grid = document.createElement('div');
+      grid.className = 'delta-grid';
+      for (const delta of [-10, -5, -1, +1, +5, +10]) {
+        const btn = document.createElement('button');
+        btn.className = 'delta-btn';
+        btn.textContent = delta > 0 ? `+${delta}` : String(delta);
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const pairs = [...state.selectedNoteIndices].map(i => [i, state.notes[i].velocity + delta]);
+          state.setNoteVelocitiesMap(pairs);
+          close();
+        });
+        grid.appendChild(btn);
+      }
+      body.appendChild(grid);
+    });
+  }
+
+  // ── Toolbar events ─────────────────────────────────────────────────
+  document.addEventListener('load-file', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xml,.musicxml';
+    input.onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const buf = await file.arrayBuffer();
+      try {
+        await loadMusicXmlBuffer(buf);
+        fitView();
+        restoreView();
+      } catch (err) {
+        alert('Could not parse MusicXML file: ' + err.message);
+        console.error(err);
+      }
+    };
+    input.click();
+  });
+
+  document.addEventListener('save-project', () => {
+    if (!state.loaded) return;
+    const json = JSON.stringify(state.saveProject(), null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: 'pianizer-project.json' });
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.addEventListener('load-project', () => {
+    const input = document.createElement('input');
+    input.type   = 'file';
+    input.accept = '.json';
+    input.onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        state.loadProject(data);
+        fitView();
+        restoreView();
+      } catch (err) {
+        alert('Could not load project file: ' + err.message);
+        console.error(err);
+      }
+    };
+    input.click();
+  });
+
+  function fitView() {
+    const rollW = roll.rollWidth;
+    roll.pixelsPerTick = state.totalTicks > 0
+      ? Math.max(0.01, Math.min(2, rollW / state.totalTicks))
+      : 0.06;
+    roll.scrollX = 0;
+
+    if (state.notes.length > 0) {
+      const maxP = Math.max(...state.notes.map(n => n.pitch));
+      roll.scrollY = Math.max(0, (108 - maxP - 2) * roll.noteHeight);
+    }
+  }
+
+  // ── Playback ───────────────────────────────────────────────────────
+  let animFrame          = null;
+  let playStartPerfMs    = null;
+  let playStartPieceTime = null;
+  // Sticky "play from here" position. Set by manual seek, cleared by Stop
+  // and on load. Each Play snaps the playhead back to this so the same
+  // passage can be replayed without re-seeking.
+  let playAnchor         = null;
+
+  function getPieceTime() {
+    if (playStartPerfMs === null) return playStartPieceTime ?? 0;
+    return playStartPieceTime + (performance.now() - playStartPerfMs) / 1000;
+  }
+
+  document.addEventListener('toggle-playback', () => {
+    if (!state.loaded) return;
+    if (state.playing) pausePlayback(); else startPlayback();
+  });
+
+  document.addEventListener('stop-playback', stopPlayback);
+  document.addEventListener('midi-connect',  () => midiOut.requestAccess());
+
+  function startPlayback() {
+    if (playAnchor === null) playAnchor = state.playheadTime;
+    else                     state.setPlayheadTime(playAnchor);
+    playStartPieceTime = playAnchor;
+    playStartPerfMs    = performance.now();
+    midiOut.schedulePlayback(playStartPieceTime, getPieceTime);
+    state.setPlaying(true);
+    tick();
+  }
+
+  function pausePlayback() {
+    state.setPlaying(false);
+    cancelAnimationFrame(animFrame);
+    midiOut.stopPlayback();
+  }
+
+  function stopPlayback() {
+    pausePlayback();
+    state.setPlayheadTime(0);
+    playAnchor = null;
+  }
+
+  function tick() {
+    if (!state.playing) return;
+    const pieceTime = getPieceTime();
+    if (pieceTime >= state.totalTime) { pausePlayback(); return; }
+    state.setPlayheadTime(pieceTime);
+
+    const playTick = state.timeToTick(pieceTime);
+    const playX    = roll.tickToX(playTick);
+    const margin   = 80;
+    if (playX > canvas.width - margin) {
+      roll.scrollX = roll._clampScrollX(roll.scrollX + (canvas.width - margin * 2) / roll.pixelsPerTick);
+    }
+
+    animFrame = requestAnimationFrame(tick);
+  }
+
+  // ── Seek (resets the play-from anchor) ──────────────────────────────
+  canvas.addEventListener('user-seek', e => {
+    playAnchor = e.detail.time;
+    if (!state.playing) return;
+    midiOut.stopPlayback();
+    playStartPieceTime = e.detail.time;
+    playStartPerfMs    = performance.now();
+    midiOut.schedulePlayback(playStartPieceTime, getPieceTime);
+  });
+
+  state.addEventListener('loaded', () => { playAnchor = null; });
+
+  // ── Disable right mouse button everywhere ──────────────────────────
+  window.addEventListener('contextmenu', e => e.preventDefault());
+
+  // ── Prevent browser zoom on Ctrl+wheel ────────────────────────────
+  window.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey) e.preventDefault();
+  }, { passive: false });
+
+  // ── Grid rerender on snap change ────────────────────────────────────
+  state.addEventListener('snapchanged', () => roll.render());
+
+  // ── Auto-save to localStorage ─────────────────────────────────────
+  const AUTOSAVE_KEY = 'pianizer-autosave';
+  let _autosaveTimer = null;
+  let _viewSaveTimer = null;
+
+  function scheduleViewSave() {
+    if (!state.pieceId) return;
+    clearTimeout(_viewSaveTimer);
+    _viewSaveTimer = setTimeout(() => safeSet(`pianizer-view-${state.pieceId}`, {
+      pixelsPerTick: roll.pixelsPerTick,
+      scrollX:       roll.scrollX,
+      scrollY:       roll.scrollY,
+      snapGrid:      state.snapGrid,
+    }), 500);
+  }
+
+  function restoreView() {
+    try {
+      const saved = state.pieceId && localStorage.getItem(`pianizer-view-${state.pieceId}`);
+      if (saved) {
+        const v = JSON.parse(saved);
+        if (v.pixelsPerTick != null) roll.pixelsPerTick = v.pixelsPerTick;
+        if (v.scrollX       != null) roll.scrollX = roll._clampScrollX(v.scrollX);
+        if (v.scrollY       != null) roll.scrollY = v.scrollY;
+        if (v.snapGrid != null && SNAP_GRIDS.includes(v.snapGrid)) {
+          state.snapGrid = v.snapGrid;
+          state.dispatch('snapchanged');
+        }
+      }
+    } catch (_) {}
+    roll.render();
+  }
+
+  function scheduleAutosave() {
+    if (!state.loaded) return;
+    clearTimeout(_autosaveTimer);
+    _autosaveTimer = setTimeout(() => safeSet(AUTOSAVE_KEY, state.saveProject()), 1000);
+  }
+
+  state.addEventListener('loaded',           scheduleAutosave);
+  state.addEventListener('selectionchanged', scheduleAutosave);
+  state.addEventListener('pedalchanged',     scheduleAutosave);
+  state.addEventListener('tempochanged',     scheduleAutosave);
+
+  window.addEventListener('beforeunload', () => {
+    if (_autosaveTimer !== null && state.loaded) {
+      clearTimeout(_autosaveTimer);
+      _autosaveTimer = null;
+      safeSet(AUTOSAVE_KEY, state.saveProject());
+    }
+  });
+
+  // Load per-device velocity curve (independent of score/project)
+  try {
+    const vc = localStorage.getItem('pianizer-vel-curve');
+    if (vc) {
+      const arr = JSON.parse(vc);
+      if (Array.isArray(arr) && arr.length === VCL_COLS)
+        state.velocityCurve = arr.map(v => Math.max(-23, Math.min(21, Math.round(v))));
+    }
+  } catch (_) {}
+
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (saved) {
+      state.loadProject(JSON.parse(saved));
+      fitView();
+      restoreView();
+      const n = state.notes.length;
+      statusEl.textContent = `Restored from autosave · ${n} note${n !== 1 ? 's' : ''} · Press [?] for help`;
+      setTimeout(updateStatus, 3000);
+    }
+  } catch (_) {}
+
+  // Playwright test hooks — not used in normal operation
+  window._state    = state;
+  window._roll     = roll;
+  window._testLoad = data => { state.loadProject(data); fitView(); roll.render(); };
+</script>
+</body>
+</html>
