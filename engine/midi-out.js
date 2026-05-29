@@ -101,8 +101,8 @@ export class MidiOut {
       while (notePtr < sortedNotes.length && sortedNotes[notePtr].noteStart <= windowEnd) {
         const { n, noteStart, noteEnd } = sortedNotes[notePtr++];
 
-        const onMs  = nowMs + (noteStart - pieceNow) * 1000;
-        const offMs = nowMs + (noteEnd   - pieceNow) * 1000;
+        const onMs  = nowMs + (noteStart - pieceNow) / state.playSpeed * 1000;
+        const offMs = nowMs + (noteEnd   - pieceNow) / state.playSpeed * 1000;
 
         const safeOnMs  = Math.max(onMs,  nowMs + 5);
         const safeOffMs = Math.max(offMs, safeOnMs + 10);
@@ -125,7 +125,7 @@ export class MidiOut {
 
         if (time + 0.1 < pieceNow) continue; // already past
 
-        const evMs   = nowMs + (time - pieceNow) * 1000;
+        const evMs   = nowMs + (time - pieceNow) / state.playSpeed * 1000;
         const safeMs = Math.max(evMs, nowMs + 2);
         const cc64   = Math.round(value * 127);
 
