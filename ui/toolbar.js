@@ -65,6 +65,15 @@ export class Toolbar extends HTMLElement {
       <div class="transport">
         <button data-action="stop" disabled>Stop</button>
         <button data-action="play" disabled>Play</button>
+        <select data-role="speed">
+          <option value="0.25">25%</option>
+          <option value="0.5">50%</option>
+          <option value="0.75">75%</option>
+          <option value="1" selected>100%</option>
+          <option value="1.25">125%</option>
+          <option value="1.5">150%</option>
+          <option value="2">200%</option>
+        </select>
         <span class="time">0:00</span>
       </div>
       <span class="sep">│</span>
@@ -81,15 +90,16 @@ export class Toolbar extends HTMLElement {
     `;
     shadow.appendChild(inner);
 
-    this._saveBtn = shadow.querySelector('[data-action="save-project"]');
-    this._undoBtn = shadow.querySelector('[data-action="undo"]');
-    this._redoBtn = shadow.querySelector('[data-action="redo"]');
-    this._stopBtn = shadow.querySelector('[data-action="stop"]');
-    this._playBtn = shadow.querySelector('[data-action="play"]');
-    this._timeEl  = shadow.querySelector('.time');
-    this._connBtn = shadow.querySelector('[data-action="midi-connect"]');
-    this._midiSel = shadow.querySelector('[data-role="midi-port"]');
-    this._snapSel = shadow.querySelector('[data-role="snap"]');
+    this._saveBtn  = shadow.querySelector('[data-action="save-project"]');
+    this._undoBtn  = shadow.querySelector('[data-action="undo"]');
+    this._redoBtn  = shadow.querySelector('[data-action="redo"]');
+    this._stopBtn  = shadow.querySelector('[data-action="stop"]');
+    this._playBtn  = shadow.querySelector('[data-action="play"]');
+    this._timeEl   = shadow.querySelector('.time');
+    this._connBtn  = shadow.querySelector('[data-action="midi-connect"]');
+    this._midiSel  = shadow.querySelector('[data-role="midi-port"]');
+    this._snapSel  = shadow.querySelector('[data-role="snap"]');
+    this._speedSel = shadow.querySelector('[data-role="speed"]');
 
     const emit = name => () => this.dispatchEvent(
       new CustomEvent(name, { bubbles: true, composed: true })
@@ -109,6 +119,12 @@ export class Toolbar extends HTMLElement {
       state.dispatch('snapchanged');
     });
     this._midiSel.addEventListener('change', e => { midiOut.outputId = e.target.value; });
+    this._speedSel.addEventListener('change', e => {
+      this.dispatchEvent(new CustomEvent('play-speed', {
+        bubbles: true, composed: true,
+        detail: { speed: Number(e.target.value) },
+      }));
+    });
 
     state.addEventListener('loaded',           () => this._syncLoaded());
     state.addEventListener('playbackchanged',  () => this._syncPlayback());
@@ -116,6 +132,7 @@ export class Toolbar extends HTMLElement {
     state.addEventListener('undochanged',      () => this._syncUndo());
     state.addEventListener('midiportschanged', () => this._syncMidi());
     state.addEventListener('snapchanged',      () => { this._snapSel.value = state.snapGrid; });
+    state.addEventListener('playspeedchanged', () => { this._speedSel.value = String(state.playSpeed); });
   }
 
   _syncLoaded() {

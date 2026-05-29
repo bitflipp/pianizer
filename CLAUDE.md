@@ -60,7 +60,7 @@ custom element both listen to these events.
 **Communication flow:**
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
   `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `midiportschanged`,
-  `undochanged`, `bookmarkschanged`, `velocitycurvechanged`)
+  `undochanged`, `bookmarkschanged`, `velocitycurvechanged`, `playspeedchanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle
 - `user-seek` bubbling event dispatched from roll canvas when playhead is dragged;
@@ -96,6 +96,7 @@ that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `setNoteArticula
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −23…+21) applied at scheduling time; persisted independent of project
+- `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
 `render()`, which triggers `tempoLane.render()`, `pedalLane.render()`, `miniMap.render()`,
@@ -236,7 +237,7 @@ otherwise. A balanced rubato gesture reads `0 ms`.
 
 ### Toolbar
 Load MusicXML | Load project | Save project | Undo | Redo |
-Stop | Play/Pause | Time | Snap grid | Vel. curve |
+Stop | Play/Pause | Speed | Time | Snap grid | Vel. curve |
 MIDI out: Connect button (hidden once connected) + port dropdown
 
 ### Mini-map (75 px, below pedal lane)
@@ -274,7 +275,7 @@ Three independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
   `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`, and flushed on `beforeunload`.
   Auto-loaded on page open.
-- `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid}`, debounced
+- `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
   on every load.
 - `pianizer-vel-curve` — the 88-element `state.velocityCurve` (clamped to −23…+21 on load),

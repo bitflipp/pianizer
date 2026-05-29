@@ -40,6 +40,9 @@ export class AppState extends EventTarget {
 
     // Per-pitch velocity offset (device calibration), pitch 21-108 → index 0-87
     this.velocityCurve = new Array(88).fill(0);
+
+    // Playback speed multiplier (piece-specific view setting, persisted separately)
+    this.playSpeed = 1.0;
   }
 
   // ── Notes ──────────────────────────────────────────────────────────

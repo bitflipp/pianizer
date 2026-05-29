@@ -30,17 +30,15 @@ export function noteHSL(velocity, displayState) {
 const COL_RECT_FILL   = 'rgba(92,200,200,0.1)';
 const COL_RECT_STROKE = 'rgba(92,200,200,0.55)';
 
-// Min pointer travel before a mousedown becomes a drag (rect-select or note move) (px)
-const DRAG_THRESHOLD  = 6;
-// Hit-test radius for the resize edge of a note (px)
-const EDGE_THRESHOLD  = 6;
-// Width of the left drag handle hit zone (px)
-const HANDLE_WIDTH    = 6;
+const DRAG_THRESHOLD    = 6;
+const EDGE_THRESHOLD    = 6;
+const HANDLE_WIDTH      = 6;
 // Floor on the drawn/hit-tested width of a note (px), so zero-length and very
 // short notes remain visible and clickable.
-const MIN_NOTE_PX     = 2;
+const MIN_NOTE_PX       = 2;
 // Max scroll past the piece end, in beats (≈ 4 measures in 4/4)
 const SCROLL_TAIL_BEATS = 16;
+const BOOKMARK_HIT_RADIUS = 8;
 
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const BLACK_KEYS = [1, 3, 6, 8, 10];
@@ -331,7 +329,6 @@ export class PianoRoll {
     ctx.fillStyle = noteHSL(n.velocity, colorState);
     ctx.fillRect(x, y, w, h);
 
-    // Border: 2px white for selected, 1px semi-white otherwise
     const isSel   = selected && !willAdd;
     const bw      = isSel ? 2 : 1;
     const bOff    = bw / 2;
@@ -339,7 +336,6 @@ export class PianoRoll {
     ctx.strokeStyle = isSel ? '#ffffff' : 'rgba(255,255,255,0.5)';
     ctx.strokeRect(x + bOff, y + bOff, w - bw, h - bw);
 
-    // Labels — clipped to note interior so they never overflow the note rect.
     ctx.save();
     ctx.beginPath();
     ctx.rect(x + 1, y + 1, w - 2, h - 2);
@@ -447,11 +443,10 @@ export class PianoRoll {
 
   // Returns the index of the nearest bookmark within 8 px of canvas x, or -1.
   _bookmarkNear(x) {
-    const THRESH = 8;
-    let best = -1, bestDist = THRESH + 1;
+    let best = -1, bestDist = BOOKMARK_HIT_RADIUS + 1;
     for (let i = 0; i < state.bookmarks.length; i++) {
       const dist = Math.abs(this.tickToX(state.bookmarks[i]) - x);
-      if (dist <= THRESH && dist < bestDist) { bestDist = dist; best = i; }
+      if (dist <= BOOKMARK_HIT_RADIUS && dist < bestDist) { bestDist = dist; best = i; }
     }
     return best;
   }
@@ -585,12 +580,18 @@ export class PianoRoll {
     this.render();
   }
 
+  _selectionRect() {
+    return {
+      x1: Math.min(this._rectSelStart.x, this._rectSelCurrent.x),
+      y1: Math.min(this._rectSelStart.y, this._rectSelCurrent.y),
+      x2: Math.max(this._rectSelStart.x, this._rectSelCurrent.x),
+      y2: Math.max(this._rectSelStart.y, this._rectSelCurrent.y),
+    };
+  }
+
   _drawRectSelection() {
     if (!this._rectSelActive || !this._rectDidDrag) return;
-    const x1 = Math.min(this._rectSelStart.x, this._rectSelCurrent.x);
-    const y1 = Math.min(this._rectSelStart.y, this._rectSelCurrent.y);
-    const x2 = Math.max(this._rectSelStart.x, this._rectSelCurrent.x);
-    const y2 = Math.max(this._rectSelStart.y, this._rectSelCurrent.y);
+    const { x1, y1, x2, y2 } = this._selectionRect();
     const { ctx, canvas } = this;
     ctx.save();
     ctx.beginPath();
@@ -606,10 +607,7 @@ export class PianoRoll {
 
   // Returns a Set of note indices whose canvas rects overlap the current selection rect.
   _notesInRect() {
-    const sx1 = Math.min(this._rectSelStart.x, this._rectSelCurrent.x);
-    const sy1 = Math.min(this._rectSelStart.y, this._rectSelCurrent.y);
-    const sx2 = Math.max(this._rectSelStart.x, this._rectSelCurrent.x);
-    const sy2 = Math.max(this._rectSelStart.y, this._rectSelCurrent.y);
+    const { x1, y1, x2, y2 } = this._selectionRect();
     const hits = new Set();
     for (let i = 0; i < state.notes.length; i++) {
       const n   = state.notes[i];
@@ -617,7 +615,7 @@ export class PianoRoll {
       const nx2 = nx1 + this._noteWidthPx(n);
       const ny1 = this.pitchToY(n.pitch);
       const ny2 = ny1 + this.noteHeight;
-      if (nx2 >= sx1 && nx1 <= sx2 && ny2 >= sy1 && ny1 <= sy2) hits.add(i);
+      if (nx2 >= x1 && nx1 <= x2 && ny2 >= y1 && ny1 <= y2) hits.add(i);
     }
     return hits;
   }

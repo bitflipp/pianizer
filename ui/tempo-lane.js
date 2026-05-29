@@ -64,8 +64,6 @@ function drawRubatoLabels(ctx, canvas, lane) {
   ctx.restore();
 }
 
-// Returns [{deltaMs, innerPoints}] for every pair of consecutive baseline (=1.0)
-// control points that has at least one non-baseline point between them.
 function computeRubatoRegions(points) {
   if (points.length < 2) return [];
 
