@@ -852,7 +852,7 @@
 
   function getPieceTime() {
     if (playStartPerfMs === null) return playStartPieceTime ?? 0;
-    return playStartPieceTime + (performance.now() - playStartPerfMs) / 1000;
+    return playStartPieceTime + (performance.now() - playStartPerfMs) / 1000 * state.playSpeed;
   }
 
   document.addEventListener('toggle-playback', () => {
@@ -862,6 +862,26 @@
 
   document.addEventListener('stop-playback', stopPlayback);
   document.addEventListener('midi-connect',  () => midiOut.requestAccess());
+
+  const SPEED_VALUES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+
+  document.addEventListener('play-speed', e => {
+    const newSpeed = e.detail.speed;
+    if (state.playing) {
+      // Re-anchor with old speed before switching, so the playhead doesn't jump.
+      const currentTime  = getPieceTime();
+      state.playSpeed    = newSpeed;
+      state.dispatch('playspeedchanged');
+      midiOut.stopPlayback();
+      playStartPieceTime = currentTime;
+      playStartPerfMs    = performance.now();
+      midiOut.schedulePlayback(currentTime, getPieceTime);
+    } else {
+      state.playSpeed = newSpeed;
+      state.dispatch('playspeedchanged');
+    }
+    scheduleViewSave();
+  });
 
   function startPlayback() {
     if (playAnchor === null) playAnchor = state.playheadTime;
@@ -937,10 +957,12 @@
       scrollX:       roll.scrollX,
       scrollY:       roll.scrollY,
       snapGrid:      state.snapGrid,
+      playSpeed:     state.playSpeed,
     }), 500);
   }
 
   function restoreView() {
+    let restoredSpeed = 1.0;
     try {
       const saved = state.pieceId && localStorage.getItem(`pianizer-view-${state.pieceId}`);
       if (saved) {
@@ -952,8 +974,13 @@
           state.snapGrid = v.snapGrid;
           state.dispatch('snapchanged');
         }
+        if (v.playSpeed != null && SPEED_VALUES.includes(v.playSpeed)) restoredSpeed = v.playSpeed;
       }
     } catch (_) {}
+    if (state.playSpeed !== restoredSpeed) {
+      state.playSpeed = restoredSpeed;
+      state.dispatch('playspeedchanged');
+    }
     roll.render();
   }
 
