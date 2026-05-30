@@ -426,7 +426,7 @@
   const VCL_CH     = 6;    // cell height (45 rows → 270 px)
   const VCL_ROWS     = 45;
   const VCL_COLS     = 88;
-  const VCL_ZERO_ROW = 23;
+  const VCL_ZERO_ROW = 22;
   const VCL_W      = VCL_MARGIN + VCL_COLS * VCL_CW;  // 640
   const VCL_H      = VCL_ROWS * VCL_CH;               // 270
 
@@ -1009,7 +1009,7 @@
     if (vc) {
       const arr = JSON.parse(vc);
       if (Array.isArray(arr) && arr.length === VCL_COLS)
-        state.velocityCurve = arr.map(v => Math.max(-23, Math.min(21, Math.round(v))));
+        state.velocityCurve = arr.map(v => Math.max(-22, Math.min(22, Math.round(v))));
     }
   } catch (_) {}
 
