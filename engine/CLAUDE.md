@@ -27,11 +27,10 @@ custom element both listen to these events.
   endTick: int,
   track: int,
   channel: int,
-  articulation: string|null,  // 'stacc' | 'staccatiss' | 'legato' | 'legatissimo' | null
 }
 ```
 Notes are sorted by `startTick` on load (both MusicXML and project). Editing methods
-that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `setNoteArticulations`,
+that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `scaleNoteDurations`,
 `addNote`, `deleteNotes`, `moveNotes`/`moveNotesStart`/`moveNotesLive`,
 `resizeNote`/`resizeNoteLeft`/`resizeNoteStart`, `setSelection`) dispatch
 `selectionchanged` so the roll re-renders. Curve drag begins call
@@ -88,16 +87,12 @@ project duration.
 
 ---
 
-## Articulation and Velocity Curve (applied at scheduling time only)
+## Velocity Curve (applied at scheduling time only)
 
-Both are applied in `midi-out.js` at scheduling time — stored note data is never mutated.
+Applied in `midi-out.js` at scheduling time — stored note data is never mutated.
 
-- **Articulation:** `stacc` ×0.50, `staccatiss` ×0.25. `legato`/`legatissimo` extend to
-  the next note's `startTick` on the same channel plus a fixed overlap of `tpb/16` /
-  `tpb/8` ticks respectively; if no next note exists on that channel, `endTick` is used
-  unchanged.
-- **Velocity curve:** `vel = clamp(note.velocity + state.velocityCurve[pitch-21], 1, 127)`.
-  Per-device calibration, not per-score.
+`vel = clamp(note.velocity + state.velocityCurve[pitch-21], 1, 127)`.
+Per-device calibration, not per-score.
 
 ---
 
@@ -158,7 +153,7 @@ pauses (rather than stops) so the anchor survives.
 
 `state.saveProject()` / `state.loadProject(data)` — versioned JSON (version: 1).
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
-totalTime, notes (with articulation), pedalPoints, tempoPoints, bookmarks. On
+totalTime, notes, pedalPoints, tempoPoints, bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
 resets and re-renders. `totalTime` is written for forward compatibility but
 always recomputed from the tempo curve on load (the stored value is ignored).

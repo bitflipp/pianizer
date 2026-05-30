@@ -66,7 +66,7 @@ export class PianoRoll {
 
     // Hover
     this._hoverNoteIdx  = -1;
-    this._hoverNoteEdge = -1;       // index of note whose right edge is under the cursor
+    this._hoverNoteRightEdge = -1;  // index of note whose right edge is under the cursor
     this._lastMousePos  = null;
 
     // Rectangle selection drag
@@ -84,7 +84,7 @@ export class PianoRoll {
     this._didPan     = false;       // suppress the click event after a pan
 
     // Right-edge resize drag
-    this._resizingNoteIdx     = -1;
+    this._resizingNoteRightIdx     = -1;
     // Left-edge resize drag
     this._resizingNoteLeftIdx = -1;
 
@@ -482,7 +482,7 @@ export class PianoRoll {
     // Show grab/cell cursor when Ctrl/Alt is held over the roll content
     if ((e.key === 'Control' || e.key === 'Alt') && this._lastMousePos
         && !this._panning && !this._draggingNotes && !this._rectSelActive
-        && this._hoverNoteEdge < 0 && this._hoverNoteLeftEdge < 0 && this._hoverNoteHandle < 0
+        && this._hoverNoteRightEdge < 0 && this._hoverNoteLeftEdge < 0 && this._hoverNoteHandle < 0
         && this._inRoll(this._lastMousePos)) {
       this.canvas.style.cursor = e.key === 'Alt' ? 'cell' : 'grab';
     }
@@ -542,8 +542,8 @@ export class PianoRoll {
   _refreshCursor() {
     if (this._draggingNotes) {
       this.canvas.style.cursor = 'grabbing';
-    } else if (this._resizingNoteIdx >= 0 || this._resizingNoteLeftIdx >= 0
-               || this._hoverNoteEdge >= 0 || this._hoverNoteLeftEdge >= 0) {
+    } else if (this._resizingNoteRightIdx >= 0 || this._resizingNoteLeftIdx >= 0
+               || this._hoverNoteRightEdge >= 0 || this._hoverNoteLeftEdge >= 0) {
       this.canvas.style.cursor = 'ew-resize';
     } else if (this._hoverNoteHandle >= 0) {
       this.canvas.style.cursor = 'grab';
@@ -565,7 +565,7 @@ export class PianoRoll {
 
   _onMouseLeave() {
     this._hoverNoteIdx      = -1;
-    this._hoverNoteEdge     = -1;
+    this._hoverNoteRightEdge     = -1;
     this._hoverNoteHandle   = -1;
     this._hoverNoteLeftEdge = -1;
     this._hoverBookmarkIdx  = -1;
@@ -647,9 +647,9 @@ export class PianoRoll {
       return;
     }
 
-    if (this._hoverNoteEdge >= 0) {
+    if (this._hoverNoteRightEdge >= 0) {
       state.resizeNoteStart();
-      this._resizingNoteIdx = this._hoverNoteEdge;
+      this._resizingNoteRightIdx = this._hoverNoteRightEdge;
       this.canvas.style.cursor = 'ew-resize';
       return;
     }
@@ -698,12 +698,12 @@ export class PianoRoll {
     }
 
     // Right-edge resize — update note endTick live, skip all other tracking
-    if (this._resizingNoteIdx >= 0) {
-      const note = state.notes[this._resizingNoteIdx];
+    if (this._resizingNoteRightIdx >= 0) {
+      const note = state.notes[this._resizingNoteRightIdx];
       if (note) {
         const rawTick  = Math.round(this.xToTick(pos.x));
         const snapped  = state.snapTick(Math.max(note.startTick + 1, rawTick));
-        state.resizeNote(this._resizingNoteIdx, snapped);
+        state.resizeNote(this._resizingNoteRightIdx, snapped);
       }
       return;
     }
@@ -753,8 +753,8 @@ export class PianoRoll {
 
     // Right-edge hover — only outside rect selection
     const edgeNi = (inRoll && !this._rectSelActive) ? this._noteRightEdgeAt(pos) : -1;
-    const edgeChanged = edgeNi !== this._hoverNoteEdge;
-    this._hoverNoteEdge = edgeNi;
+    const edgeChanged = edgeNi !== this._hoverNoteRightEdge;
+    this._hoverNoteRightEdge = edgeNi;
 
     // Left-edge hover — only when not near a right edge
     const leftEdgeNi = (inRoll && !this._rectSelActive && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
@@ -804,7 +804,7 @@ export class PianoRoll {
     // Clear hover state before mutation so no ghost highlights appear during drag
     this._hoverNoteIdx      = -1;
     this._hoverNoteHandle   = -1;
-    this._hoverNoteEdge     = -1;
+    this._hoverNoteRightEdge     = -1;
     this._hoverNoteLeftEdge = -1;
 
     state.moveNotesStart(dragIndices);  // pushes undo, sets selection, renders
@@ -854,8 +854,8 @@ export class PianoRoll {
       return;
     }
 
-    if (this._resizingNoteIdx >= 0) {
-      this._resizingNoteIdx = -1;
+    if (this._resizingNoteRightIdx >= 0) {
+      this._resizingNoteRightIdx = -1;
       this._refreshCursor();
       return;
     }
