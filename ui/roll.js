@@ -43,7 +43,6 @@ const BOOKMARK_HIT_RADIUS = 8;
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const BLACK_KEYS = [1, 3, 6, 8, 10];
 
-const ARTICULATION_SYMBOLS = { stacc: '•', staccatiss: '▼', legato: '—', legatissimo: '——' };
 
 export class PianoRoll {
   constructor(canvas) {
@@ -345,11 +344,6 @@ export class PianoRoll {
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.fillText(String(n.velocity), x + 3, y + 4);
-    const artSym = ARTICULATION_SYMBOLS[n.articulation];
-    if (artSym) {
-      ctx.textAlign = 'right';
-      ctx.fillText(artSym, x + w - 5, y + 4);
-    }
     ctx.restore();
   }
 

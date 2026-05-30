@@ -88,27 +88,21 @@ test('[1] velocity tool does not open with no selection', async ({ page }) => {
   await expect(page.locator('.tool-window')).not.toBeVisible();
 });
 
-test('[3] articulation tool sets stacc', async ({ page }) => {
+test('[3] duration delta tool scales note duration', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
+  const before = await page.evaluate(() => {
+    const n = window._state.notes[0];
+    return n.endTick - n.startTick;
+  });
   await page.keyboard.press('3');
   await expect(page.locator('.tool-window')).toBeVisible();
-  await page.locator('.art-btn', { hasText: 'stacc.' }).click();
-  const art = await page.evaluate(() => window._state.notes[0].articulation);
-  expect(art).toBe('stacc');
-});
-
-test('[3] clicking current articulation clears it', async ({ page }) => {
-  const pos = await notePagePos(page, 0);
-  await page.mouse.click(pos.x, pos.y);
-  // Set stacc
-  await page.keyboard.press('3');
-  await page.locator('.art-btn', { hasText: 'stacc.' }).click();
-  // Clear stacc by selecting it again
-  await page.keyboard.press('3');
-  await page.locator('.art-btn', { hasText: 'stacc.' }).click();
-  const art = await page.evaluate(() => window._state.notes[0].articulation);
-  expect(art).toBeNull();
+  await page.locator('.delta-btn', { hasText: '-50%' }).click();
+  const after = await page.evaluate(() => {
+    const n = window._state.notes[0];
+    return n.endTick - n.startTick;
+  });
+  expect(after).toBe(Math.round(before * 0.5));
 });
 
 test('Escape closes tool window', async ({ page }) => {

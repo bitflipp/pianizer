@@ -4,35 +4,6 @@
 
 import { state, interpolateCurveAtTick } from './state.js';
 
-// Articulation duration multipliers. Legato/legatissimo are handled separately
-// because they extend to the next note's onset rather than scaling duration.
-function articulationFactor(art) {
-  switch (art) {
-    case 'stacc':      return 0.50;
-    case 'staccatiss': return 0.25;
-    default:           return 1.00;
-  }
-}
-
-// Effective MIDI off-tick for a note, applying articulation. Legato/legatissimo
-// extend the note past `endTick` to the next same-channel onset plus a small
-// overlap (tpb/16 for legato, tpb/8 for legatissimo). Mutates nothing.
-function effectiveEndTick(note, index, notes) {
-  if (note.articulation === 'legato' || note.articulation === 'legatissimo') {
-    let nextStart = null;
-    for (let j = index + 1; j < notes.length; j++) {
-      if (notes[j].channel === note.channel && notes[j].startTick > note.startTick) {
-        nextStart = notes[j].startTick;
-        break;
-      }
-    }
-    if (nextStart === null) return note.endTick;
-    const overlap = Math.round(state.ticksPerBeat / (note.articulation === 'legatissimo' ? 8 : 16));
-    return Math.max(note.endTick, nextStart + overlap);
-  }
-  const dur = note.endTick - note.startTick;
-  return note.startTick + Math.round(dur * articulationFactor(note.articulation));
-}
 
 export class MidiOut {
   constructor() {
@@ -74,10 +45,10 @@ export class MidiOut {
     if (channels.length === 0) channels.push(0);
 
     const sortedNotes = state.notes
-      .map((n, i) => ({
+      .map(n => ({
         n,
         noteStart: state.tickToTime(n.startTick),
-        noteEnd:   state.tickToTime(effectiveEndTick(n, i, state.notes)),
+        noteEnd:   state.tickToTime(n.endTick),
       }))
       .filter(({ noteStart }) => noteStart >= startTime - 0.05)
       .sort((a, b) => a.noteStart - b.noteStart);

@@ -15,7 +15,7 @@ function mkState(notes = []) {
 }
 
 function n(startTick, endTick, pitch = 60, velocity = 64) {
-  return { pitch, velocity, startTick, endTick, track: 0, channel: 0, articulation: null };
+  return { pitch, velocity, startTick, endTick, track: 0, channel: 0 };
 }
 
 // ── addNote ───────────────────────────────────────────────────────────────────
@@ -90,19 +90,26 @@ describe('setNoteVelocities', () => {
   });
 });
 
-// ── setNoteArticulations ──────────────────────────────────────────────────────
+// ── scaleNoteDurations ────────────────────────────────────────────────────────
 
-describe('setNoteArticulations', () => {
-  test('sets articulation', () => {
+describe('scaleNoteDurations', () => {
+  test('scales duration by factor', () => {
     const s = mkState([n(0, 480)]);
-    s.setNoteArticulations([0], 'stacc');
-    expect(s.notes[0].articulation).toBe('stacc');
+    s.scaleNoteDurations([0], 0.5);
+    expect(s.notes[0].endTick).toBe(240);
   });
 
-  test('clears articulation with null', () => {
-    const s = mkState([{ ...n(0, 480), articulation: 'stacc' }]);
-    s.setNoteArticulations([0], null);
-    expect(s.notes[0].articulation).toBeNull();
+  test('clamps to minimum 1 tick', () => {
+    const s = mkState([n(0, 1)]);
+    s.scaleNoteDurations([0], 0.1);
+    expect(s.notes[0].endTick).toBe(1);
+  });
+
+  test('does not move startTick', () => {
+    const s = mkState([n(480, 960)]);
+    s.scaleNoteDurations([0], 2.0);
+    expect(s.notes[0].startTick).toBe(480);
+    expect(s.notes[0].endTick).toBe(1440);
   });
 });
 

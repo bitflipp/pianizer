@@ -6,9 +6,9 @@
   "timeSignatures": [{ "tick": 0, "numerator": 4, "denominator": 4 }],
   "totalTicks": 1920,
   "notes": [
-    { "pitch": 60, "velocity":  64, "startTick":    0, "endTick":  480, "track": 0, "channel": 0, "articulation": null },
-    { "pitch": 62, "velocity":  80, "startTick":  480, "endTick":  960, "track": 0, "channel": 0, "articulation": null },
-    { "pitch": 64, "velocity": 100, "startTick":  960, "endTick": 1440, "track": 0, "channel": 0, "articulation": null }
+    { "pitch": 60, "velocity":  64, "startTick":    0, "endTick":  480, "track": 0, "channel": 0 },
+    { "pitch": 62, "velocity":  80, "startTick":  480, "endTick":  960, "track": 0, "channel": 0 },
+    { "pitch": 64, "velocity": 100, "startTick":  960, "endTick": 1440, "track": 0, "channel": 0 }
   ],
   "pedalPoints": [],
   "tempoPoints": [],

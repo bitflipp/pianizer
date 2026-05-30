@@ -90,10 +90,13 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
-  setNoteArticulations(indices, articulation) {
+  scaleNoteDurations(indices, factor) {
     this._pushUndo();
     for (const i of indices) {
-      if (this.notes[i]) this.notes[i].articulation = articulation;
+      const n = this.notes[i];
+      if (!n) continue;
+      const dur = n.endTick - n.startTick;
+      n.endTick = n.startTick + Math.max(1, Math.round(dur * factor));
     }
     this.dispatch('selectionchanged');
   }
@@ -133,7 +136,7 @@ export class AppState extends EventTarget {
       timeSignatures: this.timeSignatures.map(s => ({ tick: s.tick, numerator: s.numerator, denominator: s.denominator })),
       totalTicks:     this.totalTicks,
       totalTime:      this.totalTime,
-      notes:          this.notes.map(n => ({ pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, articulation: n.articulation ?? null })),
+      notes:          this.notes.map(n => ({ pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
       bookmarks:      this.bookmarks.slice(),
@@ -276,7 +279,7 @@ export class AppState extends EventTarget {
 
   addNote(pitch, startTick, endTick, velocity) {
     this._pushUndo();
-    const note = { pitch, velocity, startTick, endTick, track: 0, channel: 0, articulation: null };
+    const note = { pitch, velocity, startTick, endTick, track: 0, channel: 0 };
     this.notes.push(note);
     this.notes.sort((a, b) => a.startTick - b.startTick);
     const idx = this.notes.indexOf(note);
