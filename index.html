@@ -116,24 +116,6 @@
       padding-right: 4px;
       min-width: 34px;
     }
-    .art-btn {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-      background: #222;
-      border: 1px solid #444;
-      color: #ddd;
-      font: 12px monospace;
-      padding: 4px 8px;
-      cursor: pointer;
-      text-align: left;
-      margin-bottom: 2px;
-    }
-    .art-btn:last-child { margin-bottom: 0; }
-    .art-btn:hover { background: #333; border-color: #888; }
-    .art-btn.selected { background: #2a4a6a; border-color: #4a8abf; color: #fff; }
-    .art-symbol { display: inline-block; width: 18px; color: #a0ecec; }
     .delta-grid {
       display: flex;
       gap: 2px;
@@ -344,7 +326,7 @@
     ['Editing', [
       ['1',                       'Velocity tool'],
       ['2',                       'Linear velocity scale tool'],
-      ['3',                       'Articulation tool'],
+      ['3',                       'Duration delta tool'],
       ['4',                       'Velocity delta tool'],
       ['Alt+click empty',         'Insert note at cursor'],
       ['Drag note body',          'Move selection horizontally'],
@@ -632,7 +614,7 @@
 
     if (e.key === '1' && state.loaded) { e.preventDefault(); openVelocityTool(); }
     if (e.key === '2' && state.loaded) { e.preventDefault(); openLinearScaleTool(); }
-    if (e.key === '3' && state.loaded) { e.preventDefault(); openArticulationTool(); }
+    if (e.key === '3' && state.loaded) { e.preventDefault(); openDurationDeltaTool(); }
     if (e.key === '4' && state.loaded) { e.preventDefault(); openDeltaTool(); }
   }, true);
 
@@ -719,39 +701,24 @@
     });
   }
 
-  // ── Tool: Articulations [3] ──────────────────────────────────────
-  const ARTICULATION_OPTIONS = [
-    { value: 'stacc',       label: 'stacc.',      symbol: '•'  },
-    { value: 'staccatiss',  label: 'staccatiss.', symbol: '▼'  },
-    { value: 'legato',      label: 'legato',      symbol: '—'  },
-    { value: 'legatissimo', label: 'legatissimo', symbol: '——' },
-  ];
-
-  function openArticulationTool() {
+  // ── Tool: Duration delta [3] ─────────────────────────────────────
+  function openDurationDeltaTool() {
     if (state.selectedNoteIndices.size === 0) return;
-    const indices = [...state.selectedNoteIndices];
-    const arts    = indices.map(i => state.notes[i].articulation ?? null);
-    const uniform = arts.every(a => a === arts[0]) ? arts[0] : undefined;
-
-    openToolWindow('Articulations', (body, close) => {
-      for (const opt of ARTICULATION_OPTIONS) {
+    openToolWindow('Duration delta', (body, close) => {
+      const grid = document.createElement('div');
+      grid.className = 'delta-grid';
+      for (const pct of [-50, -25, -10, +10, +25, +50]) {
         const btn = document.createElement('button');
-        btn.className = 'art-btn';
-        if (uniform === opt.value) btn.classList.add('selected');
-
-        const sym = document.createElement('span');
-        sym.className = 'art-symbol';
-        sym.textContent = opt.symbol;
-        btn.appendChild(sym);
-        btn.appendChild(document.createTextNode(opt.label));
-
+        btn.className = 'delta-btn';
+        btn.textContent = pct > 0 ? `+${pct}%` : `${pct}%`;
         btn.addEventListener('click', ev => {
           ev.stopPropagation();
-          state.setNoteArticulations(indices, uniform === opt.value ? null : opt.value);
+          state.scaleNoteDurations([...state.selectedNoteIndices], 1 + pct / 100);
           close();
         });
-        body.appendChild(btn);
+        grid.appendChild(btn);
       }
+      body.appendChild(grid);
     });
   }
 
