@@ -324,8 +324,8 @@
       ['Escape',               'Clear selection'],
     ]],
     ['Editing', [
-      ['1',                       'Velocity tool'],
-      ['2',                       'Linear velocity scale tool'],
+      ['1',                       'Linear velocity scale tool'],
+      ['2',                       'Velocity tool'],
       ['3',                       'Duration delta tool'],
       ['4',                       'Velocity delta tool'],
       ['Alt+click empty',         'Insert note at cursor'],
@@ -612,8 +612,8 @@
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (isFormFocused(e.target)) return;
 
-    if (e.key === '1' && state.loaded) { e.preventDefault(); openVelocityTool(); }
-    if (e.key === '2' && state.loaded) { e.preventDefault(); openLinearScaleTool(); }
+    if (e.key === '1' && state.loaded) { e.preventDefault(); openLinearScaleTool(); }
+    if (e.key === '2' && state.loaded) { e.preventDefault(); openVelocityTool(); }
     if (e.key === '3' && state.loaded) { e.preventDefault(); openDurationDeltaTool(); }
     if (e.key === '4' && state.loaded) { e.preventDefault(); openDeltaTool(); }
   }, true);
