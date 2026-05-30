@@ -62,8 +62,7 @@ Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi
 white for others. Label text is always white `#fff`. Each note has a 1 px top gap
 (`y+1`, `h = noteHeight−1`), visually separating adjacent pitches.
 
-Each note box shows its velocity number (top-left) and articulation symbol (top-right),
-clipped to the note interior.
+Each note box shows its velocity number (top-left), clipped to the note interior.
 
 ---
 
@@ -72,16 +71,14 @@ clipped to the note interior.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
-- **[2] Linear velocity scale** — two-click: first click sets start velocity (the
+- **[1] Linear velocity scale** — two-click: first click sets start velocity (the
   first note by time gets this value), second sets end; interpolated across selection
   sorted by startTick
-- **[3] Articulations** — stacc. (×0.50) / staccatiss. (×0.25) / legato / legatissimo;
-  clicking the current value clears it (sets to null)
+- **[2] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
+- **[3] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
+  by the given factor (minimum 1 tick)
 - **[4] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
-
-Articulation factors are applied only at MIDI scheduling time; `endTick` is unchanged.
 
 ---
 
