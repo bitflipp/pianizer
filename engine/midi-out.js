@@ -87,7 +87,8 @@ export class MidiOut {
 
     let notePtr  = 0;
     let pedalPtr = 0;
-    const LOOKAHEAD = 0.15; // seconds
+    const LOOKAHEAD          = 0.15; // seconds
+    const SCHEDULE_INTERVAL_MS = 30;
 
     const schedule = () => {
       const out = this.selectedOutput;
@@ -96,13 +97,14 @@ export class MidiOut {
       const nowMs     = performance.now();
       const pieceNow  = getPieceTime();
       const windowEnd = pieceNow + LOOKAHEAD;
+      const toWallMs  = t => nowMs + (t - pieceNow) / state.playSpeed * 1000;
 
       // Notes
       while (notePtr < sortedNotes.length && sortedNotes[notePtr].noteStart <= windowEnd) {
         const { n, noteStart, noteEnd } = sortedNotes[notePtr++];
 
-        const onMs  = nowMs + (noteStart - pieceNow) / state.playSpeed * 1000;
-        const offMs = nowMs + (noteEnd   - pieceNow) / state.playSpeed * 1000;
+        const onMs  = toWallMs(noteStart);
+        const offMs = toWallMs(noteEnd);
 
         const safeOnMs  = Math.max(onMs,  nowMs + 5);
         const safeOffMs = Math.max(offMs, safeOnMs + 10);
@@ -125,7 +127,7 @@ export class MidiOut {
 
         if (time + 0.1 < pieceNow) continue; // already past
 
-        const evMs   = nowMs + (time - pieceNow) / state.playSpeed * 1000;
+        const evMs   = toWallMs(time);
         const safeMs = Math.max(evMs, nowMs + 2);
         const cc64   = Math.round(value * 127);
 
@@ -136,7 +138,7 @@ export class MidiOut {
     };
 
     schedule();
-    this._scheduleInterval = setInterval(schedule, 30);
+    this._scheduleInterval = setInterval(schedule, SCHEDULE_INTERVAL_MS);
   }
 
   stopPlayback() {

@@ -95,7 +95,7 @@ that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `setNoteArticula
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
-- `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −23…+21) applied at scheduling time; persisted independent of project
+- `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
@@ -249,7 +249,7 @@ Left-click or left-drag pans the roll so the clicked tick centers in the viewpor
 ### Velocity Curve editor
 Opened by the toolbar's "Vel. curve" button (no keyboard shortcut). A dedicated
 window with an 88-column × 45-row grid (one column per piano key, rows for
-delta −22…+22 with row 23 = 0). Left-click paints a cell; left-drag interpolates
+delta −22…+22 with row 22 = 0). Left-click paints a cell; left-drag interpolates
 between cells across the drag path; right-click resets a column to 0. The window
 is closed by clicking outside, pressing Escape, or the title-bar ✕. Curve values
 are stored in `state.velocityCurve` and persisted to `localStorage` under
@@ -278,7 +278,7 @@ Three independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
   on every load.
-- `pianizer-vel-curve` — the 88-element `state.velocityCurve` (clamped to −23…+21 on load),
+- `pianizer-vel-curve` — the 88-element `state.velocityCurve` (clamped to −22…+22 on load),
   written on every edit. Device-scoped, not score-scoped.
 
 ---
