@@ -17,10 +17,11 @@ auto-humanization — the tool is an instrument.
   rests, and tremolo expansion
 - **Piano roll canvas** — 88-key range (A0–C8), velocity-colored notes,
   snap-to-grid note placement and resizing, rect selection, undo/redo
-- **Velocity editing** — set absolute values, apply a linear ramp across a
-  selection, or nudge by ±1/5/10; per-key velocity curve for device calibration
-- **Articulations** — staccato (×0.50), staccatissimo (×0.25), legato, and
-  legatissimo applied at playback time without mutating the score
+- **Velocity editing** — apply a linear ramp across a selection, set absolute
+  values (5–120 grid), or nudge by ±1/5/10; per-key velocity curve for device
+  calibration
+- **Duration delta** — scale selected notes' durations by −50/−25/−10/+10/+25/+50%
+  without mutating the underlying score
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
   interpolated value is seeded correctly on mid-piece playback start
 - **Tempo lane** — draw a tempo ratio curve (×0.8–×1.2); rubato balance labels
@@ -91,9 +92,9 @@ to pick a MIDI output port, then load a MusicXML file.
 | Drag note left/right edge | Resize start / end |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
-| `[1]` | Set velocity (5–120 grid) |
-| `[2]` | Linear velocity ramp across selection |
-| `[3]` | Set articulation |
+| `[1]` | Linear velocity scale (two-click: set start/end, interpolated across selection) |
+| `[2]` | Set note velocity (5–120 grid) |
+| `[3]` | Duration delta (−50/−25/−10/+10/+25/+50%) |
 | `[4]` | Nudge velocity ±1/5/10 |
 
 ### View

@@ -34,6 +34,21 @@ One cross-file dependency to check explicitly: every keyboard shortcut and mouse
 interaction documented in `ui/CLAUDE.md` must also appear in `HELP_SECTIONS` in
 `index.html`, and vice versa. The doc and the in-app help must agree.
 
+## Pass 3 — README.md sync
+
+`README.md` is the public-facing feature doc. Keep three sections accurate:
+
+- **Features list** — each bullet must reflect what the code actually does today;
+  remove or rewrite bullets for removed features, add bullets for new ones
+- **Keyboard shortcuts tables** — must match `HELP_SECTIONS` in `index.html`
+  exactly (key names, descriptions, ordering)
+- **Project structure** — file names and one-line descriptions must match the
+  actual files on disk and their current roles
+
+README.md explains WHAT the tool does for a new user; CLAUDE.md explains WHY and
+HOW for a contributor. Keep that separation: README stays at feature/usage level,
+no internal implementation details.
+
 ## Process
 
 1. Read the scope. List all candidate findings in two groups — **Code** and
