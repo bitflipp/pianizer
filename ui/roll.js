@@ -40,6 +40,10 @@ const MIN_NOTE_PX       = 2;
 const SCROLL_TAIL_BEATS = 16;
 const BOOKMARK_HIT_RADIUS = 8;
 
+// Auto-pan during rect-selection drag
+const AUTO_PAN_ZONE = 40;   // px from content edge that triggers panning
+const AUTO_PAN_MAX  = 12;   // px/frame at the edge (speed scales linearly inward)
+
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const BLACK_KEYS = [1, 3, 6, 8, 10];
 
@@ -70,13 +74,18 @@ export class PianoRoll {
     this._lastMousePos  = null;
 
     // Rectangle selection drag
-    this._rectSelActive  = false;
-    this._rectExtend     = false;   // Shift held at drag start → add to selection
-    this._rectSelStart   = null;
-    this._rectSelCurrent = null;
-    this._rectDidDrag    = false;
-    this._rectHitSet     = null;
-    this._didRectSel     = false;   // suppress the click event that follows mouseup
+    this._rectSelActive      = false;
+    this._rectExtend         = false;   // Shift held at drag start → add to selection
+    this._rectSelStart       = null;    // canvas pixels at mousedown, used only for drag threshold
+    this._rectSelStartWorld  = null;    // anchor in world coords {tick, worldY} — fixed during auto-pan
+    this._rectSelCurrent     = null;
+    this._rectDidDrag        = false;
+    this._rectHitSet         = null;
+    this._didRectSel         = false;   // suppress the click event that follows mouseup
+
+    // Auto-pan during rect selection
+    this._autoPanRaf      = null;
+    this._autoPanMousePos = null;
 
     // Pan (Ctrl+drag)
     this._panning    = false;
@@ -558,12 +567,55 @@ export class PianoRoll {
   _canvasPos(e) { return canvasPos(this.canvas, e); }
 
   _cancelRectSel() {
-    this._rectSelActive  = false;
-    this._rectExtend     = false;
-    this._rectSelStart   = null;
-    this._rectSelCurrent = null;
-    this._rectDidDrag    = false;
-    this._rectHitSet     = null;
+    this._stopAutoPan();
+    this._rectSelActive     = false;
+    this._rectExtend        = false;
+    this._rectSelStart      = null;
+    this._rectSelStartWorld = null;
+    this._rectSelCurrent    = null;
+    this._rectDidDrag       = false;
+    this._rectHitSet        = null;
+  }
+
+  // Returns {vx, vy} pixels/frame for the given canvas position.
+  // Speed ramps from 0 at AUTO_PAN_ZONE inward to AUTO_PAN_MAX at the edge.
+  _autoPanVelocity(pos) {
+    let vx = 0, vy = 0;
+    const dl = pos.x - KEY_WIDTH;
+    const dr = this.canvas.width  - pos.x;
+    const dt = pos.y - HEADER_HEIGHT;
+    const db = this.canvas.height - pos.y;
+    if (dl < AUTO_PAN_ZONE) vx = -AUTO_PAN_MAX * (1 - Math.max(0, dl) / AUTO_PAN_ZONE);
+    if (dr < AUTO_PAN_ZONE) vx =  AUTO_PAN_MAX * (1 - Math.max(0, dr) / AUTO_PAN_ZONE);
+    if (dt < AUTO_PAN_ZONE) vy = -AUTO_PAN_MAX * (1 - Math.max(0, dt) / AUTO_PAN_ZONE);
+    if (db < AUTO_PAN_ZONE) vy =  AUTO_PAN_MAX * (1 - Math.max(0, db) / AUTO_PAN_ZONE);
+    return { vx, vy };
+  }
+
+  _startAutoPan() {
+    if (this._autoPanRaf !== null) return;
+    const step = () => {
+      if (!this._rectSelActive || !this._rectDidDrag || !this._autoPanMousePos) {
+        this._autoPanRaf = null;
+        return;
+      }
+      const { vx, vy } = this._autoPanVelocity(this._autoPanMousePos);
+      if (vx === 0 && vy === 0) { this._autoPanRaf = null; return; }
+      this.scrollX = this._clampScrollX(this.scrollX + vx / this.pixelsPerTick);
+      const maxScrollY = PITCH_RANGE * this.noteHeight - this.rollHeight;
+      this.scrollY = Math.max(0, Math.min(maxScrollY, this.scrollY + vy));
+      this._rectHitSet = this._notesInRect();
+      this.render();
+      this._autoPanRaf = requestAnimationFrame(step);
+    };
+    this._autoPanRaf = requestAnimationFrame(step);
+  }
+
+  _stopAutoPan() {
+    if (this._autoPanRaf !== null) {
+      cancelAnimationFrame(this._autoPanRaf);
+      this._autoPanRaf = null;
+    }
   }
 
   _onMouseLeave() {
@@ -578,11 +630,13 @@ export class PianoRoll {
   }
 
   _selectionRect() {
+    const sx = this.tickToX(this._rectSelStartWorld.tick);
+    const sy = this._rectSelStartWorld.worldY + HEADER_HEIGHT - this.scrollY;
     return {
-      x1: Math.min(this._rectSelStart.x, this._rectSelCurrent.x),
-      y1: Math.min(this._rectSelStart.y, this._rectSelCurrent.y),
-      x2: Math.max(this._rectSelStart.x, this._rectSelCurrent.x),
-      y2: Math.max(this._rectSelStart.y, this._rectSelCurrent.y),
+      x1: Math.min(sx, this._rectSelCurrent.x),
+      y1: Math.min(sy, this._rectSelCurrent.y),
+      x2: Math.max(sx, this._rectSelCurrent.x),
+      y2: Math.max(sy, this._rectSelCurrent.y),
     };
   }
 
@@ -684,11 +738,12 @@ export class PianoRoll {
       return;
     }
 
-    this._rectSelActive  = true;
-    this._rectExtend     = e.shiftKey;
-    this._rectSelStart   = pos;
-    this._rectSelCurrent = pos;
-    this._rectDidDrag    = false;
+    this._rectSelActive     = true;
+    this._rectExtend        = e.shiftKey;
+    this._rectSelStart      = pos;
+    this._rectSelStartWorld = { tick: this.xToTick(pos.x), worldY: pos.y - HEADER_HEIGHT + this.scrollY };
+    this._rectSelCurrent    = pos;
+    this._rectDidDrag       = false;
   }
 
   _onMouseMove(e) {
@@ -796,7 +851,12 @@ export class PianoRoll {
         const dy = pos.y - this._rectSelStart.y;
         if (Math.hypot(dx, dy) > DRAG_THRESHOLD) this._rectDidDrag = true;
       }
-      if (this._rectDidDrag) this._rectHitSet = this._notesInRect();
+      if (this._rectDidDrag) {
+        this._autoPanMousePos = pos;
+        const { vx, vy } = this._autoPanVelocity(pos);
+        if (vx !== 0 || vy !== 0) this._startAutoPan(); else this._stopAutoPan();
+        this._rectHitSet = this._notesInRect();
+      }
       if (this._rectDidDrag || hoverChanged || hoverPitchChanged) this.render();
       return;
     }
