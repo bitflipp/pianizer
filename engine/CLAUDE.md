@@ -32,8 +32,9 @@ custom element both listen to these events.
 Notes are sorted by `startTick` on load (both MusicXML and project). Editing methods
 that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `scaleNoteDurations`,
 `addNote`, `deleteNotes`, `moveNotes`/`moveNotesStart`/`moveNotesLive`,
-`resizeNote`/`resizeNoteLeft`/`resizeNoteStart`, `setSelection`) dispatch
-`selectionchanged` so the roll re-renders. Curve drag begins call
+`resizeNotesRight`/`resizeNotesLeft`/`resizeNoteStart`, `setSelection`) dispatch
+`selectionchanged` so the roll re-renders. (The single-note `resizeNote`/`resizeNoteLeft`
+remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resizeNotesLeft`.) Curve drag begins call
 `beginCurvePointMove()` to push undo once at drag start.
 
 **State fields of note:**
