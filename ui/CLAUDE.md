@@ -21,7 +21,7 @@
 - `Alt+left click empty` — insert new note (1-beat duration, velocity 64, tick snapped, immediately selected)
 - `Left drag note body` — move selection horizontally
 - `Shift+left drag note body` — move horizontally + pitch
-- `Left drag note left/right edge` — resize start / end (snapped to grid)
+- `Left drag note left/right edge` — resize start / end (snapped to grid); if the dragged note is selected, all selected notes resize together by the same tick delta
 - `Delete` / `Backspace` — delete selected notes
 - `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) — undo / redo
 
