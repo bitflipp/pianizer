@@ -93,9 +93,9 @@ export class PianoRoll {
     this._didPan     = false;       // suppress the click event after a pan
 
     // Right-edge resize drag
-    this._resizingNoteRightIdx     = -1;
+    this._resizingNoteRightIdx = -1;
     // Left-edge resize drag
-    this._resizingNoteLeftIdx = -1;
+    this._resizingNoteLeftIdx  = -1;
     // Shared resize state: note refs and original ticks captured at drag start
     this._resizeNoteRefs = [];
     this._resizeOrigins  = [];
@@ -146,6 +146,11 @@ export class PianoRoll {
 
   _clampScrollX(x) {
     return Math.max(0, Math.min(this._maxScrollX(), x));
+  }
+
+  _clampScrollY(y) {
+    const maxScrollY = PITCH_RANGE * this.noteHeight - this.rollHeight;
+    return Math.max(0, Math.min(maxScrollY, y));
   }
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -602,8 +607,7 @@ export class PianoRoll {
       const { vx, vy } = this._autoPanVelocity(this._autoPanMousePos);
       if (vx === 0 && vy === 0) { this._autoPanRaf = null; return; }
       this.scrollX = this._clampScrollX(this.scrollX + vx / this.pixelsPerTick);
-      const maxScrollY = PITCH_RANGE * this.noteHeight - this.rollHeight;
-      this.scrollY = Math.max(0, Math.min(maxScrollY, this.scrollY + vy));
+      this.scrollY = this._clampScrollY(this.scrollY + vy);
       this._rectHitSet = this._notesInRect();
       this.render();
       this._autoPanRaf = requestAnimationFrame(step);
@@ -619,12 +623,12 @@ export class PianoRoll {
   }
 
   _onMouseLeave() {
-    this._hoverNoteIdx      = -1;
-    this._hoverNoteRightEdge     = -1;
-    this._hoverNoteHandle   = -1;
-    this._hoverNoteLeftEdge = -1;
-    this._hoverBookmarkIdx  = -1;
-    this._hoverPitch        = -1;
+    this._hoverNoteIdx       = -1;
+    this._hoverNoteRightEdge = -1;
+    this._hoverNoteHandle    = -1;
+    this._hoverNoteLeftEdge  = -1;
+    this._hoverBookmarkIdx   = -1;
+    this._hoverPitch         = -1;
     if (!this._panning) this._refreshCursor();
     this.render();
   }
@@ -671,6 +675,26 @@ export class PianoRoll {
     return hits;
   }
 
+  // Begin a left/right edge resize drag anchored on `anchorIdx`. If the anchor is
+  // selected, all selected notes resize together; the anchor is moved to index 0
+  // so the grid snap is applied to it and the others follow by the same delta.
+  _beginEdgeResize(anchorIdx, side) {
+    const isSelected    = state.selectedNoteIndices.has(anchorIdx);
+    const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
+    const ai = resizeIndices.indexOf(anchorIdx);
+    if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
+    state.resizeNoteStart();
+    this._resizeNoteRefs = resizeIndices.map(i => state.notes[i]).filter(Boolean);
+    if (side === 'right') {
+      this._resizingNoteRightIdx = anchorIdx;
+      this._resizeOrigins = this._resizeNoteRefs.map(n => ({ endTick: n.endTick }));
+    } else {
+      this._resizingNoteLeftIdx = anchorIdx;
+      this._resizeOrigins = this._resizeNoteRefs.map(n => ({ startTick: n.startTick }));
+    }
+    this.canvas.style.cursor = 'ew-resize';
+  }
+
   _onMouseDown(e) {
     if (!state.loaded) return;
     const pos = this._canvasPos(e);
@@ -704,33 +728,8 @@ export class PianoRoll {
       return;
     }
 
-    if (this._hoverNoteRightEdge >= 0) {
-      const anchorIdx     = this._hoverNoteRightEdge;
-      const isSelected    = state.selectedNoteIndices.has(anchorIdx);
-      const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
-      const ai = resizeIndices.indexOf(anchorIdx);
-      if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
-      state.resizeNoteStart();
-      this._resizingNoteRightIdx = anchorIdx;
-      this._resizeNoteRefs = resizeIndices.map(i => state.notes[i]).filter(Boolean);
-      this._resizeOrigins  = this._resizeNoteRefs.map(n => ({ endTick: n.endTick }));
-      this.canvas.style.cursor = 'ew-resize';
-      return;
-    }
-
-    if (this._hoverNoteLeftEdge >= 0) {
-      const anchorIdx     = this._hoverNoteLeftEdge;
-      const isSelected    = state.selectedNoteIndices.has(anchorIdx);
-      const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
-      const ai = resizeIndices.indexOf(anchorIdx);
-      if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
-      state.resizeNoteStart();
-      this._resizingNoteLeftIdx = anchorIdx;
-      this._resizeNoteRefs = resizeIndices.map(i => state.notes[i]).filter(Boolean);
-      this._resizeOrigins  = this._resizeNoteRefs.map(n => ({ startTick: n.startTick }));
-      this.canvas.style.cursor = 'ew-resize';
-      return;
-    }
+    if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
+    if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
 
     if (this._hoverNoteHandle >= 0) {
       this._pendingNoteHandle = this._hoverNoteHandle;
@@ -762,8 +761,7 @@ export class PianoRoll {
       if (dx !== 0 || dy !== 0) {
         this._didPan = true;
         this.scrollX = this._clampScrollX(this.scrollX - dx / this.pixelsPerTick);
-        const maxScrollY = PITCH_RANGE * this.noteHeight - this.rollHeight;
-        this.scrollY = Math.max(0, Math.min(maxScrollY, this.scrollY - dy));
+        this.scrollY = this._clampScrollY(this.scrollY - dy);
         this.render();
       }
       return;
@@ -885,10 +883,10 @@ export class PianoRoll {
       : [ni];
 
     // Clear hover state before mutation so no ghost highlights appear during drag
-    this._hoverNoteIdx      = -1;
-    this._hoverNoteHandle   = -1;
-    this._hoverNoteRightEdge     = -1;
-    this._hoverNoteLeftEdge = -1;
+    this._hoverNoteIdx       = -1;
+    this._hoverNoteHandle    = -1;
+    this._hoverNoteRightEdge = -1;
+    this._hoverNoteLeftEdge  = -1;
 
     state.moveNotesStart(dragIndices);  // pushes undo, sets selection, renders
 
@@ -937,16 +935,9 @@ export class PianoRoll {
       return;
     }
 
-    if (this._resizingNoteRightIdx >= 0) {
+    if (this._resizingNoteRightIdx >= 0 || this._resizingNoteLeftIdx >= 0) {
       this._resizingNoteRightIdx = -1;
-      this._resizeNoteRefs = [];
-      this._resizeOrigins  = [];
-      this._refreshCursor();
-      return;
-    }
-
-    if (this._resizingNoteLeftIdx >= 0) {
-      this._resizingNoteLeftIdx = -1;
+      this._resizingNoteLeftIdx  = -1;
       this._resizeNoteRefs = [];
       this._resizeOrigins  = [];
       this._refreshCursor();
