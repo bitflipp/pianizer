@@ -87,6 +87,9 @@ export class PianoRoll {
     this._resizingNoteRightIdx     = -1;
     // Left-edge resize drag
     this._resizingNoteLeftIdx = -1;
+    // Shared resize state: note refs and original ticks captured at drag start
+    this._resizeNoteRefs = [];
+    this._resizeOrigins  = [];
 
     // Note drag (note body)
     this._draggingNotes     = false;
@@ -648,15 +651,29 @@ export class PianoRoll {
     }
 
     if (this._hoverNoteRightEdge >= 0) {
+      const anchorIdx     = this._hoverNoteRightEdge;
+      const isSelected    = state.selectedNoteIndices.has(anchorIdx);
+      const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
+      const ai = resizeIndices.indexOf(anchorIdx);
+      if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
       state.resizeNoteStart();
-      this._resizingNoteRightIdx = this._hoverNoteRightEdge;
+      this._resizingNoteRightIdx = anchorIdx;
+      this._resizeNoteRefs = resizeIndices.map(i => state.notes[i]).filter(Boolean);
+      this._resizeOrigins  = this._resizeNoteRefs.map(n => ({ endTick: n.endTick }));
       this.canvas.style.cursor = 'ew-resize';
       return;
     }
 
     if (this._hoverNoteLeftEdge >= 0) {
+      const anchorIdx     = this._hoverNoteLeftEdge;
+      const isSelected    = state.selectedNoteIndices.has(anchorIdx);
+      const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
+      const ai = resizeIndices.indexOf(anchorIdx);
+      if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
       state.resizeNoteStart();
-      this._resizingNoteLeftIdx = this._hoverNoteLeftEdge;
+      this._resizingNoteLeftIdx = anchorIdx;
+      this._resizeNoteRefs = resizeIndices.map(i => state.notes[i]).filter(Boolean);
+      this._resizeOrigins  = this._resizeNoteRefs.map(n => ({ startTick: n.startTick }));
       this.canvas.style.cursor = 'ew-resize';
       return;
     }
@@ -699,21 +716,27 @@ export class PianoRoll {
 
     // Right-edge resize — update note endTick live, skip all other tracking
     if (this._resizingNoteRightIdx >= 0) {
-      const note = state.notes[this._resizingNoteRightIdx];
-      if (note) {
-        const rawTick  = Math.round(this.xToTick(pos.x));
-        const snapped  = state.snapTick(Math.max(note.startTick + 1, rawTick));
-        state.resizeNote(this._resizingNoteRightIdx, snapped);
+      const anchorNote = state.notes[this._resizingNoteRightIdx];
+      if (anchorNote) {
+        const rawTick = Math.round(this.xToTick(pos.x));
+        const snapped = state.snapTick(Math.max(anchorNote.startTick + 1, rawTick));
+        const delta   = snapped - this._resizeOrigins[0].endTick;
+        state.resizeNotesRight(this._resizeNoteRefs.map((note, k) => ({
+          note, endTick: this._resizeOrigins[k].endTick + delta,
+        })));
       }
       return;
     }
 
     // Left-edge resize — update note startTick live, skip all other tracking
     if (this._resizingNoteLeftIdx >= 0) {
-      const note = state.notes[this._resizingNoteLeftIdx];
-      if (note) {
+      const anchorNote = state.notes[this._resizingNoteLeftIdx];
+      if (anchorNote) {
         const snapped = state.snapTick(Math.round(this.xToTick(pos.x)));
-        state.resizeNoteLeft(this._resizingNoteLeftIdx, snapped);
+        const delta   = snapped - this._resizeOrigins[0].startTick;
+        state.resizeNotesLeft(this._resizeNoteRefs.map((note, k) => ({
+          note, startTick: this._resizeOrigins[k].startTick + delta,
+        })));
       }
       return;
     }
@@ -856,12 +879,16 @@ export class PianoRoll {
 
     if (this._resizingNoteRightIdx >= 0) {
       this._resizingNoteRightIdx = -1;
+      this._resizeNoteRefs = [];
+      this._resizeOrigins  = [];
       this._refreshCursor();
       return;
     }
 
     if (this._resizingNoteLeftIdx >= 0) {
       this._resizingNoteLeftIdx = -1;
+      this._resizeNoteRefs = [];
+      this._resizeOrigins  = [];
       this._refreshCursor();
       return;
     }

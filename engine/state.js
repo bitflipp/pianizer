@@ -308,6 +308,24 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
+  // Called each frame during a right-edge resize drag of multiple notes — no undo push.
+  // moves: [{note, endTick}]
+  resizeNotesRight(moves) {
+    for (const { note, endTick } of moves) {
+      note.endTick = Math.max(note.startTick + 1, endTick);
+    }
+    this.dispatch('selectionchanged');
+  }
+
+  // Called each frame during a left-edge resize drag of multiple notes — no undo push.
+  // moves: [{note, startTick}]
+  resizeNotesLeft(moves) {
+    for (const { note, startTick } of moves) {
+      note.startTick = Math.max(0, Math.min(note.endTick - 1, startTick));
+    }
+    this.dispatch('selectionchanged');
+  }
+
   // Call once when a note drag begins. Pushes undo and sets the dragged selection.
   moveNotesStart(indices) {
     this._pushUndo();
