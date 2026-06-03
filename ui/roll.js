@@ -410,15 +410,20 @@ export class PianoRoll {
 
   // ── Hit testing ────────────────────────────────────────────────────
 
+  // True when canvas y falls within note n's pitch row.
+  _rowContains(n, y) {
+    const ny = this.pitchToY(n.pitch);
+    return y >= ny && y < ny + this.noteHeight;
+  }
+
   // Returns the index of the note at canvas position pos, or -1.
   _noteAtPos(pos) {
     const tick = this.xToTick(pos.x);
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i  = this._drawOrder[j];
-      const n  = state.notes[i];
-      const ny = this.pitchToY(n.pitch);
-      if (n.startTick <= tick && n.endTick > tick
-          && pos.y >= ny && pos.y < ny + this.noteHeight) return i;
+      const i = this._drawOrder[j];
+      const n = state.notes[i];
+      if (!this._rowContains(n, pos.y)) continue;
+      if (n.startTick <= tick && n.endTick > tick) return i;
     }
     return -1;
   }
@@ -426,12 +431,11 @@ export class PianoRoll {
   // Returns the index of the note whose right edge is within EDGE_THRESHOLD px of pos, or -1.
   _noteRightEdgeAt(pos) {
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i  = this._drawOrder[j];
-      const n  = state.notes[i];
+      const i = this._drawOrder[j];
+      const n = state.notes[i];
+      if (!this._rowContains(n, pos.y)) continue;
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
-      const ny = this.pitchToY(n.pitch);
-      if (pos.y < ny || pos.y >= ny + this.noteHeight) continue;
       if (Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD) return i;
     }
     return -1;
@@ -440,12 +444,11 @@ export class PianoRoll {
   // Returns the index of the note whose left edge zone contains pos, or -1.
   _noteLeftEdgeAt(pos) {
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i  = this._drawOrder[j];
-      const n  = state.notes[i];
+      const i = this._drawOrder[j];
+      const n = state.notes[i];
+      if (!this._rowContains(n, pos.y)) continue;
       const nx = this.tickToX(n.startTick);
-      const ny = this.pitchToY(n.pitch);
-      if (pos.y < ny || pos.y >= ny + this.noteHeight) continue;
-      const w = this._noteWidthPx(n);
+      const w  = this._noteWidthPx(n);
       if (pos.x >= nx && pos.x < nx + Math.min(HANDLE_WIDTH, w)) return i;
     }
     return -1;
@@ -454,12 +457,11 @@ export class PianoRoll {
   // Returns the index of the note whose body (excluding both edge zones) contains pos, or -1.
   _noteBodyAt(pos) {
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i  = this._drawOrder[j];
-      const n  = state.notes[i];
+      const i = this._drawOrder[j];
+      const n = state.notes[i];
+      if (!this._rowContains(n, pos.y)) continue;
       const nx = this.tickToX(n.startTick);
-      const ny = this.pitchToY(n.pitch);
-      if (pos.y < ny || pos.y >= ny + this.noteHeight) continue;
-      const w = this._noteWidthPx(n);
+      const w  = this._noteWidthPx(n);
       if (pos.x < nx || pos.x >= nx + w) continue;
       if (pos.x < nx + Math.min(HANDLE_WIDTH, w)) continue;
       if (Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD) continue;
@@ -468,7 +470,7 @@ export class PianoRoll {
     return -1;
   }
 
-  // Returns the index of the nearest bookmark within 8 px of canvas x, or -1.
+  // Returns the index of the nearest bookmark within BOOKMARK_HIT_RADIUS of canvas x, or -1.
   _bookmarkNear(x) {
     let best = -1, bestDist = BOOKMARK_HIT_RADIUS + 1;
     for (let i = 0; i < state.bookmarks.length; i++) {
@@ -843,20 +845,7 @@ export class PianoRoll {
       return;
     }
 
-    // Right-edge hover — only outside rect selection
-    const edgeNi = (inRoll && !this._rectSelActive) ? this._noteRightEdgeAt(pos) : -1;
-    const edgeChanged = edgeNi !== this._hoverNoteRightEdge;
-    this._hoverNoteRightEdge = edgeNi;
-
-    // Left-edge hover — only when not near a right edge
-    const leftEdgeNi = (inRoll && !this._rectSelActive && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
-    const leftEdgeChanged = leftEdgeNi !== this._hoverNoteLeftEdge;
-    this._hoverNoteLeftEdge = leftEdgeNi;
-
-    // Body hover — only when not on either edge
-    const handleNi = (inRoll && !this._rectSelActive && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
-    const handleChanged = handleNi !== this._hoverNoteHandle;
-    this._hoverNoteHandle = handleNi;
+    const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
 
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
@@ -875,6 +864,27 @@ export class PianoRoll {
       return;
     }
 
+    this._setHoverCursor(e, inRoll, edgeNi, leftEdgeNi, handleNi);
+    if (hoverChanged || edgeHoverChanged || hoverPitchChanged) this.render();
+  }
+
+  // Resolves right-edge / left-edge / body hover (all forced to -1 during a rect-select
+  // drag) and returns the indices plus whether any of the three changed since last move.
+  _trackEdgeHover(pos, inRoll) {
+    const active     = inRoll && !this._rectSelActive;
+    const edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
+    const leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
+    const handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
+    const changed    = edgeNi     !== this._hoverNoteRightEdge
+                    || leftEdgeNi !== this._hoverNoteLeftEdge
+                    || handleNi   !== this._hoverNoteHandle;
+    this._hoverNoteRightEdge = edgeNi;
+    this._hoverNoteLeftEdge  = leftEdgeNi;
+    this._hoverNoteHandle    = handleNi;
+    return { edgeNi, leftEdgeNi, handleNi, changed };
+  }
+
+  _setHoverCursor(e, inRoll, edgeNi, leftEdgeNi, handleNi) {
     if (edgeNi >= 0 || leftEdgeNi >= 0) {
       this.canvas.style.cursor = 'ew-resize';
     } else if (handleNi >= 0) {
@@ -886,7 +896,6 @@ export class PianoRoll {
     } else {
       this.canvas.style.cursor = '';
     }
-    if (hoverChanged || edgeChanged || leftEdgeChanged || handleChanged || hoverPitchChanged) this.render();
   }
 
   _activateNoteDrag(e, pos) {
