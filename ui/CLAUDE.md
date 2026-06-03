@@ -47,6 +47,11 @@ The rect drag threshold is 6 px (`DRAG_THRESHOLD`). Below threshold the mouseup 
 as a click (handled by the `click` event, not `mouseup`). `_didRectSel` and `_didPan`
 suppress the `click` event after a completed drag or pan.
 
+When the cursor enters the `AUTO_PAN_ZONE` band near a content edge during a rect drag, the
+view auto-pans (a `requestAnimationFrame` loop) at a speed ramping to `AUTO_PAN_MAX` at the
+edge; the rect anchor is held in world coords (`_rectSelStartWorld`) so the selection keeps
+growing past the visible area.
+
 ---
 
 ## Note Coloring
@@ -63,6 +68,11 @@ white for others. Label text is always white `#fff`. Each note has a 1 px top ga
 (`y+1`, `h = noteHeight−1`), visually separating adjacent pitches.
 
 Each note box shows its velocity number (top-left), clipped to the note interior.
+
+Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
+longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
+within a longer one therefore stays visible and clickable. Hit testing walks `_drawOrder` back
+to front so the topmost note wins.
 
 ---
 
