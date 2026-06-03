@@ -116,6 +116,10 @@ export class PianoRoll {
     this._hoverBookmarkIdx  = -1;
     this._hoverPitch        = -1;
 
+    // Indices into state.notes sorted by duration descending: longest drawn first
+    // (bottom), shortest drawn last (top), so contained notes are always on top.
+    this._drawOrder = [];
+
     this._bindEvents();
     this._bindStateEvents();
   }
@@ -302,7 +306,15 @@ export class PianoRoll {
     const effective = this._effectiveSelection();
     const hasSel    = effective.set.size > 0;
 
-    for (let i = 0; i < state.notes.length; i++) {
+    const order = Array.from({ length: state.notes.length }, (_, i) => i);
+    order.sort((a, b) => {
+      const da = state.notes[a].endTick - state.notes[a].startTick;
+      const db = state.notes[b].endTick - state.notes[b].startTick;
+      return db - da;
+    });
+    this._drawOrder = order;
+
+    for (const i of order) {
       const n = state.notes[i];
       if (n.endTick < tickStart || n.startTick > tickEnd) continue;
       this._drawNote(i, n, effective, hasSel);
@@ -401,7 +413,8 @@ export class PianoRoll {
   // Returns the index of the note at canvas position pos, or -1.
   _noteAtPos(pos) {
     const tick = this.xToTick(pos.x);
-    for (let i = state.notes.length - 1; i >= 0; i--) {
+    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
+      const i  = this._drawOrder[j];
       const n  = state.notes[i];
       const ny = this.pitchToY(n.pitch);
       if (n.startTick <= tick && n.endTick > tick
@@ -412,7 +425,8 @@ export class PianoRoll {
 
   // Returns the index of the note whose right edge is within EDGE_THRESHOLD px of pos, or -1.
   _noteRightEdgeAt(pos) {
-    for (let i = state.notes.length - 1; i >= 0; i--) {
+    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
+      const i  = this._drawOrder[j];
       const n  = state.notes[i];
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
@@ -425,7 +439,8 @@ export class PianoRoll {
 
   // Returns the index of the note whose left edge zone contains pos, or -1.
   _noteLeftEdgeAt(pos) {
-    for (let i = state.notes.length - 1; i >= 0; i--) {
+    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
+      const i  = this._drawOrder[j];
       const n  = state.notes[i];
       const nx = this.tickToX(n.startTick);
       const ny = this.pitchToY(n.pitch);
@@ -438,7 +453,8 @@ export class PianoRoll {
 
   // Returns the index of the note whose body (excluding both edge zones) contains pos, or -1.
   _noteBodyAt(pos) {
-    for (let i = state.notes.length - 1; i >= 0; i--) {
+    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
+      const i  = this._drawOrder[j];
       const n  = state.notes[i];
       const nx = this.tickToX(n.startTick);
       const ny = this.pitchToY(n.pitch);
