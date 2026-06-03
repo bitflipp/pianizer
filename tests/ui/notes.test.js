@@ -73,18 +73,18 @@ test('Ctrl+Z undoes deletion', async ({ page }) => {
 
 // ── tool windows ─────────────────────────────────────────────────────────────
 
-test('[1] velocity tool sets velocity', async ({ page }) => {
+test('[2] velocity tool sets velocity', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
-  await page.keyboard.press('1');
+  await page.keyboard.press('2');
   await expect(page.locator('.tool-window')).toBeVisible();
   await page.locator('.velocity-grid button', { hasText: '80' }).click();
   const vel = await page.evaluate(() => window._state.notes[0].velocity);
   expect(vel).toBe(80);
 });
 
-test('[1] velocity tool does not open with no selection', async ({ page }) => {
-  await page.keyboard.press('1');
+test('[2] velocity tool does not open with no selection', async ({ page }) => {
+  await page.keyboard.press('2');
   await expect(page.locator('.tool-window')).not.toBeVisible();
 });
 
