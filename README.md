@@ -68,6 +68,8 @@ to pick a MIDI output port, then load a MusicXML file.
 | Key | Action |
 |---|---|
 | `Space` | Play / pause |
+| Click empty roll / ruler | Seek playhead |
+| Drag ruler | Scrub playhead |
 | `Home` | Scroll to beginning |
 | `End` | Scroll to last note |
 | `←` / `→` | Seek to previous / next bookmark |
@@ -76,10 +78,10 @@ to pick a MIDI output port, then load a MusicXML file.
 
 | Key / gesture | Action |
 |---|---|
-| Click note | Select that note (click again to deselect) |
-| Shift+click note | Toggle note in/out of selection |
-| Drag empty area | Rect-select (replaces selection) |
-| Shift+drag | Rect-select (adds to selection) |
+| Click note | Add note to selection |
+| Drag | Rectangle select (adds to selection) |
+| Click empty | Clear selection |
+| Ctrl+Z | Undo (removes the last selection change) |
 | Escape | Clear selection |
 
 ### Editing
@@ -103,7 +105,7 @@ to pick a MIDI output port, then load a MusicXML file.
 |---|---|
 | Scroll | Pan horizontal |
 | Ctrl+scroll | Zoom horizontal toward cursor |
-| Ctrl+drag | Pan horizontal + vertical |
+| Right-drag | Pan (horizontal + vertical) |
 | Ctrl+click ruler | Add bookmark |
 | Ctrl+right-click bookmark | Remove bookmark |
 | `?` | Toggle help overlay |

@@ -25,10 +25,14 @@ import { KEY_WIDTH, canvasPos } from './dom-utils.js';
 const PAD_V           = 6;
 const HIT_RADIUS      = 12;
 const DRAG_THRESHOLD  = 4;
+const Y_SNAP_RADIUS   = 11;
 
 const COL_GRID_SUB  = '#222';
 const COL_GRID_BEAT = '#2a2a2a';
 const COL_GRID_BAR  = '#3a3a3a';
+
+// Reference lines drawn across the value range and used as Y-snap targets.
+const REF_FRACS = [0.25, 0.5, 0.75];
 
 export class CurveLane {
   constructor(canvas, roll, config) {
@@ -74,7 +78,7 @@ export class CurveLane {
     // Reference lines at 25%, 50%, 75% of the value range
     const { valueMin, valueMax } = this.config;
     ctx.lineWidth = 1;
-    for (const frac of [0.25, 0.5, 0.75]) {
+    for (const frac of REF_FRACS) {
       ctx.strokeStyle = frac === 0.5 ? '#2d2d2d' : '#222222';
       const y = this._valueToY(valueMin + frac * (valueMax - valueMin));
       ctx.beginPath();
@@ -199,16 +203,16 @@ export class CurveLane {
 
   // ── Snap ────────────────────────────────────────────────────────────
 
-  // Returns the nearest snap target within ±10 px as { value }, or { value: null }
-  // if no target is close enough. Snap targets are the neighbouring control
-  // points (excluding `excludePoint`) and the lane's baseline (config.emptyValue).
+  // Returns the nearest snap target within Y_SNAP_RADIUS px as { value }, or
+  // { value: null } if no target is close enough. Snap targets are the neighbouring
+  // control points (excluding `excludePoint`) and the lane's baseline (config.emptyValue).
   _snapCandidate(pos, tick, excludePoint = null) {
     const pts = this._points;
     let prevIdx = -1;
     for (let i = 0; i < pts.length; i++) {
       if (pts[i].tick <= tick) prevIdx = i; else break;
     }
-    let bestDist = 11, value = null;
+    let bestDist = Y_SNAP_RADIUS, value = null;
     for (const ci of [prevIdx - 2, prevIdx - 1, prevIdx, prevIdx + 1, prevIdx + 2]) {
       if (ci < 0 || ci >= pts.length) continue;
       if (excludePoint && pts[ci] === excludePoint) continue;
@@ -219,9 +223,7 @@ export class CurveLane {
     const refLines = [
       valueMin,
       emptyValue,
-      valueMin + 0.25 * (valueMax - valueMin),
-      valueMin + 0.50 * (valueMax - valueMin),
-      valueMin + 0.75 * (valueMax - valueMin),
+      ...REF_FRACS.map(f => valueMin + f * (valueMax - valueMin)),
       valueMax,
     ];
     for (const candidate of refLines) {
