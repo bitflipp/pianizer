@@ -10,7 +10,7 @@
 **Controls:**
 - `Scroll` — pan horizontal
 - `Ctrl+scroll` — zoom horizontal (toward cursor tick); browser zoom is blocked
-- `Ctrl+left drag` — pan (horizontal + vertical); cursor shows `grab`/`grabbing`
+- `Right drag` — pan (horizontal + vertical); cursor shows `grabbing`
 - `Home` — scroll to tick 0
 - `End` — scroll to show last note at right edge
 - `Space` — toggle playback
@@ -33,19 +33,22 @@ CSS/logical pixel ratios. Canvas is sized via `ResizeObserver` on `#roll-contain
 
 ## Selection
 
-- **Left click note** — select only that note; if it is already the sole selected note, clear the selection
-- **Left click empty** — seek playhead to the click x-position and clear selection
-- **Shift+click note** — toggle note in/out of selection without affecting others
-- **Left drag** — draws a teal rubber-band rectangle; overlapping notes **replace** the current selection on release
-- **Shift+left drag** — same rect, but **adds** to the current selection on release
-- **Escape** — clears the selection (also cancels an in-progress rect drag)
-- **Right mouse** — does nothing on the roll canvas
+Selection is **additive and modifier-free**: clicks and rect drags only ever add notes;
+there is no remove gesture. To take a note back out, **undo** (`setSelection` snapshots the
+selection onto the undo stack), clear with empty-click/Escape, or rebuild the selection.
 
-During a rect drag, `_rectHitSet` is updated each frame. Notes newly entering via the rect (not yet in the committed selection) preview at highlighted brightness; notes already in the committed selection render at normal brightness. Hovering a note outside a drag also shows highlighted. `_rectExtend` (set from `e.shiftKey` at drag start) controls add-vs-replace on release.
+- **Left click note** — add that note to the selection (no-op if already selected; never removes)
+- **Left click empty** — clear the selection and seek the playhead to the click x-position
+- **Left drag** — draws a teal rubber-band rectangle; overlapping notes are **added** to the current selection on release
+- **Escape** — clears the selection (also cancels an in-progress rect drag)
+- **Right drag** — pans the view (see Controls); does not affect selection
+
+During a rect drag, `_rectHitSet` is updated each frame. Notes newly entering via the rect (not yet in the committed selection) preview at highlighted brightness; notes already in the committed selection render at normal brightness. Hovering a note outside a drag also shows highlighted. Rect hits are always unioned with the committed selection on release.
 
 The rect drag threshold is 6 px (`DRAG_THRESHOLD`). Below threshold the mouseup is treated
-as a click (handled by the `click` event, not `mouseup`). `_didRectSel` and `_didPan`
-suppress the `click` event after a completed drag or pan.
+as a click (handled by the `click` event, not `mouseup`). `_didRectSel` suppresses the
+`click` event after a completed rect drag. A right-drag pan produces no `click` event, so
+panning needs no such suppression.
 
 When the cursor enters the `AUTO_PAN_ZONE` band near a content edge during a rect drag, the
 view auto-pans (a `requestAnimationFrame` loop) at a speed ramping to `AUTO_PAN_MAX` at the
