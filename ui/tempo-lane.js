@@ -57,7 +57,7 @@ function drawRubatoLabels(ctx, canvas, lane) {
         ctx.fillText(text, x, canvas.height - 3);
       } else {
         ctx.textBaseline = 'top';
-        ctx.fillText(text, x, 3);
+        ctx.fillText(text, x, 4);
       }
     }
   }
