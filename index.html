@@ -317,10 +317,10 @@
   // ── Help overlay ──────────────────────────────────────────────────
   const HELP_SECTIONS = [
     ['Selection', [
-      ['Click note',           'Select only that note (toggles off if sole selection)'],
-      ['Shift+click note',     'Toggle note in/out of selection'],
-      ['Drag',                 'Rectangle select (replaces)'],
-      ['Shift+drag',           'Rectangle select (extends)'],
+      ['Click note',           'Add note to selection'],
+      ['Drag',                 'Rectangle select (adds to selection)'],
+      ['Click empty',          'Clear selection'],
+      ['Ctrl+Z',               'Undo (removes the last selection change)'],
       ['Escape',               'Clear selection'],
     ]],
     ['Editing', [
@@ -338,7 +338,7 @@
     ['View', [
       ['Scroll',               'Pan horizontal'],
       ['Ctrl+scroll',          'Zoom horizontal'],
-      ['Ctrl+drag',            'Pan (horizontal + vertical)'],
+      ['Right-drag',           'Pan (horizontal + vertical)'],
       ['Home / End',           'Scroll to start / end'],
     ]],
     ['Playback', [

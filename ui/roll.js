@@ -75,7 +75,6 @@ export class PianoRoll {
 
     // Rectangle selection drag
     this._rectSelActive      = false;
-    this._rectExtend         = false;   // Shift held at drag start → add to selection
     this._rectSelStart       = null;    // canvas pixels at mousedown, used only for drag threshold
     this._rectSelStartWorld  = null;    // anchor in world coords {tick, worldY} — fixed during auto-pan
     this._rectSelCurrent     = null;
@@ -87,10 +86,9 @@ export class PianoRoll {
     this._autoPanRaf      = null;
     this._autoPanMousePos = null;
 
-    // Pan (Ctrl+drag)
+    // Pan (right-drag)
     this._panning    = false;
     this._panLastPos = null;
-    this._didPan     = false;       // suppress the click event after a pan
 
     // Right-edge resize drag
     this._resizingNoteRightIdx = -1;
@@ -324,16 +322,14 @@ export class PianoRoll {
   }
 
   // Returns the visible selection set, accounting for an in-progress rect drag:
-  // during a drag the rect hits are previewed (added to or replacing the committed
-  // selection). `addingHits` is the subset that would be newly added on commit.
+  // during a drag the rect hits are previewed as additions to the committed
+  // selection. `addingHits` is the subset that would be newly added on commit.
   _effectiveSelection() {
     const committed = state.selectedNoteIndices;
     const inDrag    = this._rectSelActive && this._rectDidDrag && this._rectHitSet !== null;
     if (!inDrag) return { set: committed, addingHits: null, inDrag: false };
 
-    const set = this._rectExtend
-      ? new Set([...committed, ...this._rectHitSet])
-      : this._rectHitSet;
+    const set = new Set([...committed, ...this._rectHitSet]);
     return { set, addingHits: this._rectHitSet, inDrag: true };
   }
 
@@ -504,7 +500,7 @@ export class PianoRoll {
     c.addEventListener('click',      e  => this._onClick(e));
     c.addEventListener('mouseleave', () => this._onMouseLeave());
     window.addEventListener('keyup', e => {
-      if ((e.key === 'Control' || e.key === 'Alt') && !this._panning) this._refreshCursor();
+      if (e.key === 'Alt' && !this._panning) this._refreshCursor();
     });
     // move/up on window so dragging off-canvas still registers (critical for ruler seek)
     window.addEventListener('mousemove', e => this._onMouseMove(e));
@@ -514,12 +510,12 @@ export class PianoRoll {
   }
 
   _onKeyDown(e) {
-    // Show grab/cell cursor when Ctrl/Alt is held over the roll content
-    if ((e.key === 'Control' || e.key === 'Alt') && this._lastMousePos
+    // Show the insert (cell) cursor when Alt is held over the roll content
+    if (e.key === 'Alt' && this._lastMousePos
         && !this._panning && !this._draggingNotes && !this._rectSelActive
         && this._hoverNoteRightEdge < 0 && this._hoverNoteLeftEdge < 0 && this._hoverNoteHandle < 0
         && this._inRoll(this._lastMousePos)) {
-      this.canvas.style.cursor = e.key === 'Alt' ? 'cell' : 'grab';
+      this.canvas.style.cursor = 'cell';
     }
     if (e.key === 'Escape' && state.loaded) {
       if (this._rectSelActive || state.selectedNoteIndices.size > 0) {
@@ -592,7 +588,6 @@ export class PianoRoll {
   _cancelRectSel() {
     this._stopAutoPan();
     this._rectSelActive     = false;
-    this._rectExtend        = false;
     this._rectSelStart      = null;
     this._rectSelStartWorld = null;
     this._rectSelCurrent    = null;
@@ -724,6 +719,16 @@ export class PianoRoll {
       return;
     }
 
+    // Right-drag pans the view (horizontal + vertical) over the roll content
+    if (e.button === 2) {
+      if (this._inRoll(pos)) {
+        this._panning    = true;
+        this._panLastPos = pos;
+        this.canvas.style.cursor = 'grabbing';
+      }
+      return;
+    }
+
     if (e.button !== 0) return;
 
     if (pos.y < HEADER_HEIGHT && pos.x > KEY_WIDTH) {
@@ -738,14 +743,6 @@ export class PianoRoll {
     }
     if (pos.x < KEY_WIDTH) return;
 
-    if (e.ctrlKey) {
-      this._panning    = true;
-      this._panLastPos = pos;
-      this._didPan     = false;
-      this.canvas.style.cursor = 'grabbing';
-      return;
-    }
-
     if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
     if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
 
@@ -756,7 +753,6 @@ export class PianoRoll {
     }
 
     this._rectSelActive     = true;
-    this._rectExtend        = e.shiftKey;
     this._rectSelStart      = pos;
     this._rectSelStartWorld = { tick: this.xToTick(pos.x), worldY: pos.y - HEADER_HEIGHT + this.scrollY };
     this._rectSelCurrent    = pos;
@@ -777,7 +773,6 @@ export class PianoRoll {
       const dy = pos.y - this._panLastPos.y;
       this._panLastPos = pos;
       if (dx !== 0 || dy !== 0) {
-        this._didPan = true;
         this.scrollX = this._clampScrollX(this.scrollX - dx / this.pixelsPerTick);
         this.scrollY = this._clampScrollY(this.scrollY - dy);
         this.render();
@@ -891,8 +886,6 @@ export class PianoRoll {
       this.canvas.style.cursor = 'grab';
     } else if (e.altKey && inRoll) {
       this.canvas.style.cursor = 'cell';
-    } else if (e.ctrlKey && inRoll) {
-      this.canvas.style.cursor = 'grab';
     } else {
       this.canvas.style.cursor = '';
     }
@@ -956,7 +949,7 @@ export class PianoRoll {
     if (this._panning) {
       this._panning = false;
       this._panLastPos = null;
-      this.canvas.style.cursor = (e.ctrlKey && this._inRoll(this._canvasPos(e))) ? 'grab' : '';
+      this.canvas.style.cursor = '';
       return;
     }
 
@@ -1000,18 +993,14 @@ export class PianoRoll {
 
     if (!this._rectSelActive || e.button !== 0) return;
 
-    const didDrag    = this._rectDidDrag;
-    const rectExtend = this._rectExtend;
-    const hits       = didDrag ? [...this._notesInRect()] : [];
+    const didDrag = this._rectDidDrag;
+    const hits    = didDrag ? [...this._notesInRect()] : [];
     this._cancelRectSel();
 
     if (didDrag) {
       this._didRectSel = true; // suppress the click event
-      if (rectExtend) {
-        state.setSelection([...new Set([...state.selectedNoteIndices, ...hits])]);
-      } else {
-        state.setSelection(hits);
-      }
+      // Rect selection always adds to the current selection.
+      state.setSelection([...new Set([...state.selectedNoteIndices, ...hits])]);
       this.render();
     }
     // Click without drag: _onClick fires separately and handles it
@@ -1020,7 +1009,6 @@ export class PianoRoll {
   _onClick(e) {
     if (!state.loaded) return;
     if (this._didRectSel)  { this._didRectSel  = false; return; }
-    if (this._didPan)      { this._didPan      = false; return; }
     if (this._didNoteDrag) { this._didNoteDrag = false; return; }
 
     const pos = this._canvasPos(e);
@@ -1036,20 +1024,15 @@ export class PianoRoll {
     const ni = this._noteAtPos(pos);
     if (ni !== -1) {
       e.stopPropagation();
-      if (e.shiftKey) {
-        const newSel = new Set(state.selectedNoteIndices);
-        if (newSel.has(ni)) newSel.delete(ni); else newSel.add(ni);
-        state.setSelection([...newSel]);
-      } else {
-        // Select only this note; if already the sole selection, clear it
-        const alone = state.selectedNoteIndices.has(ni) && state.selectedNoteIndices.size === 1;
-        state.setSelection(alone ? [] : [ni]);
+      // Clicking a note adds it to the selection; removal is via undo, not a click.
+      if (!state.selectedNoteIndices.has(ni)) {
+        state.setSelection([...state.selectedNoteIndices, ni]);
       }
       return;
     }
 
+    // Click on empty space: clear the selection and seek the playhead.
     if (state.selectedNoteIndices.size > 0) state.setSelection([]);
-    if (e.shiftKey) return;
     const time = state.tickToTime(Math.max(0, this.xToTick(pos.x)));
     state.setPlayheadTime(time);
     this.canvas.dispatchEvent(new CustomEvent('user-seek', {

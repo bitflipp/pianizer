@@ -25,23 +25,41 @@ test('click note selects it', async ({ page }) => {
   expect(sel).toBe(1);
 });
 
-test('click sole-selected note deselects it', async ({ page }) => {
+test('re-clicking a selected note keeps it selected', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
   await page.mouse.click(pos.x, pos.y);
   const sel = await page.evaluate(() => window._state.selectedNoteIndices.size);
-  expect(sel).toBe(0);
+  expect(sel).toBe(1);
 });
 
-test('shift-click extends selection', async ({ page }) => {
+test('click extends selection without a modifier', async ({ page }) => {
   const p0 = await notePagePos(page, 0);
   const p1 = await notePagePos(page, 1);
   await page.mouse.click(p0.x, p0.y);
-  await page.keyboard.down('Shift');
   await page.mouse.click(p1.x, p1.y);
-  await page.keyboard.up('Shift');
   const sel = await page.evaluate(() => window._state.selectedNoteIndices.size);
   expect(sel).toBe(2);
+});
+
+test('click empty space clears selection', async ({ page }) => {
+  const p0 = await notePagePos(page, 0);
+  await page.mouse.click(p0.x, p0.y);
+  // A point in an empty pitch row (well below the lowest note) that is still
+  // inside the visible roll content area.
+  const empty = await page.evaluate(() => {
+    const note   = window._state.notes[0];
+    const roll   = window._roll;
+    const canvas = document.getElementById('roll');
+    const rect   = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + roll.tickToX(note.startTick) + 4,
+      y: rect.top  + roll.pitchToY(note.pitch - 6) + roll.noteHeight / 2,
+    };
+  });
+  await page.mouse.click(empty.x, empty.y);
+  const sel = await page.evaluate(() => window._state.selectedNoteIndices.size);
+  expect(sel).toBe(0);
 });
 
 test('Escape clears selection', async ({ page }) => {
