@@ -217,10 +217,12 @@ export class CurveLane {
     }
     const { valueMin, valueMax, emptyValue } = this.config;
     const refLines = [
+      valueMin,
       emptyValue,
       valueMin + 0.25 * (valueMax - valueMin),
       valueMin + 0.50 * (valueMax - valueMin),
       valueMin + 0.75 * (valueMax - valueMin),
+      valueMax,
     ];
     for (const candidate of refLines) {
       const dist = Math.abs(this._valueToY(candidate) - pos.y);
