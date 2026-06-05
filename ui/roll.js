@@ -42,7 +42,35 @@ function groupHSL(c, hovered) {
   const l = hovered ? Math.min(82, c.l + 18) : c.l;
   return `hsl(${c.h},${c.s}%,${l}%)`;
 }
-const GLABEL_COLOR  = 'rgba(0,0,0,0.8)'; // endpoint label, dark against the group-colored note
+// Relative luminance (WCAG) of an `hsl(h,s%,l%)` string, 0 (black) … 1 (white).
+// HSL lightness alone isn't perceptual — gold and blue at the same `l` differ
+// wildly in brightness — so we convert through sRGB and weight the channels.
+function relativeLuminance(hsl) {
+  let [h, s, l] = hsl.match(/[\d.]+/g).map(Number);
+  s /= 100; l /= 100;
+  const c  = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = h / 60;
+  const x  = c * (1 - Math.abs(hp % 2 - 1));
+  const m  = l - c / 2;
+  const rgb = hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x]
+            : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
+  const [r, g, b] = rgb.map(v => {
+    v += m;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// Black or white label, whichever has the higher WCAG contrast against `fill`.
+// The crossover (luminance ≈ 0.179) is exactly where black-on-fill and
+// white-on-fill contrast ratios meet, so this is genuinely maximum contrast.
+// One rule for every roll label — velocity numbers and curve-group endpoints —
+// adapting to the actual rendered fill, so it tracks velocity and the hover /
+// group-highlight brightening alike (a near-threshold fill flips on hover, by
+// design: the label always follows the most legible choice for the current fill).
+function labelColorFor(fill) {
+  return relativeLuminance(fill) > 0.179 ? '#000' : '#fff';
+}
 const NOTE_LABEL_FONT = '9px monospace'; // velocity number + curve endpoint label
 
 // One-character prefix on the start ('from') endpoint label marking the ramp's
@@ -424,9 +452,12 @@ export class PianoRoll {
   }
 
   // The group's endpoint label is the same box-label draw as a note's velocity
-  // number — only the color differs (dark GLABEL_COLOR against the accent fill).
+  // number — its color adapts to the group's accent fill (labelColorFor) for
+  // maximum contrast, mirroring the fill's hover brightening so the two stay in sync.
   _drawHandle(hd) {
-    this._drawNoteLabel(hd.nx, hd.ny + 1, hd.w, hd.label, GLABEL_COLOR);
+    const fill = groupHSL(GROUP_COLORS[hd.groupId % GROUP_COLORS.length],
+                          hd.groupId === this._hoverGroupId);
+    this._drawNoteLabel(hd.nx, hd.ny + 1, hd.w, hd.label, labelColorFor(fill));
   }
 
   // Draws a clipped, top-left label inside a note box. `y` is the box top
@@ -499,9 +530,10 @@ export class PianoRoll {
     const grp = state.groupOfNote(n);
     // Hovering any member lights up the whole group as a unit (group members
     // otherwise ignore the per-note `hovered` state, which only tints the blue fill).
-    ctx.fillStyle = grp
+    const fill = grp
       ? this._groupColor(grp, !effective.inDrag && grp.id === this._hoverGroupId)
       : noteHSL(n.velocity, colorState);
+    ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
 
     const isSel   = selected && !willAdd;
@@ -515,7 +547,7 @@ export class PianoRoll {
     // already marks the group, and its endpoint labels (drawn in _drawHandle)
     // carry the from/to values. The absence of a number is the "curve-controlled" cue.
     if (!state.isLocked(n)) {
-      this._drawNoteLabel(x, y, w, String(n.velocity), '#fff');
+      this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill));
     }
   }
 
