@@ -33,6 +33,13 @@ export class AppState extends EventTarget {
     // Tempo envelope — [{tick, value}] sorted by tick, value 0.8–1.2
     this.tempoPoints = [];
 
+    // Velocity-curve groups — each {id, members:[noteId], from, to, shape}.
+    // Member notes are locked: their velocity is a frozen scalar baked from the
+    // ramp and can only change by reshaping the group via its handles.
+    this.curveGroups = [];
+    this._nextGroupId = 0;
+    this._groupByNoteId = new Map(); // noteId → group, rebuilt on any group change
+
     this.pieceId = null;
 
     // Undo / redo stacks — each entry is {notes, pedalPoints, tempoPoints}
@@ -51,6 +58,9 @@ export class AppState extends EventTarget {
   loadScore(notes, tempoMap, timeSigs, tpb) {
     this.notes          = notes.slice().sort((a, b) => a.startTick - b.startTick);
     this._assignIds(this.notes);
+    this.curveGroups    = [];
+    this._nextGroupId   = 0;
+    this._rebuildGroupIndex();
     this.tempoMap       = tempoMap;
     this.timeSignatures = timeSigs;
     this.ticksPerBeat   = tpb;
@@ -150,6 +160,7 @@ export class AppState extends EventTarget {
       notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
+      curveGroups:    this.curveGroups.map(g => ({ id: g.id, members: g.members.slice(), from: g.from, to: g.to, shape: g.shape })),
       bookmarks:      this.bookmarks.slice(),
     };
   }
@@ -164,6 +175,7 @@ export class AppState extends EventTarget {
     this.totalTicks     = data.totalTicks ?? (this.notes.length ? Math.max(...this.notes.map(n => n.endTick)) : 0);
     this.pedalPoints    = (data.pedalPoints ?? []).map(p => ({ ...p }));
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
+    this._loadCurveGroups(data.curveGroups ?? []);
     this.bookmarks      = (data.bookmarks  ?? []).map(Number).sort((a, b) => a - b);
     this.pieceId        = data.pieceId ?? crypto.randomUUID();
     this._finishLoad();
@@ -363,6 +375,99 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
+  // ── Velocity-curve groups ──────────────────────────────────────────
+
+  // Bakes a start→end velocity ramp (eased by `shape`) across `members`,
+  // indexed by onset time — notes sharing a startTick (a chord) get one value.
+  _bakeCurve(members, from, to, shape) {
+    const ease   = SCALE_EASINGS[shape] ?? SCALE_EASINGS.Linear;
+    const sorted = members.slice().sort((a, b) => a.startTick - b.startTick);
+    if (!sorted.length) return;
+    const minTick = sorted[0].startTick;
+    const maxTick = sorted[sorted.length - 1].startTick;
+    const range   = maxTick - minTick;
+    for (const n of sorted) {
+      const t = range === 0 ? 0 : (n.startTick - minTick) / range;
+      n.velocity = clampVelocity(from + (to - from) * ease(t));
+    }
+  }
+
+  _notesByIds(ids) {
+    const set = new Set(ids);
+    return this.notes.filter(n => set.has(n.id));
+  }
+
+  _rebuildGroupIndex() {
+    this._groupByNoteId = new Map();
+    for (const g of this.curveGroups) {
+      for (const id of g.members) this._groupByNoteId.set(id, g);
+    }
+  }
+
+  isLocked(note)    { return !!note && this._groupByNoteId.has(note.id); }
+  groupOfNote(note) { return note ? (this._groupByNoteId.get(note.id) ?? null) : null; }
+
+  // Bakes the ramp onto the selected notes and, when they span ≥2 distinct
+  // onsets, records them as a locked group. A single-onset selection has no
+  // curve to speak of, so it just sets a flat velocity and stays unlocked.
+  createCurveGroup(indices, from, to, shape) {
+    const members = indices.map(i => this.notes[i]).filter(Boolean);
+    if (!members.length) return;
+    this._pushUndo();
+    this._bakeCurve(members, from, to, shape);
+    const distinctOnsets = new Set(members.map(n => n.startTick)).size;
+    if (distinctOnsets >= 2) {
+      this.curveGroups.push({
+        id: this._nextGroupId++,
+        members: members.map(n => n.id),
+        from, to, shape,
+      });
+      this._rebuildGroupIndex();
+    }
+    this.dispatch('groupschanged');
+  }
+
+  dissolveCurveGroup(groupId) {
+    const idx = this.curveGroups.findIndex(g => g.id === groupId);
+    if (idx < 0) return;
+    this._pushUndo();
+    this.curveGroups.splice(idx, 1);
+    this._rebuildGroupIndex();
+    this.dispatch('groupschanged');
+  }
+
+  // Updates a group's ramp parameters and re-bakes its members. Does not push
+  // undo — callers push once via beginCurvePointMove() at a drag/edit start, as
+  // the curve-lane points do, so a live drag collapses to a single undo step.
+  reshapeCurveGroup(groupId, { from, to, shape } = {}) {
+    const g = this.curveGroups.find(gg => gg.id === groupId);
+    if (!g) return;
+    if (from  !== undefined) g.from  = from;
+    if (to    !== undefined) g.to    = to;
+    if (shape !== undefined) g.shape = shape;
+    this._bakeCurve(this._notesByIds(g.members), g.from, g.to, g.shape);
+    this.dispatch('groupschanged');
+  }
+
+  // Rebuilds groups from saved data: drops member ids that no longer exist,
+  // discards emptied groups, and seeds the id counter past any stored group id.
+  _loadCurveGroups(raw) {
+    const noteIds = new Set(this.notes.map(n => n.id));
+    let maxId = -1;
+    const groups = [];
+    for (const g of raw) {
+      const members = (g.members ?? []).filter(id => noteIds.has(id));
+      if (!members.length) continue;
+      const id = typeof g.id === 'number' ? g.id : null;
+      if (id !== null && id > maxId) maxId = id;
+      groups.push({ id, members, from: g.from, to: g.to, shape: g.shape });
+    }
+    this._nextGroupId = maxId + 1;
+    for (const g of groups) if (g.id === null) g.id = this._nextGroupId++;
+    this.curveGroups = groups;
+    this._rebuildGroupIndex();
+  }
+
   // ── Pedal curve ────────────────────────────────────────────────────
 
   addPedalPoint(tick, value) {
@@ -427,6 +532,7 @@ export class AppState extends EventTarget {
       notes:       this.notes.map(n => ({ ...n })),
       pedalPoints: this.pedalPoints.map(p => ({ ...p })),
       tempoPoints: this.tempoPoints.map(p => ({ ...p })),
+      curveGroups: this.curveGroups.map(g => ({ ...g, members: g.members.slice() })),
       selection:   [...this.selectedNoteIndices],
     };
   }
@@ -435,7 +541,9 @@ export class AppState extends EventTarget {
     this.notes               = snap.notes.map(n => ({ ...n }));
     this.pedalPoints         = snap.pedalPoints.map(p => ({ ...p }));
     this.tempoPoints         = snap.tempoPoints.map(p => ({ ...p }));
+    this.curveGroups         = (snap.curveGroups ?? []).map(g => ({ ...g, members: g.members.slice() }));
     this.selectedNoteIndices = new Set(snap.selection ?? []);
+    this._rebuildGroupIndex();
     this.totalTime           = this.tickToTime(this.totalTicks);
   }
 
@@ -454,6 +562,7 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
     this.dispatch('pedalchanged');
     this.dispatch('tempochanged');
+    this.dispatch('groupschanged');
   }
 
   redo() {
@@ -464,6 +573,7 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
     this.dispatch('pedalchanged');
     this.dispatch('tempochanged');
+    this.dispatch('groupschanged');
   }
 
   // ── Bar boundaries ─────────────────────────────────────────────────
@@ -542,6 +652,17 @@ export class AppState extends EventTarget {
 function clampVelocity(v) {
   return Math.max(1, Math.min(127, Math.round(v)));
 }
+
+// Velocity-ramp shapes for the scale tool / curve groups. Each maps a normalized
+// onset position t∈[0,1] → eased fraction of the start→end velocity span. A
+// linear MIDI-velocity ramp is not a linear perceived-loudness ramp, so the
+// eased shapes let the musician pick a crescendo/decrescendo contour deliberately.
+export const SCALE_EASINGS = {
+  'Linear':   t => t,
+  'Ease in':  t => t * t,            // slow → fast
+  'Ease out': t => t * (2 - t),      // fast → slow
+  'S-curve':  t => t * t * (3 - 2 * t),
+};
 
 // Inserts (or replaces) a curve control point at the given tick, returning a
 // new array sorted by tick.

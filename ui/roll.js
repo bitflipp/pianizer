@@ -487,6 +487,7 @@ export class PianoRoll {
   _bindStateEvents() {
     state.addEventListener('loaded',           () => { this.scrollX = 0; this._cancelRectSel(); this.render(); });
     state.addEventListener('selectionchanged', () => this.render());
+    state.addEventListener('groupschanged',    () => this.render());
     state.addEventListener('playheadmoved',    () => this.render());
     state.addEventListener('pedalchanged',     () => this.render());
     state.addEventListener('tempochanged',     () => this.render());

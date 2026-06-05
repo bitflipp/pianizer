@@ -393,3 +393,89 @@ describe('undo/redo', () => {
     expect(s.tempoPoints).toHaveLength(0);
   });
 });
+
+// ── curve groups ──────────────────────────────────────────────────────────────
+
+// Build a loaded state whose notes carry stable ids (mkState sets notes raw).
+function mkGroupState(notes) {
+  const s = mkState(notes);
+  s._assignIds(s.notes);
+  s._rebuildGroupIndex();
+  return s;
+}
+
+describe('createCurveGroup', () => {
+  test('bakes an eased ramp across distinct onsets and locks them', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
+    s.createCurveGroup([0, 1, 2], 40, 100, 'Linear');
+    expect(s.notes.map(x => x.velocity)).toEqual([40, 70, 100]);
+    expect(s.curveGroups).toHaveLength(1);
+    expect(s.notes.every(x => s.isLocked(x))).toBe(true);
+  });
+
+  test('chord notes (shared onset) get one value', () => {
+    const s = mkGroupState([n(0, 480, 60), n(0, 480, 64), n(480, 960, 67)]);
+    s.createCurveGroup([0, 1, 2], 50, 90, 'Linear');
+    expect(s.notes[0].velocity).toBe(s.notes[1].velocity);
+    expect(s.notes[2].velocity).toBe(90);
+  });
+
+  test('single-onset selection sets a flat velocity but creates no group', () => {
+    const s = mkGroupState([n(0, 480, 60), n(0, 480, 64)]);
+    s.createCurveGroup([0, 1], 50, 90, 'Linear');
+    expect(s.curveGroups).toHaveLength(0);
+    expect(s.notes.every(x => x.velocity === 50)).toBe(true); // t=0 ⇒ start velocity
+    expect(s.notes.some(x => s.isLocked(x))).toBe(false);
+  });
+});
+
+describe('dissolveCurveGroup', () => {
+  test('removes the group and unlocks notes, leaving velocities intact', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960)]);
+    s.createCurveGroup([0, 1], 40, 80, 'Linear');
+    const baked = s.notes.map(x => x.velocity);
+    s.dissolveCurveGroup(s.curveGroups[0].id);
+    expect(s.curveGroups).toHaveLength(0);
+    expect(s.notes.every(x => !s.isLocked(x))).toBe(true);
+    expect(s.notes.map(x => x.velocity)).toEqual(baked);
+  });
+});
+
+describe('reshapeCurveGroup', () => {
+  test('re-bakes members from new endpoints', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
+    s.createCurveGroup([0, 1, 2], 40, 100, 'Linear');
+    s.reshapeCurveGroup(s.curveGroups[0].id, { from: 20, to: 80 });
+    expect(s.notes.map(x => x.velocity)).toEqual([20, 50, 80]);
+  });
+});
+
+describe('curve group persistence + undo', () => {
+  test('survives save/load by note id', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960)]);
+    s.createCurveGroup([0, 1], 40, 80, 'Linear');
+    const memberIds = s.curveGroups[0].members.slice();
+    s.loadProject(s.saveProject());
+    expect(s.curveGroups).toHaveLength(1);
+    expect(s.curveGroups[0].members).toEqual(memberIds);
+    expect(s.notes.every(x => s.isLocked(x))).toBe(true);
+  });
+
+  test('undo removes a freshly created group', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960)]);
+    s.createCurveGroup([0, 1], 40, 80, 'Linear');
+    s.undo();
+    expect(s.curveGroups).toHaveLength(0);
+    expect(s.notes.every(x => !s.isLocked(x))).toBe(true);
+  });
+
+  test('load drops group members whose notes are gone', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960)]);
+    s.createCurveGroup([0, 1], 40, 80, 'Linear');
+    const data = s.saveProject();
+    data.curveGroups[0].members.push(9999); // nonexistent note id
+    s.loadProject(data);
+    expect(s.curveGroups[0].members).not.toContain(9999);
+    expect(s.curveGroups[0].members).toHaveLength(2);
+  });
+});
