@@ -17,8 +17,31 @@ const COL_BOOKMARK     = '#e08030';
 const COL_BOOKMARK_HOT = '#ffb060';
 
 // Curve-group accents — cycled by group id so side-by-side groups (e.g. a melody
-// line and its accompaniment) read as distinct. Chosen to contrast the blue notes.
-const GROUP_COLORS  = ['#e8a33d', '#3dc8e8', '#e85d9b', '#7ee83d'];
+// line and its accompaniment) read as distinct. Hues are spread around the wheel,
+// skipping the ~205–250 band so they stay distinct from the velocity-blue notes
+// (hue 213). Stored as HSL with a deliberately moderate base lightness so a hover
+// can brighten the whole group by bumping lightness (see groupHSL / _hoverGroupId,
+// mirroring noteHSL's hovered state) with clearly visible headroom.
+const GROUP_COLORS  = [
+  { h:  20, s: 80, l: 52 },  // orange
+  { h:  50, s: 78, l: 50 },  // gold
+  { h:  85, s: 60, l: 47 },  // lime
+  { h: 120, s: 56, l: 46 },  // green
+  { h: 160, s: 66, l: 44 },  // teal
+  { h: 188, s: 74, l: 47 },  // cyan
+  { h: 255, s: 60, l: 60 },  // violet
+  { h: 285, s: 56, l: 58 },  // purple
+  { h: 315, s: 66, l: 55 },  // magenta
+  { h: 345, s: 72, l: 56 },  // pink
+];
+
+// Accent fill for a group member. `hovered` brightens every member of the group
+// under the cursor as a unit (lightness +18, capped), the same brightness idiom
+// noteHSL uses for plain notes.
+function groupHSL(c, hovered) {
+  const l = hovered ? Math.min(82, c.l + 18) : c.l;
+  return `hsl(${c.h},${c.s}%,${l}%)`;
+}
 const GLABEL_COLOR  = 'rgba(0,0,0,0.8)'; // endpoint label, dark against the group-colored note
 const NOTE_LABEL_FONT = '9px monospace'; // velocity number + curve endpoint label
 
@@ -76,6 +99,7 @@ export class PianoRoll {
 
     // Hover
     this._hoverNoteIdx  = -1;
+    this._hoverGroupId  = -1;       // curve group whose member is under the cursor (-1 = none)
     this._hoverNoteRightEdge = -1;  // index of note whose right edge is under the cursor
     this._lastMousePos  = null;
 
@@ -331,7 +355,7 @@ export class PianoRoll {
     ctx.restore();
   }
 
-  _groupColor(g) { return GROUP_COLORS[g.id % GROUP_COLORS.length]; }
+  _groupColor(g, hovered) { return groupHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], hovered); }
 
   // Endpoint descriptors for one group: a 'from' label in every earliest-onset
   // member's box and a 'to' label in every latest-onset member's box (a chord
@@ -451,7 +475,11 @@ export class PianoRoll {
     // Curve-group members always read as a unit in the group's accent color,
     // overriding the per-note velocity-blue fill.
     const grp = state.groupOfNote(n);
-    ctx.fillStyle = grp ? this._groupColor(grp) : noteHSL(n.velocity, colorState);
+    // Hovering any member lights up the whole group as a unit (group members
+    // otherwise ignore the per-note `hovered` state, which only tints the blue fill).
+    ctx.fillStyle = grp
+      ? this._groupColor(grp, !effective.inDrag && grp.id === this._hoverGroupId)
+      : noteHSL(n.velocity, colorState);
     ctx.fillRect(x, y, w, h);
 
     const isSel   = selected && !willAdd;
@@ -738,6 +766,7 @@ export class PianoRoll {
 
   _onMouseLeave() {
     this._hoverNoteIdx       = -1;
+    this._hoverGroupId       = -1;
     this._hoverNoteRightEdge = -1;
     this._hoverNoteHandle    = -1;
     this._hoverNoteLeftEdge  = -1;
@@ -956,6 +985,10 @@ export class PianoRoll {
     const hoverNi = inRoll ? this._noteAtPos(pos) : -1;
     const hoverChanged = hoverNi !== this._hoverNoteIdx;
     this._hoverNoteIdx = hoverNi;
+    // Light up every member of the group under the cursor (derived from the hovered
+    // note — a group change always implies a note change, so hoverChanged covers render).
+    const hoverGrp = hoverNi >= 0 ? state.groupOfNote(state.notes[hoverNi]) : null;
+    this._hoverGroupId = hoverGrp ? hoverGrp.id : -1;
 
     if (this.draggingPlayhead) {
       this._seekTime = state.tickToTime(Math.max(0, this.xToTick(pos.x)));
