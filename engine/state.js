@@ -8,6 +8,7 @@ export class AppState extends EventTarget {
 
     this.loaded = false;
     this.notes = [];           // NoteEvent[]
+    this._nextId = 0;          // monotonic source of stable note ids
     this.tempoMap = [];        // [{tick, bpm, time}]
     this.timeSignatures = [];  // [{tick, numerator, denominator}]
     this.ticksPerBeat = 480;
@@ -49,6 +50,7 @@ export class AppState extends EventTarget {
 
   loadScore(notes, tempoMap, timeSigs, tpb) {
     this.notes          = notes.slice().sort((a, b) => a.startTick - b.startTick);
+    this._assignIds(this.notes);
     this.tempoMap       = tempoMap;
     this.timeSignatures = timeSigs;
     this.ticksPerBeat   = tpb;
@@ -71,6 +73,15 @@ export class AppState extends EventTarget {
     this._redoStack          = [];
     this.dispatch('loaded');
     this.dispatch('undochanged');
+  }
+
+  // Assigns a stable id to every note missing one, seeding the counter past any
+  // ids already present (e.g. from a loaded project) so new notes never collide.
+  _assignIds(notes) {
+    let maxId = -1;
+    for (const n of notes) if (typeof n.id === 'number' && n.id > maxId) maxId = n.id;
+    this._nextId = maxId + 1;
+    for (const n of notes) if (typeof n.id !== 'number') n.id = this._nextId++;
   }
 
   // ── Selection ──────────────────────────────────────────────────────
@@ -136,7 +147,7 @@ export class AppState extends EventTarget {
       timeSignatures: this.timeSignatures.map(s => ({ tick: s.tick, numerator: s.numerator, denominator: s.denominator })),
       totalTicks:     this.totalTicks,
       totalTime:      this.totalTime,
-      notes:          this.notes.map(n => ({ pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
+      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
       bookmarks:      this.bookmarks.slice(),
@@ -146,6 +157,7 @@ export class AppState extends EventTarget {
   loadProject(data) {
     if (!data || typeof data.version !== 'number') throw new Error('Invalid project file');
     this.notes          = (data.notes ?? []).map(n => ({ ...n })).sort((a, b) => a.startTick - b.startTick);
+    this._assignIds(this.notes);
     this.tempoMap       = (data.tempoMap ?? [{ tick: 0, bpm: 120, time: 0 }]).map(s => ({ ...s }));
     this.timeSignatures = (data.timeSignatures ?? [{ tick: 0, numerator: 4, denominator: 4 }]).map(s => ({ ...s }));
     this.ticksPerBeat   = data.ticksPerBeat ?? 480;
@@ -280,7 +292,7 @@ export class AppState extends EventTarget {
 
   addNote(pitch, startTick, endTick, velocity) {
     this._pushUndo();
-    const note = { pitch, velocity, startTick, endTick, track: 0, channel: 0 };
+    const note = { id: this._nextId++, pitch, velocity, startTick, endTick, track: 0, channel: 0 };
     this.notes.push(note);
     this.notes.sort((a, b) => a.startTick - b.startTick);
     const idx = this.notes.indexOf(note);
