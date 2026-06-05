@@ -707,11 +707,18 @@
   // velocity, the second the end; then onPick(from, to, shape) fires. Shared by
   // the curve-group tool [1] and the curve-group menu so creating and editing a
   // ramp look and feel identical.
-  function buildRampPicker(body, initialShape, onPick) {
+  //
+  // Optional onShapeCommit(shape) makes the shape buttons apply-and-close on their
+  // own — used by the edit menu, where the group already has from/to so a shape
+  // change is a complete edit. (Creation omits it: a new group needs both clicks.)
+  function buildRampPicker(body, initialShape, onPick, onShapeCommit) {
     let firstValue = null;
     let shape      = initialShape;
 
-    body.appendChild(buildShapeRow(shape, name => { shape = name; }));
+    body.appendChild(buildShapeRow(shape, name => {
+      shape = name;
+      if (onShapeCommit) onShapeCommit(name);
+    }));
 
     const info = document.createElement('div');
     info.className = 'tool-info';
@@ -807,9 +814,16 @@
     if (!g) return;
     openToolWindow('Curve group', (body, close) => {
       // Same UI as creating the group; re-baking instead of creating, one undo step.
+      // A shape click alone re-bakes with the group's current from/to and closes —
+      // changing only the contour is a complete edit, and the window dismissing is
+      // the confirmation that it landed.
       buildRampPicker(body, g.shape, (from, to, shape) => {
         state.beginCurvePointMove();
         state.reshapeCurveGroup(groupId, { from, to, shape });
+        close();
+      }, shape => {
+        state.beginCurvePointMove();
+        state.reshapeCurveGroup(groupId, { from: g.from, to: g.to, shape });
         close();
       });
 
