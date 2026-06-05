@@ -745,7 +745,7 @@
     const indices = [...state.selectedNoteIndices];
 
     openToolWindow('Velocity scale', (body, close) => {
-      buildRampPicker(body, 'Linear', (from, to, shape) => {
+      buildRampPicker(body, 'S-curve', (from, to, shape) => {
         state.createCurveGroup(indices, from, to, shape);
         close();
       });
