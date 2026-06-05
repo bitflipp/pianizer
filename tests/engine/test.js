@@ -184,4 +184,49 @@ describe('curvedTickToTime', () => {
     s.totalTicks = 9600;
     expect(s.timeToTick(s.curvedTickToTime(720))).toBeCloseTo(720, 0);
   });
+
+  // A run of baseline (1.0) points must stay exactly at base time — the rubato
+  // balance feature depends on the monotone spline keeping flats flat.
+  test('all-baseline region preserves base time', () => {
+    const s = mkState({
+      tempoMap:    [{ tick: 0, bpm: 120 }],
+      tempoPoints: [{ tick: 0, value: 1.0 }, { tick: TPB, value: 1.0 }, { tick: TPB * 2, value: 1.0 }],
+    });
+    expect(s.curvedTickToTime(TPB * 2)).toBeCloseTo(s.baseTickToTime(TPB * 2), 9);
+  });
+
+  // PCHIP must not overshoot: between a baseline anchor and a peak the ratio
+  // stays within [1.0, 1.2], so the curved time never runs faster than the peak
+  // ratio nor slower than baseline would allow.
+  test('monotone spline does not overshoot the point range', () => {
+    const s = mkState({
+      tempoMap:    [{ tick: 0, bpm: 120 }],
+      tempoPoints: [{ tick: 0, value: 1.0 }, { tick: TPB, value: 1.2 }, { tick: TPB * 2, value: 1.2 }],
+    });
+    for (let tk = 0; tk <= TPB * 2; tk += 40) {
+      const r = s._tempoValueAtTick(tk);
+      expect(r).toBeGreaterThanOrEqual(1.0 - 1e-9);
+      expect(r).toBeLessThanOrEqual(1.2 + 1e-9);
+    }
+  });
+
+  // Smooth, not piecewise-linear: a symmetric 1.0→1.2→1.0 arch has a zero-slope
+  // apex, so the spline eases into the peak (mirror-symmetric about it) and is
+  // distinct from the linear interpolant.
+  test('spline eases into a symmetric apex', () => {
+    const s = mkState({
+      tempoMap:    [{ tick: 0, bpm: 120 }],
+      tempoPoints: [{ tick: 0, value: 1.0 }, { tick: TPB, value: 1.2 }, { tick: TPB * 2, value: 1.0 }],
+    });
+    // Mirror symmetry about the apex at TPB.
+    for (const d of [40, 120, 200]) {
+      expect(s._tempoValueAtTick(TPB - d)).toBeCloseTo(s._tempoValueAtTick(TPB + d), 9);
+    }
+    // Eased, not linear: the apex flattens, so the midpoint sits above the
+    // straight-line 1.1 the old interpolant would have given.
+    expect(s._tempoValueAtTick(TPB / 2)).toBeGreaterThan(1.1);
+    // Zero slope at the apex.
+    expect(s._tempoValueAtTick(TPB - 1)).toBeLessThan(s._tempoValueAtTick(TPB));
+    expect(s._tempoValueAtTick(TPB + 1)).toBeLessThan(s._tempoValueAtTick(TPB));
+  });
 });

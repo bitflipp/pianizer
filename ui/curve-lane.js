@@ -146,6 +146,8 @@ export class CurveLane {
       const y = this._valueToY(emptyValue);
       ctx.moveTo(KEY_WIDTH, y);
       ctx.lineTo(canvas.width, y);
+    } else if (this.config.makeSampler && pts.length >= 2) {
+      this._traceSmoothCurve(this.config.makeSampler(pts), pts);
     } else {
       ctx.moveTo(KEY_WIDTH, this._valueToY(pts[0].value));
       ctx.lineTo(this.roll.tickToX(pts[0].tick), this._valueToY(pts[0].value));
@@ -170,6 +172,30 @@ export class CurveLane {
     }
 
     ctx.restore();
+  }
+
+  // Trace a smooth curve by sampling `sample(tick)` every few pixels across the
+  // visible span between the first and last control points. The flat leading and
+  // trailing segments mirror the straight-line branch: outside the point range
+  // the curve holds the nearest endpoint value. Issues only moveTo/lineTo into
+  // the path the caller has already begun (and will stroke).
+  _traceSmoothCurve(sample, pts) {
+    const { ctx, canvas } = this;
+    const SAMPLE_STEP = 2; // px between samples
+    const firstX = this.roll.tickToX(pts[0].tick);
+    const lastX  = this.roll.tickToX(pts[pts.length - 1].tick);
+    const y0 = this._valueToY(pts[0].value);
+    const yN = this._valueToY(pts[pts.length - 1].value);
+
+    ctx.moveTo(KEY_WIDTH, y0);
+    ctx.lineTo(firstX, y0);
+    const sx = Math.max(KEY_WIDTH, Math.ceil(firstX));
+    const ex = Math.min(canvas.width, Math.floor(lastX));
+    for (let x = sx; x <= ex; x += SAMPLE_STEP) {
+      ctx.lineTo(x, this._valueToY(sample(this.roll.xToTick(x))));
+    }
+    ctx.lineTo(lastX, yN);
+    ctx.lineTo(canvas.width, yN);
   }
 
   _drawPlayhead() {

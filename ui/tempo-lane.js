@@ -1,6 +1,6 @@
 // ui/tempo-lane.js
 import { CurveLane } from './curve-lane.js';
-import { state } from '../engine/state.js';
+import { state, monotoneTangents, evalMonotoneCubic } from '../engine/state.js';
 import { KEY_WIDTH } from './dom-utils.js';
 
 export class TempoLane extends CurveLane {
@@ -19,6 +19,12 @@ export class TempoLane extends CurveLane {
       addPoint:        (tick, value) => state.addTempoPoint(tick, value),
       removePoint:     (index) => state.removeTempoPointAt(index),
       movePoint:       (point, tick, value) => state.moveTempoPoint(point, tick, value),
+      // Render the curve as the monotone cubic spline that drives playback
+      // (state.curvedTickToTime), not straight segments — tangents once, sample per pixel.
+      makeSampler:     (points) => {
+        const m = monotoneTangents(points);
+        return (tick) => evalMonotoneCubic(points, m, tick, 1);
+      },
       drawAnnotations: (ctx, canvas, lane) => drawRubatoLabels(ctx, canvas, lane),
     });
   }
