@@ -9,7 +9,8 @@ custom element both listen to these events.
 **Communication flow:**
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
   `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `midiportschanged`,
-  `undochanged`, `bookmarkschanged`, `velocitycurvechanged`, `playspeedchanged`)
+  `undochanged`, `bookmarkschanged`, `velocitycurvechanged`, `playspeedchanged`,
+  `groupschanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle
 - `user-seek` bubbling event dispatched from roll canvas when playhead is dragged;
@@ -21,8 +22,9 @@ custom element both listen to these events.
 **Note data shape:**
 ```js
 {
+  id: int,                // stable, assigned on load / mint on add; curve groups reference notes by id
   pitch: 0-127,
-  velocity: 1-127,        // editable via tools [1], [2], or [4]
+  velocity: 1-127,        // editable via tools [1], [2], or [4]; frozen when the note is in a curve group
   startTick: int,
   endTick: int,
   track: int,
@@ -37,6 +39,20 @@ that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `scaleNoteDurati
 remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resizeNotesLeft`.) Curve drag begins call
 `beginCurvePointMove()` to push undo once at drag start.
 
+**Curve groups** (`state.curveGroups`): `[{id, members:[noteId], from, to, shape}]`. The
+velocity scale tool [1] bakes a start→end velocity ramp (eased by `shape`, one of
+`SCALE_EASINGS` — now defined and exported here in `state.js`) across the selection,
+indexed by onset time so a chord gets one value, and records it as a group when the
+selection spans ≥2 distinct onsets (a single-onset selection just sets a flat velocity, no
+group). Member velocities are **frozen scalars** baked from the ramp; `from/to/shape` are
+kept so the roll's endpoint handles can re-derive. API: `createCurveGroup` / `dissolveCurveGroup`
+(leaves velocities intact) / `reshapeCurveGroup` (re-bakes; clamps `from/to`; does **not**
+push undo — the handle drag pushes once via `beginCurvePointMove`). `isLocked(note)` /
+`groupOfNote(note)` / `groupMembers(g)` read a `noteId→group` index rebuilt on every group
+change. All mutators dispatch `groupschanged`. Member notes are locked in the roll: immovable,
+unresizable, undeletable, and not editable by the velocity/duration tools — change them only by
+reshaping the group's handles or dissolving it.
+
 **State fields of note:**
 - `state.loaded` — boolean, true once a MusicXML or project file has been loaded
 - `state.pieceId` — UUID assigned per loaded score / project; used to key per-piece view state in localStorage
@@ -44,6 +60,7 @@ remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resize
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
+- `state.curveGroups` — `[{id, members:[noteId], from, to, shape}]`; locked velocity-ramp groups (see above)
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
 
@@ -61,7 +78,7 @@ accumulating 1-based bar numbers across changes. Used by `_drawGrid` and `_drawR
 
 ## Undo / Redo
 
-Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, plus the selection.
+Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, `curveGroups`, plus the selection.
 100-entry stack. Drag interactions (note resize, note move, curve-point move) push undo
 **once** at drag start via `resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove`;
 per-frame updates mutate live without pushing. Bookmarks and the velocity curve are NOT
@@ -165,9 +182,10 @@ pauses (rather than stops) so the anchor survives.
 
 `state.saveProject()` / `state.loadProject(data)` — versioned JSON (version: 1).
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
-totalTime, notes, pedalPoints, tempoPoints, bookmarks. On
+totalTime, notes (with `id`), pedalPoints, tempoPoints, curveGroups, bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
-resets and re-renders. `totalTime` is written for forward compatibility but
+resets and re-renders. Curve groups load after notes: members referencing missing
+note ids are dropped, emptied groups discarded, and the group-id counter reseeded. `totalTime` is written for forward compatibility but
 always recomputed from the tempo curve on load (the stored value is ignored).
 
 ---
@@ -176,7 +194,7 @@ always recomputed from the tempo curve on load (the stored value is ignored).
 
 Three independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
-  `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`, and flushed on `beforeunload`.
+  `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`/`groupschanged`, and flushed on `beforeunload`.
   Auto-loaded on page open.
 - `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
