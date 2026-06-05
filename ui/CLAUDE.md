@@ -109,8 +109,12 @@ The curve-group tool [1] records its result as a locked group (`state.curveGroup
 engine/CLAUDE.md). On the roll:
 
 - **Member notes** are **always filled with the group's accent color** (`GROUP_COLORS`,
-  cycled by group id; `state.groupOfNote` in `_drawNote`), overriding the velocity-blue
-  fill so a group reads as a unit at all times. They hide their velocity number and are
+  HSL tuples cycled by group id; `state.groupOfNote` in `_drawNote`), overriding the
+  velocity-blue fill so a group reads as a unit at all times. **Hovering any member lights
+  up the whole group**: `_hoverGroupId` (derived from the hovered note in the move handler)
+  brightens every member's accent fill via `groupHSL(..., hovered)` — the same lightness-bump
+  idiom `noteHSL` uses for plain notes, since group members otherwise ignore the per-note
+  hover state. They hide their velocity number and are
   fully locked: `_trackEdgeHover` drops the resize/move affordance on them, mixed-selection
   drags and edge-resizes filter them out, rect-selection (`_notesInRect`) skips them so they
   never join the selection, Delete skips them (flashing a hint), and tools [1]–[4] refuse them. The only way to change them is the menu (below) or dissolving the group.
