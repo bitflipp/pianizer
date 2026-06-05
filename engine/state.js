@@ -406,6 +406,7 @@ export class AppState extends EventTarget {
 
   isLocked(note)    { return !!note && this._groupByNoteId.has(note.id); }
   groupOfNote(note) { return note ? (this._groupByNoteId.get(note.id) ?? null) : null; }
+  groupMembers(g)   { return this._notesByIds(g.members); }
 
   // Bakes the ramp onto the selected notes and, when they span ≥2 distinct
   // onsets, records them as a locked group. A single-onset selection has no

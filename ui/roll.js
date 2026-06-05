@@ -16,6 +16,12 @@ const COL_PLAYHEAD   = '#ffffff';
 const COL_BOOKMARK     = '#e08030';
 const COL_BOOKMARK_HOT = '#ffb060';
 
+// Curve-group accents — cycled by group id so side-by-side groups (e.g. a melody
+// line and its accompaniment) read as distinct. Chosen to contrast the blue notes.
+const GROUP_COLORS  = ['#e8a33d', '#3dc8e8', '#e85d9b', '#7ee83d'];
+const GHANDLE_SIZE  = 7;  // drawn side of a square group handle (px)
+const GHANDLE_HIT   = 6;  // hit-test half-extent around a handle centre (px)
+
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
 export function noteHSL(velocity, displayState) {
   const t = velocity / 127;
@@ -113,6 +119,8 @@ export class PianoRoll {
     this._hoverNoteLeftEdge = -1;
     this._hoverBookmarkIdx  = -1;
     this._hoverPitch        = -1;
+    this._hoverGroupId      = -1;    // curve group whose member notes are highlighted
+    this._hoverHandle       = null;  // {groupId, end, note, x, y} under the cursor
 
     // Indices into state.notes sorted by duration descending: longest drawn first
     // (bottom), shortest drawn last (top), so contained notes are always on top.
@@ -318,7 +326,80 @@ export class PianoRoll {
       this._drawNote(i, n, effective, hasSel);
     }
 
+    this._drawCurveGroups();
+
     ctx.restore();
+  }
+
+  _groupColor(g) { return GROUP_COLORS[g.id % GROUP_COLORS.length]; }
+
+  // Handle descriptors for one group: a 'from' handle on the left edge of every
+  // earliest-onset member and a 'to' handle on the right edge of every latest-onset
+  // member (a chord shares an onset, so each note in it gets its own handle).
+  _groupHandles(g) {
+    const members = state.groupMembers(g);
+    if (!members.length) return [];
+    let minOn = Infinity, maxOn = -Infinity;
+    for (const n of members) {
+      if (n.startTick < minOn) minOn = n.startTick;
+      if (n.startTick > maxOn) maxOn = n.startTick;
+    }
+    const handles = [];
+    for (const n of members) {
+      const yc = this.pitchToY(n.pitch) + this.noteHeight / 2;
+      if (n.startTick === minOn) handles.push({ groupId: g.id, end: 'from', note: n, x: this.tickToX(n.startTick), y: yc });
+      if (n.startTick === maxOn) handles.push({ groupId: g.id, end: 'to',   note: n, x: this.tickToX(n.startTick) + this._noteWidthPx(n), y: yc });
+    }
+    return handles;
+  }
+
+  _drawCurveGroups() {
+    if (!state.curveGroups.length) return;
+    const { ctx } = this;
+    for (const g of state.curveGroups) {
+      const color = this._groupColor(g);
+
+      // Hover a handle → outline every member note in the group's accent.
+      if (this._hoverGroupId === g.id) {
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = color;
+        for (const n of state.groupMembers(g)) {
+          const x = this.tickToX(n.startTick), w = this._noteWidthPx(n);
+          const y = this.pitchToY(n.pitch) + 1, h = this.noteHeight - 1;
+          ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5);
+        }
+      }
+
+      for (const hd of this._groupHandles(g)) this._drawHandle(hd, color, g);
+    }
+  }
+
+  _drawHandle(hd, color, g) {
+    const { ctx } = this;
+    const s = GHANDLE_SIZE;
+    ctx.fillStyle   = color;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.lineWidth   = 1;
+    ctx.fillRect(hd.x - s / 2, hd.y - s / 2, s, s);
+    ctx.strokeRect(hd.x - s / 2, hd.y - s / 2, s, s);
+
+    // Endpoint velocity label, placed clear of the note (left of 'from', right of 'to').
+    ctx.fillStyle    = color;
+    ctx.font         = '9px monospace';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign    = hd.end === 'from' ? 'right' : 'left';
+    const val = hd.end === 'from' ? g.from : g.to;
+    ctx.fillText(String(Math.round(val)), hd.x + (hd.end === 'from' ? -s : s), hd.y);
+  }
+
+  // Returns the handle descriptor under `pos` (within GHANDLE_HIT), or null.
+  _handleAt(pos) {
+    for (const g of state.curveGroups) {
+      for (const hd of this._groupHandles(g)) {
+        if (Math.abs(pos.x - hd.x) <= GHANDLE_HIT && Math.abs(pos.y - hd.y) <= GHANDLE_HIT) return hd;
+      }
+    }
+    return null;
   }
 
   // Returns the visible selection set, accounting for an in-progress rect drag:
@@ -360,16 +441,21 @@ export class PianoRoll {
     ctx.strokeStyle = isSel ? '#ffffff' : 'rgba(255,255,255,0.5)';
     ctx.strokeRect(x + bOff, y + bOff, w - bw, h - bw);
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x + 1, y + 1, w - 2, h - 2);
-    ctx.clip();
-    ctx.fillStyle = '#fff';
-    ctx.font = '9px monospace';
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.fillText(String(n.velocity), x + 3, y + 4);
-    ctx.restore();
+    // Locked curve-group notes hide their per-note number — the velocity-mapped
+    // fill already shows the ramp, and the group's handles carry the endpoint
+    // values. The absence of a number is itself the "this is curve-controlled" cue.
+    if (!state.isLocked(n)) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + 1, y + 1, w - 2, h - 2);
+      ctx.clip();
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px monospace';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      ctx.fillText(String(n.velocity), x + 3, y + 4);
+      ctx.restore();
+    }
   }
 
   _drawLaneReticles() {
@@ -652,6 +738,8 @@ export class PianoRoll {
     this._hoverNoteLeftEdge  = -1;
     this._hoverBookmarkIdx   = -1;
     this._hoverPitch         = -1;
+    this._hoverGroupId       = -1;
+    this._hoverHandle        = null;
     if (!this._panning) this._refreshCursor();
     this.render();
   }
@@ -854,6 +942,13 @@ export class PianoRoll {
 
     const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
 
+    // Curve-group handle hover takes priority over note edit affordances.
+    const overHandle = (inRoll && !this._rectSelActive) ? this._handleAt(pos) : null;
+    const newHoverGroupId = overHandle ? overHandle.groupId : -1;
+    const groupHoverChanged = newHoverGroupId !== this._hoverGroupId;
+    this._hoverGroupId = newHoverGroupId;
+    this._hoverHandle  = overHandle;
+
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
       if (!this._rectDidDrag) {
@@ -871,8 +966,9 @@ export class PianoRoll {
       return;
     }
 
-    this._setHoverCursor(e, inRoll, edgeNi, leftEdgeNi, handleNi);
-    if (hoverChanged || edgeHoverChanged || hoverPitchChanged) this.render();
+    if (overHandle) this.canvas.style.cursor = 'ns-resize';
+    else this._setHoverCursor(e, inRoll, edgeNi, leftEdgeNi, handleNi);
+    if (hoverChanged || edgeHoverChanged || hoverPitchChanged || groupHoverChanged) this.render();
   }
 
   // Resolves right-edge / left-edge / body hover (all forced to -1 during a rect-select
