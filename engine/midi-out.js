@@ -53,12 +53,23 @@ export class MidiOut {
       .filter(({ noteStart }) => noteStart >= startTime - 0.05)
       .sort((a, b) => a.noteStart - b.noteStart);
 
+    // For each note, the onset (piece seconds) of the next note that re-strikes
+    // the same key (pitch+channel), or Infinity if none. Drives the re-strike gap.
+    const nextStartByEntry = new Array(sortedNotes.length);
+    const lastStartForKey  = new Map();
+    for (let i = sortedNotes.length - 1; i >= 0; i--) {
+      const { n, noteStart } = sortedNotes[i];
+      const key = (n.pitch << 4) | ((n.channel ?? 0) & 0xf);
+      nextStartByEntry[i] = lastStartForKey.has(key) ? lastStartForKey.get(key) : Infinity;
+      lastStartForKey.set(key, noteStart);
+    }
+
     // Pedal events: initial value at seek point + one event per control point after it
     const pedalEvents = buildPedalEvents(startTime);
 
     let notePtr  = 0;
     let pedalPtr = 0;
-    const LOOKAHEAD          = 0.15; // seconds
+    const LOOKAHEAD            = 0.15; // seconds
     const SCHEDULE_INTERVAL_MS = 30;
 
     const schedule = () => {
@@ -69,13 +80,25 @@ export class MidiOut {
       const pieceNow  = getPieceTime();
       const windowEnd = pieceNow + LOOKAHEAD;
       const toWallMs  = t => nowMs + (t - pieceNow) / state.playSpeed * 1000;
+      // Re-strike gap is wall-clock; read live so a toolbar change applies to
+      // notes scheduled from here on without restarting playback. 0 disables it.
+      const restrikeGapMs = state.restrikeGapMs;
 
       // Notes
       while (notePtr < sortedNotes.length && sortedNotes[notePtr].noteStart <= windowEnd) {
-        const { n, noteStart, noteEnd } = sortedNotes[notePtr++];
+        const idx = notePtr++;
+        const { n, noteStart, noteEnd } = sortedNotes[idx];
 
         const onMs  = toWallMs(noteStart);
-        const offMs = toWallMs(noteEnd);
+        let   offMs = toWallMs(noteEnd);
+
+        // Pull the off in so the same key is released at least restrikeGapMs
+        // before its next strike. The safeOffMs floor below keeps the note from
+        // collapsing to nothing when the repeat is very close (e.g. a tremolo).
+        const nextSameKey = nextStartByEntry[idx];
+        if (restrikeGapMs > 0 && nextSameKey !== Infinity) {
+          offMs = Math.min(offMs, toWallMs(nextSameKey) - restrikeGapMs);
+        }
 
         const safeOnMs  = Math.max(onMs,  nowMs + 5);
         const safeOffMs = Math.max(offMs, safeOnMs + 10);

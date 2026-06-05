@@ -10,7 +10,7 @@ custom element both listen to these events.
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
   `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `midiportschanged`,
   `undochanged`, `bookmarkschanged`, `velocitycurvechanged`, `playspeedchanged`,
-  `groupschanged`)
+  `restrikegapchanged`, `groupschanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle
 - `user-seek` bubbling event dispatched from roll canvas when playhead is dragged;
@@ -64,6 +64,7 @@ reshaping the group's handles or dissolving it.
 - `state.curveGroups` — `[{id, members:[noteId], from, to, shape}]`; locked velocity-ramp groups (see above)
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
+- `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
 `render()`, which triggers `tempoLane.render()`, `pedalLane.render()`, `miniMap.render()`,
@@ -158,6 +159,18 @@ and CC64 messages using `performance.now()` timestamps.
 - `setInterval(tick, 30)` — every 30ms, schedule events up to 150ms ahead
 - `safeOnMs = Math.max(onMs, nowMs + 5)` — prevents scheduling in the past
 - Notes already ended (offMs + 200 ≤ nowMs) are skipped
+- **Re-strike gap** (`state.restrikeGapMs`, default 60 ms, `0` disables): each note's
+  off is pulled in so the same key (pitch+channel) is released at least that many ms
+  (wall-clock) before its next strike, giving a real grand's hammer/jack/damper time
+  to reset — a held-until-re-strike note otherwise yields a weak or dropped repeat.
+  `nextStartByEntry` precomputes each note's next same-key onset once per
+  `schedulePlayback` (single backward pass); the gap value is read **live** inside the
+  schedule tick so a toolbar change applies to notes scheduled from then on without
+  restarting playback. Applied independent of pedal state (the hammer must fall back
+  regardless of the damper) and of playSpeed (gap is wall-clock). The `safeOffMs`
+  floor still guarantees a minimum note length when the repeat is very close.
+  Device-scoped (a property of the output instrument, not the score) — see persistence
+  below.
 - CC64 sent on all channels that have notes; initial value interpolated at seek point
   so pedal state is correct when starting mid-piece
 
@@ -202,3 +215,5 @@ Three independent localStorage entries, all best-effort (errors swallowed):
   on every load.
 - `pianizer-vel-curve` — the 88-element `state.velocityCurve` (clamped to −22…+22 on load),
   written on every edit. Device-scoped, not score-scoped.
+- `pianizer-restrike-gap` — `state.restrikeGapMs` (clamped 0–200 via `setRestrikeGap` on
+  load), written on every `restrikegapchanged`. Device-scoped, not score-scoped.

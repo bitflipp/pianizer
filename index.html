@@ -1078,6 +1078,13 @@
     }
   } catch (_) {}
 
+  // Per-device re-strike gap (output-instrument property, independent of score)
+  state.addEventListener('restrikegapchanged', () => safeSet('pianizer-restrike-gap', state.restrikeGapMs));
+  try {
+    const rg = localStorage.getItem('pianizer-restrike-gap');
+    if (rg !== null) state.setRestrikeGap(Number(JSON.parse(rg)));
+  } catch (_) {}
+
   try {
     const saved = localStorage.getItem(AUTOSAVE_KEY);
     if (saved) {

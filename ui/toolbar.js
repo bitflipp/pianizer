@@ -41,8 +41,14 @@ const STYLE = `
     padding: 2px 4px;
   }
   .sep { color: #666; }
-  .snap-label, .midi-label { color: #ccc; }
+  .snap-label, .midi-label, .restrike-label { color: #ccc; }
 `;
+
+// Selectable re-strike-gap values (ms). Topping out at 80 ms: a grand can't
+// produce more than ~15 intelligible repeats/sec (~66 ms apart), so a larger
+// gap would start eating into musically valid repeats rather than just
+// protecting the action's reset. 0 = off (pass note durations through untouched).
+const RESTRIKE_OPTIONS = [0, 20, 30, 40, 50, 60, 70, 80];
 
 export class Toolbar extends HTMLElement {
   constructor() {
@@ -83,6 +89,10 @@ export class Toolbar extends HTMLElement {
       </select>
       <span class="sep">│</span>
       <button data-action="vel-curve">Vel. curve</button>
+      <span class="restrike-label" title="Minimum key-up before the same key is struck again, so an acoustic grand's action can reset. Off passes note durations through untouched.">Re-strike</span>
+      <select data-role="restrike">
+        ${RESTRIKE_OPTIONS.map(ms => `<option value="${ms}"${ms === state.restrikeGapMs ? ' selected' : ''}>${ms === 0 ? 'Off' : ms + ' ms'}</option>`).join('')}
+      </select>
       <span class="sep">│</span>
       <span class="midi-label">MIDI out</span>
       <button data-action="midi-connect">Connect</button>
@@ -98,8 +108,9 @@ export class Toolbar extends HTMLElement {
     this._timeEl   = shadow.querySelector('.time');
     this._connBtn  = shadow.querySelector('[data-action="midi-connect"]');
     this._midiSel  = shadow.querySelector('[data-role="midi-port"]');
-    this._snapSel  = shadow.querySelector('[data-role="snap"]');
-    this._speedSel = shadow.querySelector('[data-role="speed"]');
+    this._snapSel     = shadow.querySelector('[data-role="snap"]');
+    this._speedSel    = shadow.querySelector('[data-role="speed"]');
+    this._restrikeSel = shadow.querySelector('[data-role="restrike"]');
 
     const emit = name => () => this.dispatchEvent(
       new CustomEvent(name, { bubbles: true, composed: true })
@@ -119,6 +130,7 @@ export class Toolbar extends HTMLElement {
       state.dispatch('snapchanged');
     });
     this._midiSel.addEventListener('change', e => { midiOut.outputId = e.target.value; });
+    this._restrikeSel.addEventListener('change', e => { state.setRestrikeGap(Number(e.target.value)); });
     this._speedSel.addEventListener('change', e => {
       this.dispatchEvent(new CustomEvent('play-speed', {
         bubbles: true, composed: true,
@@ -133,6 +145,7 @@ export class Toolbar extends HTMLElement {
     state.addEventListener('midiportschanged', () => this._syncMidi());
     state.addEventListener('snapchanged',      () => { this._snapSel.value = state.snapGrid; });
     state.addEventListener('playspeedchanged', () => { this._speedSel.value = String(state.playSpeed); });
+    state.addEventListener('restrikegapchanged', () => { this._restrikeSel.value = String(state.restrikeGapMs); });
   }
 
   _syncLoaded() {

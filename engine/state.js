@@ -51,6 +51,14 @@ export class AppState extends EventTarget {
 
     // Playback speed multiplier (piece-specific view setting, persisted separately)
     this.playSpeed = 1.0;
+
+    // Re-strike gap (ms): minimum key-up before the same key is struck again, so
+    // an acoustic grand's hammer/jack/damper can reset — a held-until-re-strike
+    // note otherwise yields a weak or dropped repeat. Applied at scheduling time
+    // in midi-out.js (wall-clock, independent of playSpeed and pedal state). A
+    // property of the output instrument, not the score: device-scoped, persisted
+    // separately. 0 disables it.
+    this.restrikeGapMs = 60;
   }
 
   // ── Notes ──────────────────────────────────────────────────────────
@@ -133,6 +141,11 @@ export class AppState extends EventTarget {
   setVelocityCurve(curve) {
     this.velocityCurve = curve.slice();
     this.dispatch('velocitycurvechanged');
+  }
+
+  setRestrikeGap(ms) {
+    this.restrikeGapMs = Math.max(0, Math.min(200, Math.round(ms)));
+    this.dispatch('restrikegapchanged');
   }
 
   addBookmark(tick) {
