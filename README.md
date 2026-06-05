@@ -17,9 +17,12 @@ auto-humanization — the tool is an instrument.
   rests, and tremolo expansion
 - **Piano roll canvas** — 88-key range (A0–C8), velocity-colored notes,
   snap-to-grid note placement and resizing, rect selection, undo/redo
-- **Velocity editing** — apply a linear ramp across a selection, set absolute
-  values (5–120 grid), or nudge by ±1/5/10; per-key velocity curve for device
-  calibration
+- **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
+  Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10; per-key
+  velocity curve for device calibration
+- **Velocity curve groups** — a scaled selection becomes a locked group with draggable
+  endpoint handles, so you can see and re-shape the ramp later instead of guessing what
+  you applied; the notes stay frozen until you dissolve the group
 - **Duration delta** — scale selected notes' durations by −50/−25/−10/+10/+25/+50%
   without mutating the underlying score
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
@@ -94,7 +97,9 @@ to pick a MIDI output port, then load a MusicXML file.
 | Drag note left/right edge | Resize start / end |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
-| `[1]` | Velocity scale (pick ramp shape, then two-click: set start/end across selection) |
+| `[1]` | Velocity scale (pick ramp shape, then two-click start/end) → locks the selection as a curve group |
+| Drag curve-group handle | Reshape the ramp's start/end velocity (up = louder) |
+| Click curve-group handle | Open the group menu: change shape or dissolve |
 | `[2]` | Set note velocity (5–120 grid) |
 | `[3]` | Duration delta (−50/−25/−10/+10/+25/+50%) |
 | `[4]` | Nudge velocity ±1/5/10 |

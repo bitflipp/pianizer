@@ -70,7 +70,9 @@ Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi
 white for others. Label text is always white `#fff`. Each note has a 1 px top gap
 (`y+1`, `h = noteHeight−1`), visually separating adjacent pitches.
 
-Each note box shows its velocity number (top-left), clipped to the note interior.
+Each note box shows its velocity number (top-left), clipped to the note interior —
+**except** locked curve-group notes, which hide the number (the velocity-mapped fill
+shows the ramp; the group's handles carry the endpoint values). See Curve Groups below.
 
 Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
 longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
@@ -85,14 +87,43 @@ Floating DOM panels spawned at the cursor position, closed by clicking outside o
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
 - **[1] Velocity scale** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
-  `SCALE_EASINGS` in index.html, default Linear), then two-click: first click sets start
-  velocity (the first note by time gets this value), second sets end; the shape's eased
-  fraction of the start→end span is applied across the selection sorted by startTick
+  `SCALE_EASINGS` in engine/state.js, default Linear; the selector row is built by the
+  shared `buildShapeRow` helper), then two-click: first click sets start velocity, second
+  sets end. The eased ramp is baked across the selection by onset time and **recorded as a
+  locked curve group** (see Curve Groups) — `state.createCurveGroup`.
 - **[2] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
 - **[3] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
   by the given factor (minimum 1 tick)
 - **[4] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
+
+Tools [1]–[4] refuse a selection containing locked curve-group notes (a status flash
+tells the user to dissolve the group first).
+
+---
+
+## Curve Groups (velocity ramps)
+
+A velocity scale [1] records its result as a locked group (`state.curveGroups`, see
+engine/CLAUDE.md). On the roll:
+
+- **Member notes** hide their velocity number and are fully locked: `_trackEdgeHover`
+  drops the resize/move affordance on them, mixed-selection drags and edge-resizes filter
+  them out, Delete skips them (flashing a hint), and tools [1]–[4] refuse them. The only
+  way to change them is the handles or dissolving the group.
+- **Handles** — small square accents (`GROUP_COLORS`, cycled by group id) drawn on the
+  left edge of every earliest-onset member (`from`) and the right edge of every latest-onset
+  member (`to`), each labelled with its endpoint velocity. Geometry/hit-test:
+  `_groupHandles` / `_handleAt`.
+- **Hovering** a handle outlines all member notes in the group's accent (`_hoverGroupId`)
+  and shows an `ns-resize` cursor; handle hover takes priority over note edit affordances.
+- **Vertical drag** on a handle reshapes that endpoint's velocity live (up = louder,
+  `GHANDLE_VEL_PER_PX`), one undo step via `state.beginCurvePointMove` →
+  `state.reshapeCurveGroup`.
+- **Click** (no drag) on a handle dispatches `curve-handle-menu`; index.html opens a
+  "Curve group" tool window with the shared shape selector (re-bakes live) and a
+  **Dissolve group** button (unlocks, keeps velocities). The trailing canvas click is
+  suppressed via `_didHandleInteract`.
 
 ---
 
