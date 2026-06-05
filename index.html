@@ -347,8 +347,7 @@
       ['2',                       'Velocity tool'],
       ['3',                       'Duration delta tool'],
       ['4',                       'Velocity delta tool'],
-      ['Drag curve handle',       'Reshape ramp start / end velocity'],
-      ['Click curve handle',      'Curve-group menu: change shape / dissolve'],
+      ['Click curve endpoint',    'Curve-group menu: re-pick ramp (same as [1]) / dissolve'],
       ['Alt+click empty',         'Insert note at cursor'],
       ['Drag note body',          'Move selection horizontally'],
       ['Shift+drag note body',    'Move selection horizontally + pitch'],
@@ -703,6 +702,42 @@
     return row;
   }
 
+  // Builds the shared two-click velocity-ramp picker: the shape selector row, an
+  // info line, and the 5–120 velocity grid. The first click sets the start
+  // velocity, the second the end; then onPick(from, to, shape) fires. Shared by
+  // the scale tool [1] and the curve-group menu so creating and editing a ramp
+  // look and feel identical.
+  function buildRampPicker(body, initialShape, onPick) {
+    let firstValue = null;
+    let shape      = initialShape;
+
+    body.appendChild(buildShapeRow(shape, name => { shape = name; }));
+
+    const info = document.createElement('div');
+    info.className = 'tool-info';
+    info.textContent = 'Select start velocity';
+    body.appendChild(info);
+
+    const grid = document.createElement('div');
+    grid.className = 'velocity-grid';
+    for (let v = 5; v <= 120; v += 5) {
+      const btn = makeVelBtn(v);
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (firstValue === null) {
+          firstValue = v;
+          btn.dataset.sel = '1';
+          styleVelBtn(btn, v, 'selected');
+          info.textContent = `From ${firstValue} — select end velocity`;
+        } else if (v !== firstValue) {
+          onPick(firstValue, v, shape);
+        }
+      });
+      grid.appendChild(btn);
+    }
+    body.appendChild(grid);
+  }
+
   function openLinearScaleTool() {
     if (state.selectedNoteIndices.size === 0) return;
     if (selectionHasLocked()) { flashStatus('Selection has locked curve-group notes — dissolve the group to re-scale'); return; }
@@ -710,36 +745,10 @@
     const indices = [...state.selectedNoteIndices];
 
     openToolWindow('Velocity scale', (body, close) => {
-      let firstValue = null;
-      let shape      = 'Linear';
-
-      body.appendChild(buildShapeRow(shape, name => { shape = name; }));
-
-      const info = document.createElement('div');
-      info.className = 'tool-info';
-      info.textContent = 'Select start velocity';
-      body.appendChild(info);
-
-      const grid = document.createElement('div');
-      grid.className = 'velocity-grid';
-
-      for (let v = 5; v <= 120; v += 5) {
-        const btn = makeVelBtn(v);
-        btn.addEventListener('click', ev => {
-          ev.stopPropagation();
-          if (firstValue === null) {
-            firstValue = v;
-            btn.dataset.sel = '1';
-            styleVelBtn(btn, v, 'selected');
-            info.textContent = `From ${firstValue} — select end velocity`;
-          } else if (v !== firstValue) {
-            state.createCurveGroup(indices, firstValue, v, shape);
-            close();
-          }
-        });
-        grid.appendChild(btn);
-      }
-      body.appendChild(grid);
+      buildRampPicker(body, 'Linear', (from, to, shape) => {
+        state.createCurveGroup(indices, from, to, shape);
+        close();
+      });
     });
   }
 
@@ -789,25 +798,24 @@
   }
 
   // ── Curve-group handle menu ──────────────────────────────────────
-  // Opened by clicking (not dragging) a curve-group handle in the roll. Lets the
-  // musician re-pick the ramp shape (re-bakes live) or dissolve the group.
+  // Opened by clicking a curve-group endpoint label in the roll. Re-picks the
+  // ramp with the same two-click picker as the scale tool [1], or dissolves the
+  // group.
   document.addEventListener('curve-handle-menu', e => {
     const groupId = e.detail.groupId;
     const g = state.curveGroups.find(gg => gg.id === groupId);
     if (!g) return;
     openToolWindow('Curve group', (body, close) => {
-      body.appendChild(buildShapeRow(g.shape, name => {
-        state.beginCurvePointMove();           // one undo step per shape change
-        state.reshapeCurveGroup(groupId, { shape: name });
-      }));
-
-      const info = document.createElement('div');
-      info.className = 'tool-info';
-      info.textContent = `${Math.round(g.from)} → ${Math.round(g.to)}`;
-      body.appendChild(info);
+      // Same UI as creating the group; re-baking instead of creating, one undo step.
+      buildRampPicker(body, g.shape, (from, to, shape) => {
+        state.beginCurvePointMove();
+        state.reshapeCurveGroup(groupId, { from, to, shape });
+        close();
+      });
 
       const dissolve = document.createElement('button');
       dissolve.className = 'delta-btn';
+      dissolve.style.marginTop = '5px';
       dissolve.textContent = 'Dissolve group';
       dissolve.addEventListener('click', ev => {
         ev.stopPropagation();
