@@ -45,6 +45,16 @@ function groupHSL(c, hovered) {
 const GLABEL_COLOR  = 'rgba(0,0,0,0.8)'; // endpoint label, dark against the group-colored note
 const NOTE_LABEL_FONT = '9px monospace'; // velocity number + curve endpoint label
 
+// One-character prefix on the start ('from') endpoint label marking the ramp's
+// easing shape, so a group's type stays legible on the roll after the tool window
+// closes. The glyph evokes the curve: flat ramp, accelerating, decelerating, S.
+const SHAPE_GLYPHS = {
+  'Linear':   '-',
+  'Ease in':  '/',
+  'Ease out': '\\',
+  'S-curve':  '~',
+};
+
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
 export function noteHSL(velocity, displayState) {
   const t = velocity / 127;
@@ -388,12 +398,14 @@ export class PianoRoll {
 
   // Builds one endpoint descriptor. The velocity label is drawn at the note box's
   // top-left, exactly where a normal note's velocity number sits (just dark, for
-  // contrast against the group's accent fill). `x`/`y` mark the label centre, used
-  // for hit-testing the group menu.
+  // contrast against the group's accent fill). The 'from' label is prefixed with a
+  // shape glyph (SHAPE_GLYPHS) so the group's easing type reads off the start box.
+  // `x`/`y` mark the label centre, used for hit-testing the group menu.
   _mkHandle(g, end, n) {
     const nx    = this.tickToX(n.startTick);
     const ny    = this.pitchToY(n.pitch);
-    const label = String(Math.round(end === 'from' ? g.from : g.to));
+    const vel   = String(Math.round(end === 'from' ? g.from : g.to));
+    const label = end === 'from' ? (SHAPE_GLYPHS[g.shape] ?? '') + vel : vel;
     this.ctx.font = NOTE_LABEL_FONT;
     const lw = this.ctx.measureText(label).width;
     return {

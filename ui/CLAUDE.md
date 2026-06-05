@@ -122,7 +122,10 @@ engine/CLAUDE.md). On the roll:
   velocity is drawn on every earliest-onset member and the `to` velocity on every
   latest-onset member, at the note box's top-left — the exact position/font of a normal
   note's velocity number (`_drawHandle` mirrors `_drawNote`'s number draw, clipped to the
-  box), only in dark `GLABEL_COLOR` for contrast against the accent fill. Geometry/hit-test
+  box), only in dark `GLABEL_COLOR` for contrast against the accent fill. The `from` label
+  is prefixed with a one-char **shape glyph** (`SHAPE_GLYPHS`: Linear `-`, Ease in `/`,
+  Ease out `\`, S-curve `~`) so the group's easing type stays legible on the start box once
+  the tool window closes (e.g. `~64`). Geometry/hit-test
   (hit box spans the label width over the note row): `_groupHandles` / `_mkHandle` / `_handleAt`.
 - **Clicking any member note** opens the group menu — since locked members have no other
   affordance, the whole note body is a click target (`_groupNoteAt`), not just the endpoint
