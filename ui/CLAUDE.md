@@ -113,9 +113,13 @@ by `roll.js`.
 on the two curve lane canvases (point removal).
 
 ### Tempo Lane (100 px, above pedal lane)
-Linear tempo ratio curve. Control points are `{tick, value}` pairs (value 0.8–1.2).
+**Monotone cubic** tempo ratio curve (PCHIP — see engine/CLAUDE.md). Control points are
+`{tick, value}` pairs (value 0.8–1.2).
 - Centre of lane = ratio 1.0 (baseline tempo); top = ×1.2, bottom = ×0.8
-- Curve is drawn as a connected amber polyline; control points shown as small squares
+- The lane renders the same spline that drives playback: the config supplies a `makeSampler`
+  hook (tangents once, `evalMonotoneCubic` per pixel) and `CurveLane._traceSmoothCurve`
+  samples it every 2 px into the amber polyline. Control points are small squares sitting
+  on the curve. The pedal lane has no `makeSampler`, so it draws straight segments.
 - Hovering shows a dashed vertical reticle in the roll
 
 ### Pedal Lane (100 px, below tempo lane)

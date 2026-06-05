@@ -212,35 +212,36 @@ export class AppState extends EventTarget {
     return bpm;
   }
 
-  // Linearly interpolated tempo ratio at a given tick. Defaults to 1 (no scaling).
+  // Monotone-cubic interpolated tempo ratio at a given tick. Defaults to 1.
   _tempoValueAtTick(tick) {
-    return interpolateCurveAtTick(this.tempoPoints, tick, 1);
+    const m = monotoneTangents(this.tempoPoints);
+    return evalMonotoneCubic(this.tempoPoints, m, tick, 1);
   }
 
   // tick→time integrating both tempoMap and tempo envelope.
-  // Within each sub-segment baseBpm is constant and ratio is linear, so the
-  // integral has a closed-form solution via ln(r1/r0)/(r1-r0).
+  // The ratio follows a monotone cubic (PCHIP) spline through the tempo points,
+  // so there is no closed-form integral; each break sub-segment is integrated
+  // numerically (composite Simpson). Tangents are computed once per call and
+  // reused across every sample. tempoMap and tempoPoints ticks both seed the
+  // break set so a panel never straddles a baseBpm step or a spline knot.
   curvedTickToTime(tick) {
     if (tick <= 0) return 0;
     const tpb = this.ticksPerBeat;
+    const pts = this.tempoPoints;
+    const m   = monotoneTangents(pts);
+    const ratioAt = t => evalMonotoneCubic(pts, m, t, 1);
+
     const breaks = new Set([0, tick]);
-    for (const seg of this.tempoMap)    { if (seg.tick > 0 && seg.tick < tick) breaks.add(seg.tick); }
-    for (const pt  of this.tempoPoints) { if (pt.tick  > 0 && pt.tick  < tick) breaks.add(pt.tick); }
+    for (const seg of this.tempoMap) { if (seg.tick > 0 && seg.tick < tick) breaks.add(seg.tick); }
+    for (const pt  of pts)           { if (pt.tick  > 0 && pt.tick  < tick) breaks.add(pt.tick); }
     const sorted = [...breaks].sort((a, b) => a - b);
 
     let t = 0;
     for (let i = 0; i < sorted.length - 1; i++) {
       const tick0 = sorted[i], tick1 = sorted[i + 1];
-      const D     = tick1 - tick0;
       const baseBpm = this._baseBpmAtTick(tick0);
-      const r0 = this._tempoValueAtTick(tick0);
-      const r1 = this._tempoValueAtTick(tick1);
-      const scale = D * 60 / (tpb * baseBpm); // time if ratio=1
-      if (Math.abs(r1 - r0) < 1e-9) {
-        t += scale / r0;
-      } else {
-        t += scale * Math.log(r1 / r0) / (r1 - r0);
-      }
+      const C = 60 / (tpb * baseBpm); // seconds per tick at ratio 1
+      t += C * simpson(τ => 1 / ratioAt(τ), tick0, tick1, TEMPO_INTEGRATION_PANELS);
     }
     return t;
   }
@@ -537,6 +538,78 @@ function upsertCurvePoint(points, tick, value) {
   next.push({ tick, value });
   next.sort((a, b) => a.tick - b.tick);
   return next;
+}
+
+// Subdivisions per break sub-segment for numeric tempo integration. The ratio
+// spline is a single cubic within each segment, so Simpson with this many even
+// panels is accurate to well below a millisecond over musical spans.
+const TEMPO_INTEGRATION_PANELS = 16;
+
+// Composite Simpson's rule for ∫_a^b f, with `panels` even subdivisions.
+// Exact for constant and low-order integrands, so a flat ratio still maps to
+// the base time precisely.
+function simpson(f, a, b, panels) {
+  if (b <= a) return 0;
+  const h = (b - a) / panels;
+  let s = f(a) + f(b);
+  for (let k = 1; k < panels; k++) s += (k % 2 ? 4 : 2) * f(a + k * h);
+  return s * h / 3;
+}
+
+// Monotone cubic (Fritsch–Carlson / PCHIP) tangents for a [{tick, value}] curve
+// sorted by tick — one slope per point. Local extrema and equal-valued runs get
+// a zero slope, so flats stay flat and the spline never overshoots the data
+// range. That keeps the rubato baseline (value exactly 1.0) intact and the
+// ratio bounded within the points' own min/max.
+export function monotoneTangents(pts) {
+  const n = pts.length;
+  if (n < 2) return n ? [0] : [];
+  const h = new Array(n - 1), d = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    h[i] = pts[i + 1].tick - pts[i].tick;
+    d[i] = h[i] > 0 ? (pts[i + 1].value - pts[i].value) / h[i] : 0;
+  }
+  const m = new Array(n);
+  if (n === 2) { m[0] = m[1] = d[0]; return m; } // two points ⇒ straight line
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i - 1] * d[i] <= 0) {
+      m[i] = 0;
+    } else {
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); // weighted harmonic mean
+    }
+  }
+  m[0]     = pchipEdgeTangent(h[0], h[1], d[0], d[1]);
+  m[n - 1] = pchipEdgeTangent(h[n - 2], h[n - 3], d[n - 2], d[n - 3]);
+  return m;
+}
+
+// One-sided, non-overshooting endpoint slope (SciPy's pchip edge formula).
+function pchipEdgeTangent(h0, h1, d0, d1) {
+  let m = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1);
+  if (Math.sign(m) !== Math.sign(d0)) m = 0;
+  else if (Math.sign(d0) !== Math.sign(d1) && Math.abs(m) > 3 * Math.abs(d0)) m = 3 * d0;
+  return m;
+}
+
+// Evaluates the monotone cubic Hermite spline (tangents from monotoneTangents)
+// at `tick`. Returns `fallback` for an empty curve; holds flat at the endpoint
+// values outside the point range, matching the linear interpolant's clamping.
+export function evalMonotoneCubic(pts, m, tick, fallback) {
+  const n = pts.length;
+  if (n === 0) return fallback;
+  if (tick <= pts[0].tick)     return pts[0].value;
+  if (tick >= pts[n - 1].tick) return pts[n - 1].value;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (pts[mid].tick <= tick) lo = mid; else hi = mid; }
+  const h  = pts[lo + 1].tick - pts[lo].tick;
+  const t  = (tick - pts[lo].tick) / h;
+  const t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * pts[lo].value
+       + (t3 - 2 * t2 + t)     * h * m[lo]
+       + (-2 * t3 + 3 * t2)    * pts[lo + 1].value
+       + (t3 - t2)             * h * m[lo + 1];
 }
 
 // Linearly interpolates a [{tick, value}] curve at `tick`. Returns `fallback`

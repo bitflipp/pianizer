@@ -80,11 +80,22 @@ Grid renders: sub-beat lines (faint `#222`), beat lines (`#2a2a2a`), bar lines (
 
 ## Tempo Curve — Tick ↔ Time
 
-Within each sub-segment (bounded by `tempoMap` and `tempoPoints` breakpoints) baseBpm is
-constant and ratio is piecewise-linear, yielding the closed-form integral
-`scale * ln(r1/r0) / (r1-r0)` where `scale = D*60/(tpb*baseBpm)`. `timeToTick` uses
-binary search over this. The curve affects playback scheduling, playhead position, and
-project duration.
+The tempo ratio follows a **monotone cubic (PCHIP / Fritsch–Carlson) spline** through the
+`tempoPoints`, not straight segments — `monotoneTangents` / `evalMonotoneCubic` in
+`state.js`. Monotone tangents (zero slope at local extrema and equal-valued runs) keep
+flats exactly flat and prevent overshoot beyond the points' own value range, so a run of
+baseline-1.0 points still maps to base time (the rubato-balance feature relies on this)
+and the ratio never escapes `[min, max]` of its neighbours. Outside the point range the
+ratio holds flat at the nearest endpoint.
+
+Because the integrand `1/ratio(tick)` has no closed form under a cubic, `curvedTickToTime`
+integrates each break sub-segment (bounded by `tempoMap` baseBpm steps and `tempoPoints`
+knots) numerically with composite Simpson (`TEMPO_INTEGRATION_PANELS = 16`); Simpson is
+exact on a constant integrand, so a flat ratio still resolves to base time to machine
+precision. Tangents are computed once per `curvedTickToTime` call and reused across all
+samples. `timeToTick` binary-searches over this monotonic mapping. The curve affects
+playback scheduling, playhead position, and project duration. The pedal curve is unrelated
+and stays piecewise-linear (`interpolateCurveAtTick`).
 
 ---
 
