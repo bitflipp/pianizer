@@ -20,9 +20,9 @@ auto-humanization — the tool is an instrument.
 - **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
   Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10; per-key
   velocity curve for device calibration
-- **Velocity curve groups** — a scaled selection becomes a locked group with draggable
-  endpoint handles, so you can see and re-shape the ramp later instead of guessing what
-  you applied; the notes stay frozen until you dissolve the group
+- **Velocity curve groups** — a ramped selection becomes a locked group whose endpoint
+  values stay labeled on the first/last notes; click any member to re-pick the ramp shape
+  and start/end velocities or dissolve the group. The notes stay frozen until you dissolve it
 - **Duration delta** — scale selected notes' durations by −50/−25/−10/+10/+25/+50%
   without mutating the underlying score
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
@@ -66,17 +66,6 @@ to pick a MIDI output port, then load a MusicXML file.
 
 ## Keyboard shortcuts
 
-### Playback & navigation
-
-| Key | Action |
-|---|---|
-| `Space` | Play / pause |
-| Click empty roll / ruler | Seek playhead |
-| Drag ruler | Scrub playhead |
-| `Home` | Scroll to beginning |
-| `End` | Scroll to last note |
-| `←` / `→` | Seek to previous / next bookmark |
-
 ### Selection
 
 | Key / gesture | Action |
@@ -91,37 +80,45 @@ to pick a MIDI output port, then load a MusicXML file.
 
 | Key / gesture | Action |
 |---|---|
-| Alt+click empty | Insert note (1 beat, velocity 64) |
-| Drag note body | Move horizontally |
-| Shift+drag note body | Move horizontally + pitch |
-| Drag note left/right edge | Resize start / end |
+| 1 | Curve group tool (locks selection as a curve group) |
+| 2 | Velocity tool |
+| 3 | Duration delta tool |
+| 4 | Velocity delta tool |
+| Click curve-group note | Curve-group menu: re-pick ramp (same as [1]) / dissolve |
+| Alt+click empty | Insert note at cursor |
+| Drag note body | Move selection horizontally |
+| Shift+drag note body | Move selection horizontally + pitch |
+| Drag left / right edge | Resize note start / end |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
-| `[1]` | Curve group (pick ramp shape, then two-click start/end) → locks the selection as a curve group |
-| Drag curve-group handle | Reshape the ramp's start/end velocity (up = louder) |
-| Click curve-group handle | Open the group menu: change shape or dissolve |
-| `[2]` | Set note velocity (5–120 grid) |
-| `[3]` | Duration delta (−50/−25/−10/+10/+25/+50%) |
-| `[4]` | Nudge velocity ±1/5/10 |
 
 ### View
 
 | Key / gesture | Action |
 |---|---|
 | Scroll | Pan horizontal |
-| Ctrl+scroll | Zoom horizontal toward cursor |
+| Ctrl+scroll | Zoom horizontal |
 | Right-drag | Pan (horizontal + vertical) |
-| Ctrl+click ruler | Add bookmark |
-| Ctrl+right-click bookmark | Remove bookmark |
-| `?` | Toggle help overlay |
+| Home / End | Scroll to start / end |
 
-### Curve lanes (pedal & tempo)
+### Playback
 
 | Key / gesture | Action |
 |---|---|
-| Click empty | Add control point (snapped) |
-| Ctrl+click | Add control point (no snap) |
-| Drag point | Move control point |
+| Space | Play / pause |
+| Click empty roll / ruler | Seek playhead |
+| Drag ruler | Scrub playhead |
+| Ctrl+click ruler | Add bookmark |
+| Ctrl+right-click bookmark | Remove bookmark |
+| ← / → | Seek to prev / next bookmark |
+
+### Curve lanes (pedal / tempo)
+
+| Key / gesture | Action |
+|---|---|
+| Click empty | Add control point (snaps to grid and Y to neighbours / baseline) |
+| Ctrl+click | Add without snapping |
+| Drag point | Move control point (snaps to grid and Y; hold Ctrl to disable) |
 | Right-click | Remove nearest control point |
 
 ---
