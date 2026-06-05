@@ -547,10 +547,19 @@ export class PianoRoll {
     const sel = state.selectedNoteIndices;
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
       e.preventDefault();
-      state.deleteNotes([...sel]);
+      const deletable = [...sel].filter(i => !state.isLocked(state.notes[i]));
+      if (deletable.length < sel.size) {
+        this._flash('Locked curve-group notes can’t be deleted — dissolve the group first');
+      }
+      if (deletable.length > 0) state.deleteNotes(deletable);
     }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); this._seekToBookmark(-1); }
     if (e.key === 'ArrowRight') { e.preventDefault(); this._seekToBookmark( 1); }
+  }
+
+  // Briefly surface a message in the status bar (handled in index.html).
+  _flash(message) {
+    document.dispatchEvent(new CustomEvent('roll-flash', { detail: { message } }));
   }
 
   _seekToBookmark(dir) {
@@ -694,7 +703,9 @@ export class PianoRoll {
   // so the grid snap is applied to it and the others follow by the same delta.
   _beginEdgeResize(anchorIdx, side) {
     const isSelected    = state.selectedNoteIndices.has(anchorIdx);
-    const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
+    // Locked notes never resize, even when carried along by a selected anchor.
+    const resizeIndices = (isSelected ? [...state.selectedNoteIndices] : [anchorIdx])
+      .filter(i => !state.isLocked(state.notes[i]));
     const ai = resizeIndices.indexOf(anchorIdx);
     if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
     state.resizeNoteStart();
@@ -868,9 +879,15 @@ export class PianoRoll {
   // drag) and returns the indices plus whether any of the three changed since last move.
   _trackEdgeHover(pos, inRoll) {
     const active     = inRoll && !this._rectSelActive;
-    const edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
-    const leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
-    const handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
+    let   edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
+    let   leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
+    let   handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
+    // Curve-group notes are locked: immovable and unresizable. Drop any edit
+    // affordance on them so the cursor never offers a resize/move grab. (They
+    // stay clickable/selectable via the separate click + rect-select paths.)
+    if (edgeNi     >= 0 && state.isLocked(state.notes[edgeNi]))     edgeNi     = -1;
+    if (leftEdgeNi >= 0 && state.isLocked(state.notes[leftEdgeNi])) leftEdgeNi = -1;
+    if (handleNi   >= 0 && state.isLocked(state.notes[handleNi]))   handleNi   = -1;
     const changed    = edgeNi     !== this._hoverNoteRightEdge
                     || leftEdgeNi !== this._hoverNoteLeftEdge
                     || handleNi   !== this._hoverNoteHandle;
@@ -897,9 +914,12 @@ export class PianoRoll {
     this._pendingNoteHandle = -1;
     this._pendingDragStart  = null;
 
-    const dragIndices = state.selectedNoteIndices.has(ni)
+    // Locked curve-group notes stay put even when dragged as part of a mixed
+    // selection — only the unlocked notes move. (ni itself is never locked: the
+    // hover handle is suppressed on locked notes.)
+    const dragIndices = (state.selectedNoteIndices.has(ni)
       ? [...state.selectedNoteIndices]
-      : [ni];
+      : [ni]).filter(i => !state.isLocked(state.notes[i]));
 
     // Clear hover state before mutation so no ghost highlights appear during drag
     this._hoverNoteIdx       = -1;
