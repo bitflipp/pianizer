@@ -97,7 +97,7 @@ to pick a MIDI output port, then load a MusicXML file.
 | Drag note left/right edge | Resize start / end |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
-| `[1]` | Velocity scale (pick ramp shape, then two-click start/end) → locks the selection as a curve group |
+| `[1]` | Curve group (pick ramp shape, then two-click start/end) → locks the selection as a curve group |
 | Drag curve-group handle | Reshape the ramp's start/end velocity (up = louder) |
 | Click curve-group handle | Open the group menu: change shape or dissolve |
 | `[2]` | Set note velocity (5–120 grid) |

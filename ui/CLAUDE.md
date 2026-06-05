@@ -87,7 +87,7 @@ to front so the topmost note wins.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Velocity scale** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
+- **[1] Curve group** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
   `SCALE_EASINGS` in engine/state.js, default Linear; the selector row is built by the
   shared `buildShapeRow` helper), then two-click: first click sets start velocity, second
   sets end. The eased ramp is baked across the selection by onset time and **recorded as a
@@ -105,7 +105,7 @@ tells the user to dissolve the group first).
 
 ## Curve Groups (velocity ramps)
 
-A velocity scale [1] records its result as a locked group (`state.curveGroups`, see
+The curve-group tool [1] records its result as a locked group (`state.curveGroups`, see
 engine/CLAUDE.md). On the roll:
 
 - **Member notes** are **always filled with the group's accent color** (`GROUP_COLORS`,
@@ -125,7 +125,7 @@ engine/CLAUDE.md). On the roll:
   labels. The cursor is `pointer` over any member, and this takes priority over note edit
   affordances; the endpoint-label hit (`_handleAt`) still wins where they overlap so the
   displayed velocity reads as the target. A press dispatches `curve-handle-menu`; index.html
-  opens a "Curve group" tool window that reuses the scale tool's `buildRampPicker` — the
+  opens a "Curve group" tool window that reuses the curve-group tool's `buildRampPicker` — the
   **same shape selector + two-click velocity picker as creating the group** — but calls
   `state.reshapeCurveGroup` (one undo step via `state.beginCurvePointMove`) instead of
   `createCurveGroup`, plus a **Dissolve group** button (unlocks, keeps velocities). The

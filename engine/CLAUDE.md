@@ -40,7 +40,7 @@ remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resize
 `beginCurvePointMove()` to push undo once at drag start.
 
 **Curve groups** (`state.curveGroups`): `[{id, members:[noteId], from, to, shape}]`. The
-velocity scale tool [1] bakes a start→end velocity ramp (eased by `shape`, one of
+curve-group tool [1] bakes a start→end velocity ramp (eased by `shape`, one of
 `SCALE_EASINGS` — now defined and exported here in `state.js`) across the selection,
 indexed by onset time so a chord gets one value, and records it as a group when the
 selection spans ≥2 distinct onsets (a single-onset selection just sets a flat velocity, no

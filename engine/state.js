@@ -654,7 +654,7 @@ function clampVelocity(v) {
   return Math.max(1, Math.min(127, Math.round(v)));
 }
 
-// Velocity-ramp shapes for the scale tool / curve groups. Each maps a normalized
+// Velocity-ramp shapes for the curve-group tool. Each maps a normalized
 // onset position t∈[0,1] → eased fraction of the start→end velocity span. A
 // linear MIDI-velocity ramp is not a linear perceived-loudness ramp, so the
 // eased shapes let the musician pick a crescendo/decrescendo contour deliberately.

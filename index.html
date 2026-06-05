@@ -343,7 +343,7 @@
       ['Escape',               'Clear selection'],
     ]],
     ['Editing', [
-      ['1',                       'Velocity scale tool (locks selection as a curve group)'],
+      ['1',                       'Curve group tool (locks selection as a curve group)'],
       ['2',                       'Velocity tool'],
       ['3',                       'Duration delta tool'],
       ['4',                       'Velocity delta tool'],
@@ -632,7 +632,7 @@
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (isFormFocused(e.target)) return;
 
-    if (e.key === '1' && state.loaded) { e.preventDefault(); openLinearScaleTool(); }
+    if (e.key === '1' && state.loaded) { e.preventDefault(); openCurveGroupTool(); }
     if (e.key === '2' && state.loaded) { e.preventDefault(); openVelocityTool(); }
     if (e.key === '3' && state.loaded) { e.preventDefault(); openDurationDeltaTool(); }
     if (e.key === '4' && state.loaded) { e.preventDefault(); openDeltaTool(); }
@@ -675,14 +675,14 @@
     });
   }
 
-  // ── Tool: Velocity scale [1] ─────────────────────────────────────
+  // ── Tool: Curve group [1] ────────────────────────────────────────
   // Ramp shapes (SCALE_EASINGS, in engine/state.js) map a normalized onset
   // position t∈[0,1] → eased fraction of the start→end velocity span, so the
   // musician picks a crescendo/decrescendo contour deliberately. The two-click
   // pick (start, then end velocity) records the selection as a locked curve group.
 
   // Builds the Linear / Ease in / Ease out / S-curve selector row, calling
-  // onPick(name) when a button is chosen. Shared by the scale tool and the
+  // onPick(name) when a button is chosen. Shared by the curve-group tool and the
   // handle popover. `selected` highlights the current shape.
   function buildShapeRow(selected, onPick) {
     const row = document.createElement('div');
@@ -705,8 +705,8 @@
   // Builds the shared two-click velocity-ramp picker: the shape selector row, an
   // info line, and the 5–120 velocity grid. The first click sets the start
   // velocity, the second the end; then onPick(from, to, shape) fires. Shared by
-  // the scale tool [1] and the curve-group menu so creating and editing a ramp
-  // look and feel identical.
+  // the curve-group tool [1] and the curve-group menu so creating and editing a
+  // ramp look and feel identical.
   function buildRampPicker(body, initialShape, onPick) {
     let firstValue = null;
     let shape      = initialShape;
@@ -738,13 +738,13 @@
     body.appendChild(grid);
   }
 
-  function openLinearScaleTool() {
+  function openCurveGroupTool() {
     if (state.selectedNoteIndices.size === 0) return;
     if (selectionHasLocked()) { flashStatus('Selection has locked curve-group notes — dissolve the group to re-scale'); return; }
 
     const indices = [...state.selectedNoteIndices];
 
-    openToolWindow('Velocity scale', (body, close) => {
+    openToolWindow('Curve group', (body, close) => {
       buildRampPicker(body, 'S-curve', (from, to, shape) => {
         state.createCurveGroup(indices, from, to, shape);
         close();
@@ -799,8 +799,8 @@
 
   // ── Curve-group handle menu ──────────────────────────────────────
   // Opened by clicking a curve-group endpoint label in the roll. Re-picks the
-  // ramp with the same two-click picker as the scale tool [1], or dissolves the
-  // group.
+  // ramp with the same two-click picker as the curve-group tool [1], or dissolves
+  // the group.
   document.addEventListener('curve-handle-menu', e => {
     const groupId = e.detail.groupId;
     const g = state.curveGroups.find(gg => gg.id === groupId);
