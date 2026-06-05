@@ -11,7 +11,7 @@ async function handlePagePos(page, end) {
   }, end);
 }
 
-test('scale tool [1] bakes a ramp and records a locked curve group', async ({ page }) => {
+test('curve-group tool [1] bakes a ramp and records a locked curve group', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);
 
