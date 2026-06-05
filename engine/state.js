@@ -443,8 +443,8 @@ export class AppState extends EventTarget {
   reshapeCurveGroup(groupId, { from, to, shape } = {}) {
     const g = this.curveGroups.find(gg => gg.id === groupId);
     if (!g) return;
-    if (from  !== undefined) g.from  = from;
-    if (to    !== undefined) g.to    = to;
+    if (from  !== undefined) g.from  = clampVelocity(from);
+    if (to    !== undefined) g.to    = clampVelocity(to);
     if (shape !== undefined) g.shape = shape;
     this._bakeCurve(this._notesByIds(g.members), g.from, g.to, g.shape);
     this.dispatch('groupschanged');
