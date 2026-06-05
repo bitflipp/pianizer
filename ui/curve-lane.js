@@ -75,7 +75,6 @@ export class CurveLane {
     ctx.fillRect(0, 0, KEY_WIDTH, canvas.height);
     ctx.fillStyle = '#161616';
     ctx.fillRect(KEY_WIDTH, 0, canvas.width - KEY_WIDTH, canvas.height);
-    // Reference lines at 25%, 50%, 75% of the value range
     const { valueMin, valueMax } = this.config;
     ctx.lineWidth = 1;
     for (const frac of REF_FRACS) {
@@ -231,7 +230,8 @@ export class CurveLane {
 
   // Returns the nearest snap target within Y_SNAP_RADIUS px as { value }, or
   // { value: null } if no target is close enough. Snap targets are the neighbouring
-  // control points (excluding `excludePoint`) and the lane's baseline (config.emptyValue).
+  // control points (excluding `excludePoint`), the lane's top/bottom edges
+  // (valueMin/valueMax), the REF_FRACS reference lines, and the baseline (config.emptyValue).
   _snapCandidate(pos, tick, excludePoint = null) {
     const pts = this._points;
     let prevIdx = -1;
