@@ -148,7 +148,9 @@ export class PianoRoll {
 
     // Indices into state.notes sorted by duration descending: longest drawn first
     // (bottom), shortest drawn last (top), so contained notes are always on top.
-    this._drawOrder = [];
+    // Rebuilt lazily (see _ensureDrawOrder) only when notes change, not every render.
+    this._drawOrder      = [];
+    this._drawOrderDirty = true;
 
     this._bindEvents();
     this._bindStateEvents();
@@ -336,15 +338,9 @@ export class PianoRoll {
     const effective = this._effectiveSelection();
     const hasSel    = effective.set.size > 0;
 
-    const order = Array.from({ length: state.notes.length }, (_, i) => i);
-    order.sort((a, b) => {
-      const da = state.notes[a].endTick - state.notes[a].startTick;
-      const db = state.notes[b].endTick - state.notes[b].startTick;
-      return db - da;
-    });
-    this._drawOrder = order;
+    this._ensureDrawOrder();
 
-    for (const i of order) {
+    for (const i of this._drawOrder) {
       const n = state.notes[i];
       if (n.endTick < tickStart || n.startTick > tickEnd) continue;
       this._drawNote(i, n, effective, hasSel);
@@ -353,6 +349,20 @@ export class PianoRoll {
     this._drawCurveGroups();
 
     ctx.restore();
+  }
+
+  // Rebuilds the duration-sorted draw order, but only when notes have actually
+  // changed (flagged dirty on loaded/selectionchanged/groupschanged). render()
+  // runs on every hover, pan, and playback frame, so re-sorting all notes here
+  // unconditionally would sort the whole piece ~60×/s during playback for nothing.
+  _ensureDrawOrder() {
+    if (!this._drawOrderDirty) return;
+    const notes = state.notes;
+    const order = Array.from({ length: notes.length }, (_, i) => i);
+    order.sort((a, b) =>
+      (notes[b].endTick - notes[b].startTick) - (notes[a].endTick - notes[a].startTick));
+    this._drawOrder      = order;
+    this._drawOrderDirty = false;
   }
 
   _groupColor(g, hovered) { return groupHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], hovered); }
@@ -540,6 +550,7 @@ export class PianoRoll {
   // Walks _drawOrder back to front (topmost note first) and returns the index of
   // the first note in pos's pitch row for which test(n) is true, or -1.
   _hitNote(pos, test) {
+    this._ensureDrawOrder();  // keep the cache fresh for hit-tests that precede a render
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
       const i = this._drawOrder[j];
       const n = state.notes[i];
@@ -604,9 +615,12 @@ export class PianoRoll {
   // ── Events ─────────────────────────────────────────────────────────
 
   _bindStateEvents() {
-    state.addEventListener('loaded',           () => { this.scrollX = 0; this._cancelRectSel(); this.render(); });
-    state.addEventListener('selectionchanged', () => this.render());
-    state.addEventListener('groupschanged',    () => this.render());
+    // loaded/selectionchanged/groupschanged are the only events that add, remove,
+    // move, or resize notes — i.e. the only ones that can change the duration-sorted
+    // draw order. Flag it dirty here so _ensureDrawOrder rebuilds on the next render.
+    state.addEventListener('loaded',           () => { this.scrollX = 0; this._cancelRectSel(); this._drawOrderDirty = true; this.render(); });
+    state.addEventListener('selectionchanged', () => { this._drawOrderDirty = true; this.render(); });
+    state.addEventListener('groupschanged',    () => { this._drawOrderDirty = true; this.render(); });
     state.addEventListener('playheadmoved',    () => this.render());
     state.addEventListener('pedalchanged',     () => this.render());
     state.addEventListener('tempochanged',     () => this.render());
@@ -1000,9 +1014,10 @@ export class PianoRoll {
 
     // A curve-group member under the cursor (endpoint label or note body) takes
     // priority over note edit affordances and shows a pointer — clicking it
-    // opens the group menu.
+    // opens the group menu. hoverGrp is exactly _groupNoteAt(pos) (group of the
+    // note under the cursor), already resolved above — reuse it, no second hit-test.
     const overHandle = (inRoll && !this._rectSelActive)
-      ? (this._handleAt(pos) || this._groupNoteAt(pos)) : null;
+      ? (this._handleAt(pos) || hoverGrp) : null;
 
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
