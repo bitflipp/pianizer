@@ -94,7 +94,7 @@ to pick a MIDI output port, then load a MusicXML file.
 | Drag note left/right edge | Resize start / end |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
-| `[1]` | Linear velocity scale (two-click: set start/end, interpolated across selection) |
+| `[1]` | Velocity scale (pick ramp shape, then two-click: set start/end across selection) |
 | `[2]` | Set note velocity (5–120 grid) |
 | `[3]` | Duration delta (−50/−25/−10/+10/+25/+50%) |
 | `[4]` | Nudge velocity ±1/5/10 |

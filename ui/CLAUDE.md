@@ -84,9 +84,10 @@ to front so the topmost note wins.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Linear velocity scale** — two-click: first click sets start velocity (the
-  first note by time gets this value), second sets end; interpolated across selection
-  sorted by startTick
+- **[1] Velocity scale** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
+  `SCALE_EASINGS` in index.html, default Linear), then two-click: first click sets start
+  velocity (the first note by time gets this value), second sets end; the shape's eased
+  fraction of the start→end span is applied across the selection sorted by startTick
 - **[2] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
 - **[3] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
   by the given factor (minimum 1 tick)
