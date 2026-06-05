@@ -51,6 +51,27 @@ test('clicking a handle opens the menu; Dissolve unlocks and keeps velocities', 
   expect(after).toMatchObject({ groups: 0, anyLocked: false, firstVel: 40 });
 });
 
+test('clicking a non-endpoint member note opens the menu', async ({ page }) => {
+  await gotoApp(page);
+  await loadProject(page);
+  await page.evaluate(() => window._state.createCurveGroup(window._state.notes.map((_, i) => i), 40, 100, 'Linear'));
+
+  // Centre of an inner member's box — past its endpoint label, so this exercises
+  // the note-body hit, not the label hit.
+  const body = await page.evaluate(() => {
+    const roll = window._roll, s = window._state;
+    const r = document.getElementById('roll').getBoundingClientRect();
+    // A member that is neither the earliest nor latest onset.
+    const onsets = s.notes.map(n => n.startTick);
+    const min = Math.min(...onsets), max = Math.max(...onsets);
+    const n = s.notes.find(x => x.startTick !== min && x.startTick !== max) ?? s.notes[1];
+    const nx = roll.tickToX(n.startTick), w = roll._noteWidthPx(n);
+    return { x: r.left + nx + w / 2, y: r.top + roll.pitchToY(n.pitch) + roll.noteHeight / 2 };
+  });
+  await page.mouse.click(body.x, body.y);
+  await expect(page.locator('.tool-window-title', { hasText: 'Curve group' })).toBeVisible();
+});
+
 test('handle menu re-picks the ramp with the same two-click picker', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);

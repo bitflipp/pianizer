@@ -404,6 +404,14 @@ export class PianoRoll {
     return null;
   }
 
+  // Returns the curve group whose locked member note is under `pos`, or null.
+  // Members are hard-locked, so a click anywhere on the note body — not just on
+  // the endpoint labels — opens the group menu (their only interaction).
+  _groupNoteAt(pos) {
+    const ni = this._noteAtPos(pos);
+    return ni < 0 ? null : state.groupOfNote(state.notes[ni]);
+  }
+
   // Returns the visible selection set, accounting for an in-progress rect drag:
   // during a drag the rect hits are previewed as additions to the committed
   // selection. `addingHits` is the subset that would be newly added on commit.
@@ -849,9 +857,17 @@ export class PianoRoll {
     // Curve-group handle: a press-and-release opens the handle menu (shape,
     // endpoint velocities, dissolve). Endpoint velocities are edited there, not
     // by dragging, so the press only needs to suppress the trailing click.
+    // Pressing anywhere on a locked member note opens the same menu — locked
+    // notes have no other affordance — but the endpoint labels still take
+    // priority so their displayed velocity reads as the click target.
     const handle = this._handleAt(pos);
     if (handle) {
       this._pendingHandle = handle;
+      return;
+    }
+    const grp = this._groupNoteAt(pos);
+    if (grp) {
+      this._pendingHandle = { groupId: grp.id };
       return;
     }
 
@@ -954,9 +970,11 @@ export class PianoRoll {
 
     const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
 
-    // An endpoint label under the cursor takes priority over note edit
-    // affordances and shows a pointer (clicking it opens the group menu).
-    const overHandle = (inRoll && !this._rectSelActive) ? this._handleAt(pos) : null;
+    // A curve-group member under the cursor (endpoint label or note body) takes
+    // priority over note edit affordances and shows a pointer — clicking it
+    // opens the group menu.
+    const overHandle = (inRoll && !this._rectSelActive)
+      ? (this._handleAt(pos) || this._groupNoteAt(pos)) : null;
 
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
