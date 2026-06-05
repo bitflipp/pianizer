@@ -104,7 +104,7 @@ by `roll.js`.
 
 **Controls (identical for both lanes):**
 - `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to roll)
-- `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±10 px, or to the lane's top/bottom edges, 25%/50%/75% reference lines, and the lane baseline)
+- `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±11 px, or to the lane's top/bottom edges, 25%/50%/75% reference lines, and the lane baseline)
 - `Left-drag point` — move an existing control point (same tick + Y snap; hold Ctrl to disable both)
 - `Right-click` — remove nearest control point
 - `Ctrl+left-click` — add control point without any snapping
