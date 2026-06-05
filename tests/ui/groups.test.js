@@ -51,19 +51,27 @@ test('clicking a handle opens the menu; Dissolve unlocks and keeps velocities', 
   expect(after).toMatchObject({ groups: 0, anyLocked: false, firstVel: 40 });
 });
 
-test('dragging a handle up raises its endpoint velocity', async ({ page }) => {
+test('handle menu re-picks the ramp with the same two-click picker', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);
   await page.evaluate(() => window._state.createCurveGroup(window._state.notes.map((_, i) => i), 40, 100, 'Linear'));
 
   const hd = await handlePagePos(page, 'to');
-  await page.mouse.move(hd.x, hd.y);
-  await page.mouse.down();
-  await page.mouse.move(hd.x, hd.y - 40, { steps: 5 }); // up = louder
-  await page.mouse.up();
+  await page.mouse.click(hd.x, hd.y);
+  await expect(page.locator('.tool-window-title', { hasText: 'Curve group' })).toBeVisible();
 
-  const to = await page.evaluate(() => window._state.curveGroups[0].to);
-  expect(to).toBeGreaterThan(100);
+  // Same two-click flow as creating: start velocity, then end velocity.
+  await page.locator('.velocity-grid button', { hasText: /^20$/ }).first().click();
+  await page.locator('.velocity-grid button', { hasText: /^90$/ }).first().click();
+
+  const after = await page.evaluate(() => {
+    const s = window._state;
+    return {
+      from: s.curveGroups[0].from, to: s.curveGroups[0].to,
+      firstVel: s.notes[0].velocity, lastVel: s.notes[s.notes.length - 1].velocity,
+    };
+  });
+  expect(after).toMatchObject({ from: 20, to: 90, firstVel: 20, lastVel: 90 });
 });
 
 test('locked notes resist Delete', async ({ page }) => {

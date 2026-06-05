@@ -71,8 +71,9 @@ white for others. Label text is always white `#fff`. Each note has a 1 px top ga
 (`y+1`, `h = noteHeight−1`), visually separating adjacent pitches.
 
 Each note box shows its velocity number (top-left), clipped to the note interior —
-**except** locked curve-group notes, which hide the number (the velocity-mapped fill
-shows the ramp; the group's handles carry the endpoint values). See Curve Groups below.
+**except** locked curve-group notes, which hide the number. Those notes are also filled
+with their group's accent color (not the velocity-blue), with the ramp's endpoint values
+shown as labels on the first/last member; see Curve Groups below.
 
 Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
 longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
@@ -107,23 +108,25 @@ tells the user to dissolve the group first).
 A velocity scale [1] records its result as a locked group (`state.curveGroups`, see
 engine/CLAUDE.md). On the roll:
 
-- **Member notes** hide their velocity number and are fully locked: `_trackEdgeHover`
-  drops the resize/move affordance on them, mixed-selection drags and edge-resizes filter
-  them out, Delete skips them (flashing a hint), and tools [1]–[4] refuse them. The only
-  way to change them is the handles or dissolving the group.
-- **Handles** — small square accents (`GROUP_COLORS`, cycled by group id) drawn on the
-  left edge of every earliest-onset member (`from`) and the right edge of every latest-onset
-  member (`to`), each labelled with its endpoint velocity. Geometry/hit-test:
-  `_groupHandles` / `_handleAt`.
-- **Hovering** a handle outlines all member notes in the group's accent (`_hoverGroupId`)
-  and shows an `ns-resize` cursor; handle hover takes priority over note edit affordances.
-- **Vertical drag** on a handle reshapes that endpoint's velocity live (up = louder,
-  `GHANDLE_VEL_PER_PX`), one undo step via `state.beginCurvePointMove` →
-  `state.reshapeCurveGroup`.
-- **Click** (no drag) on a handle dispatches `curve-handle-menu`; index.html opens a
-  "Curve group" tool window with the shared shape selector (re-bakes live) and a
-  **Dissolve group** button (unlocks, keeps velocities). The trailing canvas click is
-  suppressed via `_didHandleInteract`.
+- **Member notes** are **always filled with the group's accent color** (`GROUP_COLORS`,
+  cycled by group id; `state.groupOfNote` in `_drawNote`), overriding the velocity-blue
+  fill so a group reads as a unit at all times. They hide their velocity number and are
+  fully locked: `_trackEdgeHover` drops the resize/move affordance on them, mixed-selection
+  drags and edge-resizes filter them out, Delete skips them (flashing a hint), and tools
+  [1]–[4] refuse them. The only way to change them is the menu (below) or dissolving the group.
+- **Endpoint labels** — the only group chrome on the roll (no square handles). The `from`
+  velocity is drawn on every earliest-onset member and the `to` velocity on every
+  latest-onset member, at the note box's top-left — the exact position/font of a normal
+  note's velocity number (`_drawHandle` mirrors `_drawNote`'s number draw, clipped to the
+  box), only in dark `GLABEL_COLOR` for contrast against the accent fill. Geometry/hit-test
+  (hit box spans the label width over the note row): `_groupHandles` / `_mkHandle` / `_handleAt`.
+- **Clicking an endpoint label** opens the group menu (cursor is `pointer` over it; takes
+  priority over note edit affordances). A press dispatches `curve-handle-menu`; index.html
+  opens a "Curve group" tool window that reuses the scale tool's `buildRampPicker` — the
+  **same shape selector + two-click velocity picker as creating the group** — but calls
+  `state.reshapeCurveGroup` (one undo step via `state.beginCurvePointMove`) instead of
+  `createCurveGroup`, plus a **Dissolve group** button (unlocks, keeps velocities). The
+  trailing canvas click is suppressed via `_didHandleInteract`.
 
 ---
 

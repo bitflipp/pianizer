@@ -47,7 +47,8 @@ selection spans ≥2 distinct onsets (a single-onset selection just sets a flat 
 group). Member velocities are **frozen scalars** baked from the ramp; `from/to/shape` are
 kept so the roll's endpoint handles can re-derive. API: `createCurveGroup` / `dissolveCurveGroup`
 (leaves velocities intact) / `reshapeCurveGroup` (re-bakes; clamps `from/to`; does **not**
-push undo — the handle drag pushes once via `beginCurvePointMove`). `isLocked(note)` /
+push undo — the caller pushes via `beginCurvePointMove`, e.g. the curve-group menu's
+two-click ramp re-pick, one step per re-pick). `isLocked(note)` /
 `groupOfNote(note)` / `groupMembers(g)` read a `noteId→group` index rebuilt on every group
 change. All mutators dispatch `groupschanged`. Member notes are locked in the roll: immovable,
 unresizable, undeletable, and not editable by the velocity/duration tools — change them only by
