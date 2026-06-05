@@ -21,6 +21,7 @@ const COL_BOOKMARK_HOT = '#ffb060';
 const GROUP_COLORS  = ['#e8a33d', '#3dc8e8', '#e85d9b', '#7ee83d'];
 const GHANDLE_SIZE  = 7;  // drawn side of a square group handle (px)
 const GHANDLE_HIT   = 6;  // hit-test half-extent around a handle centre (px)
+const GHANDLE_VEL_PER_PX = 0.5; // velocity units per px of vertical handle drag (up = louder)
 
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
 export function noteHSL(velocity, displayState) {
@@ -121,6 +122,11 @@ export class PianoRoll {
     this._hoverPitch        = -1;
     this._hoverGroupId      = -1;    // curve group whose member notes are highlighted
     this._hoverHandle       = null;  // {groupId, end, note, x, y} under the cursor
+    this._pendingHandle     = null;  // handle pressed but not yet dragged/released
+    this._pendingHandleStart= null;
+    this._handleDragging    = false;
+    this._handleStartVel    = 0;     // group endpoint velocity at drag start
+    this._didHandleInteract = false; // suppress the click event after a handle press
 
     // Indices into state.notes sorted by duration descending: longest drawn first
     // (bottom), shortest drawn last (top), so contained notes are always on top.
@@ -843,6 +849,17 @@ export class PianoRoll {
     }
     if (pos.x < KEY_WIDTH) return;
 
+    // Curve-group handle: begin a pending interaction. Crossing the drag
+    // threshold turns it into a vertical reshape; a release below threshold is
+    // treated as a click that opens the handle menu (shape + dissolve).
+    const handle = this._handleAt(pos);
+    if (handle) {
+      this._pendingHandle      = handle;
+      this._pendingHandleStart = pos;
+      this._handleDragging     = false;
+      return;
+    }
+
     if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
     if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
 
@@ -903,6 +920,23 @@ export class PianoRoll {
         state.resizeNotesLeft(this._resizeNoteRefs.map((note, k) => ({
           note, startTick: this._resizeOrigins[k].startTick + delta,
         })));
+      }
+      return;
+    }
+
+    // Curve-group handle drag — vertical motion reshapes the endpoint velocity
+    if (this._pendingHandle) {
+      const dy = pos.y - this._pendingHandleStart.y;
+      if (!this._handleDragging && Math.hypot(pos.x - this._pendingHandleStart.x, dy) > DRAG_THRESHOLD) {
+        const g = state.curveGroups.find(gg => gg.id === this._pendingHandle.groupId);
+        this._handleStartVel = this._pendingHandle.end === 'from' ? g?.from : g?.to;
+        this._handleDragging = true;
+        state.beginCurvePointMove(); // one undo push for the whole drag
+      }
+      if (this._handleDragging) {
+        const newVel = this._handleStartVel - dy * GHANDLE_VEL_PER_PX;
+        state.reshapeCurveGroup(this._pendingHandle.groupId,
+          this._pendingHandle.end === 'from' ? { from: newVel } : { to: newVel });
       }
       return;
     }
@@ -1079,6 +1113,19 @@ export class PianoRoll {
       return;
     }
 
+    if (this._pendingHandle) {
+      const h       = this._pendingHandle;
+      const wasDrag = this._handleDragging;
+      this._pendingHandle      = null;
+      this._pendingHandleStart = null;
+      this._handleDragging     = false;
+      this._didHandleInteract  = true; // suppress the trailing click
+      // A press without a drag opens the handle menu (shape selector + dissolve).
+      if (!wasDrag) document.dispatchEvent(new CustomEvent('curve-handle-menu', { detail: { groupId: h.groupId } }));
+      this._refreshCursor();
+      return;
+    }
+
     if (this._pendingNoteHandle >= 0) {
       this._pendingNoteHandle = -1;
       this._pendingDragStart  = null;
@@ -1127,6 +1174,7 @@ export class PianoRoll {
     if (!state.loaded) return;
     if (this._didRectSel)  { this._didRectSel  = false; return; }
     if (this._didNoteDrag) { this._didNoteDrag = false; return; }
+    if (this._didHandleInteract) { this._didHandleInteract = false; return; }
 
     const pos = this._canvasPos(e);
     if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
