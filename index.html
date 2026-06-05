@@ -992,6 +992,7 @@
   state.addEventListener('selectionchanged', scheduleAutosave);
   state.addEventListener('pedalchanged',     scheduleAutosave);
   state.addEventListener('tempochanged',     scheduleAutosave);
+  state.addEventListener('groupschanged',    scheduleAutosave);
 
   window.addEventListener('beforeunload', () => {
     if (_autosaveTimer !== null && state.loaded) {
