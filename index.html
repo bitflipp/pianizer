@@ -131,6 +131,8 @@
       text-align: center;
     }
     .delta-btn:hover { background: #333; border-color: #888; }
+    .shape-row { display: flex; gap: 2px; margin-bottom: 6px; }
+    .shape-row .delta-btn.sel { background: #333; border-color: #fff; color: #fff; }
 
     /* Help overlay */
     .help-overlay {
@@ -324,7 +326,7 @@
       ['Escape',               'Clear selection'],
     ]],
     ['Editing', [
-      ['1',                       'Linear velocity scale tool'],
+      ['1',                       'Velocity scale tool'],
       ['2',                       'Velocity tool'],
       ['3',                       'Duration delta tool'],
       ['4',                       'Velocity delta tool'],
@@ -635,7 +637,7 @@
     return btn;
   }
 
-  // ── Tool: Note velocity [1] ───────────────────────────────────────
+  // ── Tool: Note velocity [2] ───────────────────────────────────────
   function openVelocityTool() {
     if (state.selectedNoteIndices.size === 0) return;
     openToolWindow('Note velocity', (body, close) => {
@@ -654,14 +656,42 @@
     });
   }
 
-  // ── Tool: Linear velocity scale [2] ──────────────────────────────
+  // ── Tool: Velocity scale [1] ─────────────────────────────────────
+  // Ramp shapes map normalized position t∈[0,1] → eased fraction of the
+  // start→end velocity span. A linear MIDI-velocity ramp is not a linear
+  // perceived-loudness ramp, so the eased shapes let the musician pick a
+  // crescendo/decrescendo contour deliberately rather than only straight.
+  const SCALE_EASINGS = {
+    'Linear':   t => t,
+    'Ease in':  t => t * t,            // slow → fast
+    'Ease out': t => t * (2 - t),      // fast → slow
+    'S-curve':  t => t * t * (3 - 2 * t),
+  };
+
   function openLinearScaleTool() {
     if (state.selectedNoteIndices.size === 0) return;
 
     const indices = [...state.selectedNoteIndices];
 
-    openToolWindow('Linear velocity scale', (body, close) => {
+    openToolWindow('Velocity scale', (body, close) => {
       let firstValue = null;
+      let shape      = 'Linear';
+
+      const shapeRow = document.createElement('div');
+      shapeRow.className = 'shape-row';
+      for (const name of Object.keys(SCALE_EASINGS)) {
+        const btn = document.createElement('button');
+        btn.className = 'delta-btn';
+        btn.textContent = name;
+        if (name === shape) btn.classList.add('sel');
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          shape = name;
+          shapeRow.querySelectorAll('.delta-btn').forEach(b => b.classList.toggle('sel', b === btn));
+        });
+        shapeRow.appendChild(btn);
+      }
+      body.appendChild(shapeRow);
 
       const info = document.createElement('div');
       info.className = 'tool-info';
@@ -681,7 +711,8 @@
             styleVelBtn(btn, v, 'selected');
             info.textContent = `From ${firstValue} — select end velocity`;
           } else if (v !== firstValue) {
-            const sorted = indices.slice().sort(
+            const ease    = SCALE_EASINGS[shape];
+            const sorted  = indices.slice().sort(
               (i, j) => state.notes[i].startTick - state.notes[j].startTick
             );
             const minTick = state.notes[sorted[0]].startTick;
@@ -689,7 +720,7 @@
             const range   = maxTick - minTick;
             const pairs   = sorted.map(ni => {
               const t = range === 0 ? 0 : (state.notes[ni].startTick - minTick) / range;
-              return [ni, firstValue + (v - firstValue) * t];
+              return [ni, firstValue + (v - firstValue) * ease(t)];
             });
             state.setNoteVelocitiesMap(pairs);
             close();
