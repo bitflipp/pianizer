@@ -95,6 +95,44 @@ test('handle menu re-picks the ramp with the same two-click picker', async ({ pa
   expect(after).toMatchObject({ from: 20, to: 90, firstVel: 20, lastVel: 90 });
 });
 
+test('rubber-band selection skips locked curve-group members', async ({ page }) => {
+  await gotoApp(page);
+  await loadProject(page);
+
+  // Lock notes 0 and 1 into a group (two distinct onsets); note 2 stays unlocked.
+  await page.evaluate(() => window._state.createCurveGroup([0, 1], 40, 100, 'Linear'));
+
+  // A rubber-band rectangle covering all three notes. The mousedown corner sits in
+  // the empty pitch row above the lowest-onset note so it starts a rect drag rather
+  // than grabbing a note. Coords are clamped inside the content area (past the
+  // keyboard strip / ruler).
+  const box = await page.evaluate(() => {
+    const roll = window._roll, s = window._state;
+    const r = document.getElementById('roll').getBoundingClientRect();
+    const KEY_WIDTH = 36, HEADER_HEIGHT = 24;
+    let xL = Infinity, xR = -Infinity, top = Infinity, bot = -Infinity;
+    for (const n of s.notes) {
+      const x = roll.tickToX(n.startTick), w = roll._noteWidthPx(n);
+      const y = roll.pitchToY(n.pitch);
+      xL = Math.min(xL, x); xR = Math.max(xR, x + w);
+      top = Math.min(top, y); bot = Math.max(bot, y + roll.noteHeight);
+    }
+    return {
+      start: { x: r.left + Math.max(KEY_WIDTH + 2, xL), y: r.top + Math.max(HEADER_HEIGHT + 2, top) },
+      end:   { x: r.left + xR, y: r.top + bot },
+    };
+  });
+
+  await page.mouse.move(box.start.x, box.start.y);
+  await page.mouse.down();
+  await page.mouse.move(box.end.x, box.end.y, { steps: 10 });
+  await page.mouse.up();
+
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  // Only note 2 (the unlocked one) is selected; the locked members are excluded.
+  expect(sel).toEqual([2]);
+});
+
 test('locked notes resist Delete', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);

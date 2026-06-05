@@ -39,11 +39,11 @@ selection onto the undo stack), clear with empty-click/Escape, or rebuild the se
 
 - **Left click note** — add that note to the selection (no-op if already selected; never removes)
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
-- **Left drag** — draws a teal rubber-band rectangle; overlapping notes are **added** to the current selection on release
+- **Left drag** — draws a teal rubber-band rectangle; overlapping notes are **added** to the current selection on release (locked curve-group members are excluded — see Curve Groups)
 - **Escape** — clears the selection (also cancels an in-progress rect drag)
 - **Right drag** — pans the view (see Controls); does not affect selection
 
-During a rect drag, `_rectHitSet` is updated each frame. Notes newly entering via the rect (not yet in the committed selection) preview at highlighted brightness; notes already in the committed selection render at normal brightness. Hovering a note outside a drag also shows highlighted. Rect hits are always unioned with the committed selection on release.
+During a rect drag, `_rectHitSet` is updated each frame (via `_notesInRect`, which **skips locked curve-group members** so they neither preview nor commit into the selection — they'd only poison tools that refuse mixed selections). Notes newly entering via the rect (not yet in the committed selection) preview at highlighted brightness; notes already in the committed selection render at normal brightness. Hovering a note outside a drag also shows highlighted. Rect hits are always unioned with the committed selection on release.
 
 The rect drag threshold is 6 px (`DRAG_THRESHOLD`). Below threshold the mouseup is treated
 as a click (handled by the `click` event, not `mouseup`). `_didRectSel` suppresses the
@@ -112,8 +112,8 @@ engine/CLAUDE.md). On the roll:
   cycled by group id; `state.groupOfNote` in `_drawNote`), overriding the velocity-blue
   fill so a group reads as a unit at all times. They hide their velocity number and are
   fully locked: `_trackEdgeHover` drops the resize/move affordance on them, mixed-selection
-  drags and edge-resizes filter them out, Delete skips them (flashing a hint), and tools
-  [1]–[4] refuse them. The only way to change them is the menu (below) or dissolving the group.
+  drags and edge-resizes filter them out, rect-selection (`_notesInRect`) skips them so they
+  never join the selection, Delete skips them (flashing a hint), and tools [1]–[4] refuse them. The only way to change them is the menu (below) or dissolving the group.
 - **Endpoint labels** — the only group chrome on the roll (no square handles). The `from`
   velocity is drawn on every earliest-onset member and the `to` velocity on every
   latest-onset member, at the note box's top-left — the exact position/font of a normal

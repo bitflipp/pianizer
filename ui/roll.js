@@ -783,11 +783,14 @@ export class PianoRoll {
   }
 
   // Returns a Set of note indices whose canvas rects overlap the current selection rect.
+  // Locked curve-group members are excluded — the tools can't act on them anyway, so
+  // sweeping them in alongside editable notes would only poison the whole selection.
   _notesInRect() {
     const { x1, y1, x2, y2 } = this._selectionRect();
     const hits = new Set();
     for (let i = 0; i < state.notes.length; i++) {
       const n   = state.notes[i];
+      if (state.isLocked(n)) continue;
       const nx1 = this.tickToX(n.startTick);
       const nx2 = nx1 + this._noteWidthPx(n);
       const ny1 = this.pitchToY(n.pitch);
