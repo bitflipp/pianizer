@@ -88,7 +88,7 @@ Floating DOM panels spawned at the cursor position, closed by clicking outside o
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
 - **[1] Curve group** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
-  `SCALE_EASINGS` in engine/state.js, default Linear; the selector row is built by the
+  `SCALE_EASINGS` in engine/state.js, default S-curve; the selector row is built by the
   shared `buildShapeRow` helper), then two-click: first click sets start velocity, second
   sets end. The eased ramp is baked across the selection by onset time and **recorded as a
   locked curve group** (see Curve Groups) — `state.createCurveGroup`.

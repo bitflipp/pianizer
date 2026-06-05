@@ -20,6 +20,7 @@ const COL_BOOKMARK_HOT = '#ffb060';
 // line and its accompaniment) read as distinct. Chosen to contrast the blue notes.
 const GROUP_COLORS  = ['#e8a33d', '#3dc8e8', '#e85d9b', '#7ee83d'];
 const GLABEL_COLOR  = 'rgba(0,0,0,0.8)'; // endpoint label, dark against the group-colored note
+const NOTE_LABEL_FONT = '9px monospace'; // velocity number + curve endpoint label
 
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
 export function noteHSL(velocity, displayState) {
@@ -359,7 +360,7 @@ export class PianoRoll {
     const nx    = this.tickToX(n.startTick);
     const ny    = this.pitchToY(n.pitch);
     const label = String(Math.round(end === 'from' ? g.from : g.to));
-    this.ctx.font = '9px monospace';
+    this.ctx.font = NOTE_LABEL_FONT;
     const lw = this.ctx.measureText(label).width;
     return {
       groupId: g.id, end, note: n, label, lw,
@@ -376,19 +377,25 @@ export class PianoRoll {
     }
   }
 
-  // Mirrors the normal note-number draw (`_drawNote`): clipped to the note
-  // interior, top-left, `9px monospace` — only the color differs.
+  // The group's endpoint label is the same box-label draw as a note's velocity
+  // number — only the color differs (dark GLABEL_COLOR against the accent fill).
   _drawHandle(hd) {
+    this._drawNoteLabel(hd.nx, hd.ny + 1, hd.w, hd.label, GLABEL_COLOR);
+  }
+
+  // Draws a clipped, top-left label inside a note box. `y` is the box top
+  // (pitchToY + 1). Shared by the per-note velocity number and curve endpoint labels.
+  _drawNoteLabel(x, y, w, text, color) {
     const { ctx } = this;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(hd.nx + 1, hd.ny + 2, hd.w - 2, this.noteHeight - 3);
+    ctx.rect(x + 1, y + 1, w - 2, this.noteHeight - 3);
     ctx.clip();
-    ctx.fillStyle    = GLABEL_COLOR;
-    ctx.font         = '9px monospace';
+    ctx.fillStyle    = color;
+    ctx.font         = NOTE_LABEL_FONT;
     ctx.textBaseline = 'top';
     ctx.textAlign    = 'left';
-    ctx.fillText(hd.label, hd.nx + 3, hd.ny + 5);
+    ctx.fillText(text, x + 3, y + 4);
     ctx.restore();
   }
 
@@ -458,16 +465,7 @@ export class PianoRoll {
     // already marks the group, and its endpoint labels (drawn in _drawHandle)
     // carry the from/to values. The absence of a number is the "curve-controlled" cue.
     if (!state.isLocked(n)) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x + 1, y + 1, w - 2, h - 2);
-      ctx.clip();
-      ctx.fillStyle = '#fff';
-      ctx.font = '9px monospace';
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'left';
-      ctx.fillText(String(n.velocity), x + 3, y + 4);
-      ctx.restore();
+      this._drawNoteLabel(x, y, w, String(n.velocity), '#fff');
     }
   }
 
@@ -511,58 +509,52 @@ export class PianoRoll {
     return y >= ny && y < ny + this.noteHeight;
   }
 
-  // Returns the index of the note at canvas position pos, or -1.
-  _noteAtPos(pos) {
-    const tick = this.xToTick(pos.x);
+  // Walks _drawOrder back to front (topmost note first) and returns the index of
+  // the first note in pos's pitch row for which test(n) is true, or -1.
+  _hitNote(pos, test) {
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
       const i = this._drawOrder[j];
       const n = state.notes[i];
       if (!this._rowContains(n, pos.y)) continue;
-      if (n.startTick <= tick && n.endTick > tick) return i;
+      if (test(n)) return i;
     }
     return -1;
+  }
+
+  // Returns the index of the note at canvas position pos, or -1.
+  _noteAtPos(pos) {
+    const tick = this.xToTick(pos.x);
+    return this._hitNote(pos, n => n.startTick <= tick && n.endTick > tick);
   }
 
   // Returns the index of the note whose right edge is within EDGE_THRESHOLD px of pos, or -1.
   _noteRightEdgeAt(pos) {
-    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i = this._drawOrder[j];
-      const n = state.notes[i];
-      if (!this._rowContains(n, pos.y)) continue;
+    return this._hitNote(pos, n => {
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
-      if (Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD) return i;
-    }
-    return -1;
+      return Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD;
+    });
   }
 
   // Returns the index of the note whose left edge zone contains pos, or -1.
   _noteLeftEdgeAt(pos) {
-    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i = this._drawOrder[j];
-      const n = state.notes[i];
-      if (!this._rowContains(n, pos.y)) continue;
+    return this._hitNote(pos, n => {
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
-      if (pos.x >= nx && pos.x < nx + Math.min(HANDLE_WIDTH, w)) return i;
-    }
-    return -1;
+      return pos.x >= nx && pos.x < nx + Math.min(HANDLE_WIDTH, w);
+    });
   }
 
   // Returns the index of the note whose body (excluding both edge zones) contains pos, or -1.
   _noteBodyAt(pos) {
-    for (let j = this._drawOrder.length - 1; j >= 0; j--) {
-      const i = this._drawOrder[j];
-      const n = state.notes[i];
-      if (!this._rowContains(n, pos.y)) continue;
+    return this._hitNote(pos, n => {
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
-      if (pos.x < nx || pos.x >= nx + w) continue;
-      if (pos.x < nx + Math.min(HANDLE_WIDTH, w)) continue;
-      if (Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD) continue;
-      return i;
-    }
-    return -1;
+      if (pos.x < nx || pos.x >= nx + w) return false;
+      if (pos.x < nx + Math.min(HANDLE_WIDTH, w)) return false;
+      if (Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD) return false;
+      return true;
+    });
   }
 
   // Returns the index of the nearest bookmark within BOOKMARK_HIT_RADIUS of canvas x, or -1.
