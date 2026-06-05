@@ -67,8 +67,11 @@ states adjust the base lightness:
 - **Highlighted**: hovered note, or notes being added by an in-progress rect drag (lightness + 16, capped at 78%)
 
 Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi-transparent
-white for others. Label text is always white `#fff`. Each note has a 1 px top gap
-(`y+1`, `h = noteHeight−1`), visually separating adjacent pitches.
+white for others. Label text color is **luminance-adaptive** (`labelColorFor` in `roll.js`):
+black or white per the WCAG max-contrast crossover (relative luminance ≈ 0.179) of the note's
+actual fill — so low/mid-velocity blue notes read white, bright ones flip to black, and the
+choice tracks hover/dim brightening. Each note has a 1 px top gap (`y+1`, `h = noteHeight−1`),
+visually separating adjacent pitches.
 
 Each note box shows its velocity number (top-left), clipped to the note interior —
 **except** locked curve-group notes, which hide the number. Those notes are also filled
@@ -122,7 +125,10 @@ engine/CLAUDE.md). On the roll:
   velocity is drawn on every earliest-onset member and the `to` velocity on every
   latest-onset member, at the note box's top-left — the exact position/font of a normal
   note's velocity number (`_drawHandle` mirrors `_drawNote`'s number draw, clipped to the
-  box), only in dark `GLABEL_COLOR` for contrast against the accent fill. The `from` label
+  box). The label color is luminance-adaptive (`labelColorFor`, shared with note numbers):
+  black or white for maximum contrast against the group's accent fill, tracking its hover
+  brightening — so the near-blue violet accent now reads white instead of a barely-legible dark.
+  The `from` label
   is prefixed with a one-char **shape glyph** (`SHAPE_GLYPHS`: Linear `-`, Ease in `/`,
   Ease out `\`, S-curve `~`) so the group's easing type stays legible on the start box once
   the tool window closes (e.g. `~64`). Geometry/hit-test
