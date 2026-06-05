@@ -212,6 +212,8 @@ in `index.html` — keep it in sync when adding or changing shortcuts.
 `<ph-toolbar>` custom element. Items:
 Load MusicXML | Load project | Save project | Undo | Redo |
 Stop | Play/Pause | Speed | Time | Snap grid | Vel. curve |
+Re-strike (gap dropdown, `RESTRIKE_OPTIONS` 0–80 ms, default 60; 0 = Off; drives
+`state.setRestrikeGap`, device-scoped — see engine/CLAUDE.md) |
 MIDI out: Connect button (hidden once connected) + port dropdown
 
 ---
