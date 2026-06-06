@@ -54,19 +54,19 @@
     #pedal-container {
       flex: 0 0 100px;
       min-height: 0;
-      border-top: 1px solid #555;
+      border-top: 1px solid #444;
     }
 
     #minimap-container {
       flex: 0 0 75px;
       min-height: 0;
-      border-top: 1px solid #555;
+      border-top: 1px solid #444;
     }
 
     #status {
       flex: 0 0 20px;
       background: #111;
-      border-top: 1px solid #555;
+      border-top: 1px solid #444;
       font-size: 11px;
       color: #888;
       display: flex;
@@ -87,7 +87,7 @@
     }
     .tool-window-title {
       background: #222;
-      padding: 3px 4px;
+      padding: 4px 8px;
       font-size: 11px;
       color: #888;
       border-bottom: 1px solid #333;
@@ -109,11 +109,10 @@
     .velocity-grid button {
       border-style: solid;
       color: #fff;
-      font: 11px monospace;
-      padding: 4px 0;
+      font: 12px monospace;
+      padding: 4px 4px 4px 0;
       cursor: pointer;
       text-align: right;
-      padding-right: 4px;
       min-width: 34px;
     }
     .delta-grid {
@@ -122,16 +121,16 @@
     }
     .delta-btn {
       background: #222;
-      border: 1px solid #444;
-      color: #ddd;
+      border: 1px solid #666;
+      color: #fff;
       font: 12px monospace;
       padding: 4px 8px;
       cursor: pointer;
       min-width: 34px;
       text-align: center;
     }
-    .delta-btn:hover { background: #333; border-color: #888; }
-    .shape-row { display: flex; gap: 2px; margin-bottom: 6px; }
+    .delta-btn:hover { background: #333; border-color: #bbb; }
+    .shape-row { display: flex; gap: 2px; margin-bottom: 5px; }
     .shape-row .delta-btn.sel { background: #333; border-color: #fff; color: #fff; }
 
     /* Help overlay */
@@ -144,19 +143,19 @@
       background: #111;
       border: 1px solid #444;
       font: 12px monospace;
-      color: #ddd;
+      color: #fff;
       max-height: 90vh;
       overflow-y: auto;
     }
     .help-overlay-title {
       background: #222;
-      padding: 4px 10px;
+      padding: 4px 8px;
       font-size: 11px;
       color: #888;
       border-bottom: 1px solid #333;
       user-select: none;
     }
-    .help-overlay-body { padding: 8px 12px; }
+    .help-overlay-body { padding: 5px; }
     .help-section { margin: 0 0 10px; }
     .help-section:last-child { margin-bottom: 0; }
     .help-section h4 {
@@ -539,7 +538,7 @@
     body.appendChild(vcCanvas);
 
     const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:4px';
+    btnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:5px';
     const resetBtn = document.createElement('button');
     resetBtn.className = 'delta-btn';
     resetBtn.textContent = 'Reset all';
