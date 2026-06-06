@@ -107,7 +107,7 @@
       gap: 2px;
     }
     .velocity-grid button {
-      border-style: solid;
+      border: 1px solid;
       color: #fff;
       font: 12px monospace;
       padding: 4px 4px 4px 0;
@@ -653,7 +653,9 @@
   function styleVelBtn(btn, v, mode) {
     btn.style.background  = noteHSL(v, mode === 'normal' ? 'normal' : 'hovered');
     btn.style.borderColor = mode === 'selected' ? '#fff' : mode === 'hover' ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)';
-    btn.style.borderWidth = mode === 'selected' ? '2px' : '1px';
+    // Draw the selected emphasis with an inset shadow rather than a thicker
+    // border so the button's box size stays fixed and the grid never reflows.
+    btn.style.boxShadow  = mode === 'selected' ? 'inset 0 0 0 1px #fff' : 'none';
   }
 
   function makeVelBtn(v) {
