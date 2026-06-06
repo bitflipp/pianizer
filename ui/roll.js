@@ -99,6 +99,14 @@ const COL_RECT_STROKE = 'rgba(92,200,200,0.55)';
 const COL_RECT_RM_FILL   = 'rgba(220,70,70,0.12)';
 const COL_RECT_RM_STROKE = 'rgba(220,70,70,0.6)';
 
+// Off-screen selection indicators: outward-pointing triangles drawn at the roll's
+// content edges for selected notes that have scrolled out of view, so a selection
+// can never be silently forgotten off-screen.
+const COL_OFFSCREEN        = '#ffffff';
+const COL_OFFSCREEN_STROKE = 'rgba(0,0,0,0.7)';  // outline so markers read against light notes
+const OFFSCREEN_SIZE    = 9;  // triangle depth (px, perpendicular to the edge)
+const OFFSCREEN_HALF    = 6;  // triangle base half-width (px, along the edge)
+
 const DRAG_THRESHOLD    = 6;
 const EDGE_THRESHOLD    = 6;
 const HANDLE_WIDTH      = 6;
@@ -241,6 +249,7 @@ export class PianoRoll {
     this._drawGrid();
     this._drawNotes();
     this._drawRectSelection();
+    this._drawOffscreenSelection();
     this._drawLaneReticles();
     this._drawPlayhead();
     this._drawRuler();
@@ -938,6 +947,71 @@ export class PianoRoll {
     ctx.lineWidth = 1;
     ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1 - 1, y2 - y1 - 1);
     ctx.restore();
+  }
+
+  // Markers at the roll's content edges pointing toward selected notes that have
+  // scrolled out of view. Each off-screen selected note contributes one outward
+  // triangle at the nearest edge, placed at the note's cross-axis position (clamped
+  // into view) so the markers roughly map where the hidden selection sits — high up
+  // the left edge means high-pitched notes off to the left, etc. Horizontal overflow
+  // takes precedence: a note off only vertically marks the top/bottom edge. Markers
+  // are deduplicated into 4 px cross-axis buckets per edge, so a large off-screen
+  // selection reads as a continuous band rather than overdrawing thousands of glyphs.
+  _drawOffscreenSelection() {
+    const sel = state.selectedNoteIndices;
+    if (sel.size === 0) return;
+
+    const left = KEY_WIDTH, right = this.canvas.width;
+    const top  = HEADER_HEIGHT, bottom = this.canvas.height;
+
+    const seen  = new Set();
+    const marks = [];  // { edge: 'L'|'R'|'T'|'B', pos }  (pos = cross-axis pixel)
+    for (const i of sel) {
+      const n = state.notes[i];
+      if (!n) continue;
+      const nx1 = this.tickToX(n.startTick);
+      const nx2 = nx1 + this._noteWidthPx(n);
+      const ny1 = this.pitchToY(n.pitch);
+      const ny2 = ny1 + this.noteHeight;
+
+      let edge, pos;
+      if      (nx2 < left)   { edge = 'L'; pos = (ny1 + ny2) / 2; }
+      else if (nx1 > right)  { edge = 'R'; pos = (ny1 + ny2) / 2; }
+      else if (ny2 < top)    { edge = 'T'; pos = (nx1 + nx2) / 2; }
+      else if (ny1 > bottom) { edge = 'B'; pos = (nx1 + nx2) / 2; }
+      else continue;  // visible — intersects both axes
+
+      pos = (edge === 'L' || edge === 'R')
+        ? Math.max(top + OFFSCREEN_HALF,  Math.min(bottom - OFFSCREEN_HALF, pos))
+        : Math.max(left + OFFSCREEN_HALF, Math.min(right - OFFSCREEN_HALF,  pos));
+      const bucket = edge + Math.round(pos / 4);
+      if (seen.has(bucket)) continue;
+      seen.add(bucket);
+      marks.push({ edge, pos });
+    }
+    if (!marks.length) return;
+
+    const { ctx } = this;
+    const s = OFFSCREEN_SIZE, h = OFFSCREEN_HALF;
+    ctx.fillStyle   = COL_OFFSCREEN;
+    ctx.strokeStyle = COL_OFFSCREEN_STROKE;
+    ctx.lineWidth   = 1;
+    ctx.lineJoin    = 'miter';
+    for (const { edge, pos } of marks) {
+      ctx.beginPath();
+      if (edge === 'L') {
+        ctx.moveTo(left + 1, pos);  ctx.lineTo(left + 1 + s, pos - h);  ctx.lineTo(left + 1 + s, pos + h);
+      } else if (edge === 'R') {
+        ctx.moveTo(right - 1, pos); ctx.lineTo(right - 1 - s, pos - h); ctx.lineTo(right - 1 - s, pos + h);
+      } else if (edge === 'T') {
+        ctx.moveTo(pos, top + 1);   ctx.lineTo(pos - h, top + 1 + s);   ctx.lineTo(pos + h, top + 1 + s);
+      } else {
+        ctx.moveTo(pos, bottom - 1); ctx.lineTo(pos - h, bottom - 1 - s); ctx.lineTo(pos + h, bottom - 1 - s);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   // Returns a Set of note indices whose canvas rects overlap the current selection rect.

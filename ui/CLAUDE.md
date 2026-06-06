@@ -78,6 +78,20 @@ view auto-pans (a `requestAnimationFrame` loop) at a speed ramping to `AUTO_PAN_
 edge; the rect anchor is held in world coords (`_rectSelStartWorld`) so the selection keeps
 growing past the visible area.
 
+### Off-screen selection indicators
+
+So a selection scrolled out of view is never silently forgotten, `_drawOffscreenSelection`
+draws small **outward-pointing white triangles** at the roll's content edges — one per
+selected note that has scrolled off-screen, placed at the note's cross-axis position (clamped
+into view) so the markers roughly map where the hidden selection sits (high on the left edge =
+high-pitched notes off to the left, etc.). **Horizontal overflow takes precedence**: a note off
+only vertically marks the top/bottom edge. Markers are deduplicated into 4 px cross-axis buckets
+per edge (`OFFSCREEN_SIZE` / `OFFSCREEN_HALF` / `COL_OFFSCREEN`, with a dark outline
+`COL_OFFSCREEN_STROKE` so they stay legible over light notes at the edge), so a large
+off-screen selection reads as a continuous band rather than overdrawing thousands of glyphs. It reflects the
+**committed** selection (`state.selectedNoteIndices`), not the live rect-drag preview. Drawn
+after notes/rect-band and before the ruler/keys, so those strips paint over any edge bleed.
+
 ---
 
 ## Note Coloring
