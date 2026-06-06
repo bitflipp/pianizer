@@ -101,11 +101,6 @@
     .tool-window-body {
       padding: 5px;
     }
-    .tool-info {
-      padding: 2px 0 5px;
-      color: #888;
-      font-size: 11px;
-    }
     .velocity-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
@@ -716,8 +711,8 @@
     return row;
   }
 
-  // Builds the shared two-click velocity-ramp picker: the shape selector row, an
-  // info line, and the 5–120 velocity grid. The first click sets the start
+  // Builds the shared two-click velocity-ramp picker: the shape selector row and
+  // the 5–120 velocity grid. The first click sets the start
   // velocity, the second the end; then onPick(from, to, shape) fires. Shared by
   // the curve-group tool [1] and the curve-group menu so creating and editing a
   // ramp look and feel identical.
@@ -734,11 +729,6 @@
       if (onShapeCommit) onShapeCommit(name);
     }));
 
-    const info = document.createElement('div');
-    info.className = 'tool-info';
-    info.textContent = 'Select start velocity';
-    body.appendChild(info);
-
     const grid = document.createElement('div');
     grid.className = 'velocity-grid';
     for (let v = 5; v <= 120; v += 5) {
@@ -749,7 +739,6 @@
           firstValue = v;
           btn.dataset.sel = '1';
           styleVelBtn(btn, v, 'selected');
-          info.textContent = `From ${firstValue} — select end velocity`;
         } else if (v !== firstValue) {
           onPick(firstValue, v, shape);
         }
