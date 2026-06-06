@@ -93,9 +93,11 @@ export function noteHSL(velocity, displayState) {
   return `hsl(213,${Math.round(s)}%,${Math.round(l)}%)`;
 }
 
-// Rectangle-selection rubber band
+// Rectangle-selection rubber band (teal = add, red = remove)
 const COL_RECT_FILL   = 'rgba(92,200,200,0.1)';
 const COL_RECT_STROKE = 'rgba(92,200,200,0.55)';
+const COL_RECT_RM_FILL   = 'rgba(220,70,70,0.12)';
+const COL_RECT_RM_STROKE = 'rgba(220,70,70,0.6)';
 
 const DRAG_THRESHOLD    = 6;
 const EDGE_THRESHOLD    = 6;
@@ -148,6 +150,7 @@ export class PianoRoll {
     this._rectSelCurrent     = null;
     this._rectDidDrag        = false;
     this._rectHitSet         = null;
+    this._rectSelMode        = 'add';   // 'add' (bare) | 'remove' (Ctrl) | 'inert' (Alt/Shift)
     this._didRectSel         = false;   // suppress the click event that follows mouseup
 
     // Auto-pan during rect selection
@@ -497,15 +500,20 @@ export class PianoRoll {
   }
 
   // Returns the visible selection set, accounting for an in-progress rect drag:
-  // during a drag the rect hits are previewed as additions to the committed
-  // selection. `addingHits` is the subset that would be newly added on commit.
+  // during a teal (add) drag the rect hits preview as additions to the committed
+  // selection; during a red (remove) drag they preview as subtractions. `addingHits`
+  // / `removingHits` are the subsets that would change on commit (only one is set).
   _effectiveSelection() {
     const committed = state.selectedNoteIndices;
     const inDrag    = this._rectSelActive && this._rectDidDrag && this._rectHitSet !== null;
-    if (!inDrag) return { set: committed, addingHits: null, inDrag: false };
+    if (!inDrag) return { set: committed, addingHits: null, removingHits: null, inDrag: false };
 
+    if (this._rectSelMode === 'remove') {
+      const set = new Set([...committed].filter(i => !this._rectHitSet.has(i)));
+      return { set, addingHits: null, removingHits: this._rectHitSet, inDrag: true };
+    }
     const set = new Set([...committed, ...this._rectHitSet]);
-    return { set, addingHits: this._rectHitSet, inDrag: true };
+    return { set, addingHits: this._rectHitSet, removingHits: null, inDrag: true };
   }
 
   _drawNote(i, n, effective, hasSel) {
@@ -517,12 +525,20 @@ export class PianoRoll {
 
     const selected = effective.set.has(i);
     // willAdd: entering selection via current rect drag (not already committed)
-    const willAdd  = effective.inDrag && effective.addingHits.has(i)
+    const willAdd  = effective.inDrag && effective.addingHits
+                     && effective.addingHits.has(i)
                      && !state.selectedNoteIndices.has(i);
+    // willRemove: leaving the selection via a red deselect rect (currently committed)
+    const willRemove = effective.inDrag && effective.removingHits
+                       && effective.removingHits.has(i)
+                       && state.selectedNoteIndices.has(i);
     const hovered  = !effective.inDrag && i === this._hoverNoteIdx;
 
     let colorState = 'normal';
-    if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
+    // willRemove dims explicitly (independent of hasSel — removing the whole
+    // selection empties the effective set, but departing notes should still dim).
+    if (willRemove) colorState = 'dimmed';
+    else if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
     else if (hovered || willAdd) colorState = 'hovered';
 
     // Curve-group members always read as a unit in the group's accent color,
@@ -780,6 +796,7 @@ export class PianoRoll {
     this._rectSelCurrent    = null;
     this._rectDidDrag       = false;
     this._rectHitSet        = null;
+    this._rectSelMode       = 'add';
   }
 
   // Returns {vx, vy} pixels/frame for the given canvas position.
@@ -846,15 +863,16 @@ export class PianoRoll {
   }
 
   _drawRectSelection() {
-    if (!this._rectSelActive || !this._rectDidDrag) return;
+    // 'inert' (Alt/Shift) drags are swallowed for click-suppression only — no band.
+    if (!this._rectSelActive || !this._rectDidDrag || this._rectSelMode === 'inert') return;
     const { x1, y1, x2, y2 } = this._selectionRect();
     const { ctx, canvas } = this;
     ctx.save();
     ctx.beginPath();
     ctx.rect(KEY_WIDTH, HEADER_HEIGHT, canvas.width - KEY_WIDTH, canvas.height - HEADER_HEIGHT);
     ctx.clip();
-    ctx.fillStyle   = COL_RECT_FILL;
-    ctx.strokeStyle = COL_RECT_STROKE;
+    ctx.fillStyle   = this._rectSelMode === 'remove' ? COL_RECT_RM_FILL   : COL_RECT_FILL;
+    ctx.strokeStyle = this._rectSelMode === 'remove' ? COL_RECT_RM_STROKE : COL_RECT_STROKE;
     ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
     ctx.lineWidth = 1;
     ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1 - 1, y2 - y1 - 1);
@@ -962,11 +980,19 @@ export class PianoRoll {
       return;
     }
 
+    // Modifier picks the rect mode. Alt and Shift are reserved for other gestures
+    // (Alt = insert note on click, Shift = pitch-unlock on note-body drags) and are
+    // easy to leave held by accident, so they make the rect 'inert' — it still tracks
+    // the drag (to suppress the trailing click) but draws/selects nothing. Ctrl gives
+    // the red deselect rect; a bare drag the teal add rect.
     this._rectSelActive     = true;
     this._rectSelStart      = pos;
     this._rectSelStartWorld = { tick: this.xToTick(pos.x), worldY: pos.y - HEADER_HEIGHT + this.scrollY };
     this._rectSelCurrent    = pos;
     this._rectDidDrag       = false;
+    this._rectSelMode       = (e.altKey || e.shiftKey) ? 'inert'
+                            : (e.ctrlKey || e.metaKey) ? 'remove'
+                            : 'add';
   }
 
   _onMouseMove(e) {
@@ -1070,7 +1096,7 @@ export class PianoRoll {
         const dy = pos.y - this._rectSelStart.y;
         if (Math.hypot(dx, dy) > DRAG_THRESHOLD) this._rectDidDrag = true;
       }
-      if (this._rectDidDrag) {
+      if (this._rectDidDrag && this._rectSelMode !== 'inert') {
         this._autoPanMousePos = pos;
         const { vx, vy } = this._autoPanVelocity(pos);
         if (vx !== 0 || vy !== 0) this._startAutoPan(); else this._stopAutoPan();
@@ -1235,14 +1261,20 @@ export class PianoRoll {
     if (!this._rectSelActive || e.button !== 0) return;
 
     const didDrag = this._rectDidDrag;
-    const hits    = didDrag ? [...this._notesInRect()] : [];
+    const mode    = this._rectSelMode;
+    const hits    = (didDrag && mode !== 'inert') ? this._notesInRect() : new Set();
     this._cancelRectSel();
 
     if (didDrag) {
-      this._didRectSel = true; // suppress the click event
-      // Rect selection always adds to the current selection.
-      state.setSelection([...new Set([...state.selectedNoteIndices, ...hits])]);
-      this.render();
+      this._didRectSel = true; // suppress the click event (incl. the inert case)
+      if (mode === 'remove') {
+        state.setSelection([...state.selectedNoteIndices].filter(i => !hits.has(i)));
+        this.render();
+      } else if (mode === 'add') {
+        state.setSelection([...new Set([...state.selectedNoteIndices, ...hits])]);
+        this.render();
+      }
+      // 'inert' (Alt/Shift): drag swallowed, selection untouched, click suppressed
     }
     // Click without drag: _onClick fires separately and handles it
   }
@@ -1266,12 +1298,20 @@ export class PianoRoll {
     const ni = this._noteAtPos(pos);
     if (ni !== -1) {
       e.stopPropagation();
-      // Clicking a note adds it to the selection; removal is via undo, not a click.
-      if (!state.selectedNoteIndices.has(ni)) {
+      // Ctrl+click removes that note from the selection; a plain click adds it.
+      if (e.ctrlKey || e.metaKey) {
+        if (state.selectedNoteIndices.has(ni)) {
+          state.setSelection([...state.selectedNoteIndices].filter(i => i !== ni));
+        }
+      } else if (!state.selectedNoteIndices.has(ni)) {
         state.setSelection([...state.selectedNoteIndices, ni]);
       }
       return;
     }
+
+    // Ctrl+click on empty is a no-op: Ctrl means "remove from selection", so it
+    // must not clear everything (which would undo the deselection work in progress).
+    if (e.ctrlKey || e.metaKey) return;
 
     // Click on empty space: clear the selection and seek the playhead.
     if (state.selectedNoteIndices.size > 0) state.setSelection([]);
