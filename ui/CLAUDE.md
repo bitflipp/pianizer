@@ -178,7 +178,7 @@ by `roll.js`.
 
 **Controls (identical for both lanes):**
 - `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to roll)
-- `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±11 px, or to the lane's top/bottom edges, 25%/50%/75% reference lines, and the lane baseline)
+- `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±11 px, or to the lane's top/bottom edges, eighth-of-range reference lines (12.5%…87.5%), and the lane baseline)
 - `Left-drag point` — move an existing control point (same tick + Y snap; hold Ctrl to disable both)
 - `Right-click` — remove nearest control point
 - `Ctrl+left-click` — add control point without any snapping
@@ -186,7 +186,7 @@ by `roll.js`.
 **Right mouse button** is disabled globally (`window contextmenu` prevention) except
 on the two curve lane canvases (point removal).
 
-### Tempo Lane (100 px, above pedal lane)
+### Tempo Lane (150 px, above pedal lane)
 **Monotone cubic** tempo ratio curve (PCHIP — see engine/CLAUDE.md). Control points are
 `{tick, value}` pairs (value 0.8–1.2).
 - Centre of lane = ratio 1.0 (baseline tempo); top = ×1.2, bottom = ×0.8
@@ -196,7 +196,7 @@ on the two curve lane canvases (point removal).
   on the curve. The pedal lane has no `makeSampler`, so it draws straight segments.
 - Hovering shows a dashed vertical reticle in the roll
 
-### Pedal Lane (100 px, below tempo lane)
+### Pedal Lane (150 px, below tempo lane)
 Linear sustain pedal curve. Control points are `{tick, value}` pairs (value 0–1).
 - Top of lane = CC64 127 (fully depressed), bottom = CC64 0 (fully released)
 - Curve is drawn as a connected teal polyline; control points shown as small squares
