@@ -45,7 +45,7 @@ function drawRubatoLabels(ctx, canvas, lane) {
   ctx.rect(KEY_WIDTH, 0, canvas.width - KEY_WIDTH, canvas.height);
   ctx.clip();
 
-  ctx.font = '10px monospace';
+  ctx.font = '9px monospace';
   ctx.textAlign = 'center';
 
   for (const region of regions) {

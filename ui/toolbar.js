@@ -16,7 +16,7 @@ const STYLE = `
     display: flex;
     align-items: center;
     gap: 5px;
-    padding: 5px 5px;
+    padding: 5px;
     font: 12px monospace;
     color: #fff;
     flex-wrap: wrap;
@@ -25,14 +25,14 @@ const STYLE = `
     background: #222;
     border: 1px solid #666;
     color: #fff;
-    padding: 3px 8px;
+    padding: 4px 8px;
     font: 12px monospace;
     cursor: pointer;
   }
   button:hover:not(:disabled) { background: #333; border-color: #bbb; }
   button:disabled { opacity: 0.3; cursor: default; }
   .transport { display: flex; gap: 6px; align-items: center; }
-  .time { font-size: 13px; letter-spacing: 1px; min-width: 56px; }
+  .time { font-size: 12px; letter-spacing: 1px; min-width: 56px; }
   select {
     background: #222;
     color: #fff;
