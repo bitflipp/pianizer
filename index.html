@@ -944,7 +944,8 @@
       midiOut.stopPlayback();
       playStartPieceTime = currentTime;
       playStartPerfMs    = performance.now();
-      midiOut.schedulePlayback(currentTime, getPieceTime);
+      midiOut.schedulePlayback(currentTime, getPieceTime,
+        () => { playStartPerfMs = performance.now(); });
     } else {
       state.playSpeed = newSpeed;
       state.dispatch('playspeedchanged');
@@ -957,7 +958,11 @@
     else                     state.setPlayheadTime(playAnchor);
     playStartPieceTime = playAnchor;
     playStartPerfMs    = performance.now();
-    midiOut.schedulePlayback(playStartPieceTime, getPieceTime);
+    // schedulePlayback's per-note prep can take ~100ms; rebaseline the clock once
+    // it's done (see schedulePlayback's onReady) so the playhead and the first
+    // scheduled notes both start from playStartPieceTime, not 100ms in.
+    midiOut.schedulePlayback(playStartPieceTime, getPieceTime,
+      () => { playStartPerfMs = performance.now(); });
     state.setPlaying(true);
     tick();
   }
@@ -997,7 +1002,8 @@
     midiOut.stopPlayback();
     playStartPieceTime = e.detail.time;
     playStartPerfMs    = performance.now();
-    midiOut.schedulePlayback(playStartPieceTime, getPieceTime);
+    midiOut.schedulePlayback(playStartPieceTime, getPieceTime,
+      () => { playStartPerfMs = performance.now(); });
   });
 
   state.addEventListener('loaded', () => { playAnchor = null; });
