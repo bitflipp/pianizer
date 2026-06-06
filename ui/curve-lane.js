@@ -33,6 +33,12 @@ const COL_GRID_SUB  = '#222';
 const COL_GRID_BEAT = '#2a2a2a';
 const COL_GRID_BAR  = '#3a3a3a';
 
+const COL_REF_BASE  = '#2d2d2d'; // baseline reference line (range midpoint)
+const COL_REF_OTHER = '#222222'; // remaining eighth reference lines
+
+const PT_SIZE       = 6;  // control-point square (px)
+const PT_SIZE_HOT   = 8;  // hovered/dragged control-point square (px)
+
 // Reference lines drawn across the value range and used as Y-snap targets.
 // Eighths of the range (plus the edges and baseline) — the lanes are sized
 // tall enough (see #tempo/#pedal-container height) that these stay >Y_SNAP_RADIUS
@@ -83,7 +89,7 @@ export class CurveLane {
     const { valueMin, valueMax } = this.config;
     ctx.lineWidth = 1;
     for (const frac of REF_FRACS) {
-      ctx.strokeStyle = frac === 0.5 ? '#2d2d2d' : '#222222';
+      ctx.strokeStyle = frac === 0.5 ? COL_REF_BASE : COL_REF_OTHER;
       const y = this._valueToY(valueMin + frac * (valueMax - valueMin));
       ctx.beginPath();
       ctx.moveTo(KEY_WIDTH, y);
@@ -168,10 +174,10 @@ export class CurveLane {
       const py = this._valueToY(pts[i].value);
       if (i === hotIdx) {
         ctx.fillStyle = colorHot;
-        ctx.fillRect(px - 4, py - 4, 8, 8);
+        ctx.fillRect(px - PT_SIZE_HOT / 2, py - PT_SIZE_HOT / 2, PT_SIZE_HOT, PT_SIZE_HOT);
       } else {
         ctx.fillStyle = color;
-        ctx.fillRect(px - 3, py - 3, 6, 6);
+        ctx.fillRect(px - PT_SIZE / 2, py - PT_SIZE / 2, PT_SIZE, PT_SIZE);
       }
     }
 
@@ -264,6 +270,20 @@ export class CurveLane {
     return { value };
   }
 
+  // Resolve a pointer position into the {tick, value} an add/move should land on:
+  // tick from x (grid-snapped unless Ctrl), value from y (snapped to a candidate
+  // unless Ctrl). `excludePoint` keeps a dragged point from snapping to itself.
+  _snappedTickValue(pos, e, excludePoint = null) {
+    const rawTick = Math.max(0, Math.round(this.roll.xToTick(pos.x)));
+    const tick    = e.ctrlKey ? rawTick : state.snapTick(rawTick);
+    let   value   = this._yToValue(pos.y);
+    if (!e.ctrlKey) {
+      const { value: snapped } = this._snapCandidate(pos, tick, excludePoint);
+      if (snapped !== null) value = snapped;
+    }
+    return { tick, value };
+  }
+
   _nearestPointIdx(pos) {
     const pts = this._points;
     let closest = -1, closestDist = HIT_RADIUS;
@@ -310,13 +330,7 @@ export class CurveLane {
       this._dragStarted = true;
       state.beginCurvePointMove();
     }
-    const rawTick = Math.max(0, Math.round(this.roll.xToTick(pos.x)));
-    let tick  = e.ctrlKey ? rawTick : state.snapTick(rawTick);
-    let value = this._yToValue(pos.y);
-    if (!e.ctrlKey) {
-      const { value: snapped } = this._snapCandidate(pos, tick, this._dragPoint);
-      if (snapped !== null) value = snapped;
-    }
+    const { tick, value } = this._snappedTickValue(pos, e, this._dragPoint);
     this.config.movePoint(this._dragPoint, tick, value);
     // Keep hover state pinned to the dragged point so the dashed reticle and
     // hot fill follow it even when the cursor leaves the lane mid-drag.
@@ -371,13 +385,7 @@ export class CurveLane {
     // Skip click-to-add when the press landed on an existing point: that's
     // either a no-threshold drag attempt or a misclick — never an add.
     if (this._nearestPointIdx(pos) !== -1) return;
-    const rawTick = Math.max(0, Math.round(this.roll.xToTick(pos.x)));
-    const tick    = e.ctrlKey ? rawTick : state.snapTick(rawTick);
-    let   value   = this._yToValue(pos.y);
-    if (!e.ctrlKey) {
-      const { value: snapped } = this._snapCandidate(pos, tick);
-      if (snapped !== null) value = snapped;
-    }
+    const { tick, value } = this._snappedTickValue(pos, e);
     this.config.addPoint(tick, value);
   }
 
