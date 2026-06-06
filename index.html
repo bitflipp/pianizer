@@ -302,8 +302,10 @@
     win.style.visibility = 'hidden';
     document.body.appendChild(win);
     const rect = win.getBoundingClientRect();
-    win.style.left = Math.min(Math.max(PAD, _mouseX), window.innerWidth  - rect.width  - PAD) + 'px';
-    win.style.top  = Math.min(Math.max(PAD, _mouseY), window.innerHeight - rect.height - PAD) + 'px';
+    const left = _mouseX - rect.width  / 2;
+    const top  = _mouseY - rect.height / 2;
+    win.style.left = Math.min(Math.max(PAD, left), window.innerWidth  - rect.width  - PAD) + 'px';
+    win.style.top  = Math.min(Math.max(PAD, top),  window.innerHeight - rect.height - PAD) + 'px';
     win.style.visibility = 'visible';
   }
 
