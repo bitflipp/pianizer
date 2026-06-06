@@ -38,10 +38,11 @@ const COL_REF_OTHER = '#222222'; // remaining eighth reference lines
 const PT_SIZE       = 6;  // control-point square (px)
 const PT_SIZE_HOT   = 8;  // hovered/dragged control-point square (px)
 
-// Reference lines drawn across the value range and used as Y-snap targets.
+// Default reference lines drawn across the value range and used as Y-snap targets.
 // Eighths of the range (plus the edges and baseline) — the lanes are sized
 // tall enough (see #tempo/#pedal-container height) that these stay >Y_SNAP_RADIUS
-// apart, so free placement between snap lines is still possible.
+// apart, so free placement between snap lines is still possible. A lane may
+// override this with `config.refFracs`.
 const REF_FRACS = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
 
 export class CurveLane {
@@ -50,6 +51,7 @@ export class CurveLane {
     this.ctx    = canvas.getContext('2d');
     this.roll   = roll;
     this.config = config;
+    this._refFracs = config.refFracs ?? REF_FRACS;
 
     this._isHovered     = false;
     this._hoverTick     = null;
@@ -86,7 +88,7 @@ export class CurveLane {
     ctx.fillRect(KEY_WIDTH, 0, canvas.width - KEY_WIDTH, canvas.height);
     const { valueMin, valueMax } = this.config;
     ctx.lineWidth = 1;
-    for (const frac of REF_FRACS) {
+    for (const frac of this._refFracs) {
       ctx.strokeStyle = frac === 0.5 ? COL_REF_BASE : COL_REF_OTHER;
       const y = this._valueToY(valueMin + frac * (valueMax - valueMin));
       ctx.beginPath();
@@ -258,7 +260,7 @@ export class CurveLane {
     const refLines = [
       valueMin,
       emptyValue,
-      ...REF_FRACS.map(f => valueMin + f * (valueMax - valueMin)),
+      ...this._refFracs.map(f => valueMin + f * (valueMax - valueMin)),
       valueMax,
     ];
     for (const candidate of refLines) {

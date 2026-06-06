@@ -177,7 +177,7 @@ colors are read from `lane.config.reticleColor/reticleHotColor` by `roll.js`.
 
 **Controls (identical for both lanes):**
 - `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to roll)
-- `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±11 px, or to the lane's top/bottom edges, eighth-of-range reference lines (12.5%…87.5%), and the lane baseline)
+- `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±11 px, or to the lane's top/bottom edges, the range reference lines (`config.refFracs`: eighths for tempo, coarser quarters for pedal), and the lane baseline)
 - `Left-drag point` — move an existing control point (same tick + Y snap; hold Ctrl to disable both)
 - `Right-click` — remove nearest control point
 - `Ctrl+left-click` — add control point without any snapping
@@ -195,7 +195,7 @@ on the two curve lane canvases (point removal).
   on the curve. The pedal lane has no `makeSampler`, so it draws straight segments.
 - Hovering shows a dashed vertical reticle in the roll
 
-### Pedal Lane (150 px, below tempo lane)
+### Pedal Lane (75 px, below tempo lane)
 Linear sustain pedal curve. Control points are `{tick, value}` pairs (value 0–1).
 - Top of lane = CC64 127 (fully depressed), bottom = CC64 0 (fully released)
 - Curve is drawn as a connected teal polyline; control points shown as small squares
