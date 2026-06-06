@@ -389,7 +389,7 @@ export class PianoRoll {
       this._drawNote(i, n, effective, hasSel);
     }
 
-    this._drawCurveGroups();
+    this._drawCurveGroups(effective.inDrag);
 
     // Shift (edit modifier) held: draw resize handles on the note under the cursor so
     // its grippable edges are explicit. Locked group notes never set these hover indices
@@ -459,19 +459,21 @@ export class PianoRoll {
     };
   }
 
-  _drawCurveGroups() {
+  _drawCurveGroups(inDrag) {
     if (!state.curveGroups.length) return;
     for (const g of state.curveGroups) {
-      for (const hd of this._groupHandles(g)) this._drawHandle(hd);
+      for (const hd of this._groupHandles(g)) this._drawHandle(hd, inDrag);
     }
   }
 
   // The group's endpoint label is the same box-label draw as a note's velocity
   // number — its color adapts to the group's accent fill (labelColorFor) for
   // maximum contrast, mirroring the fill's hover brightening so the two stay in sync.
-  _drawHandle(hd) {
-    const fill = groupHSL(GROUP_COLORS[hd.groupId % GROUP_COLORS.length],
-                          hd.groupId === this._hoverGroupId);
+  // The hover brightening is suppressed during a rect-select drag, matching _drawNote
+  // (locked members never join the selection, so they must not react to the rubber band).
+  _drawHandle(hd, inDrag) {
+    const hovered = !inDrag && hd.groupId === this._hoverGroupId;
+    const fill = groupHSL(GROUP_COLORS[hd.groupId % GROUP_COLORS.length], hovered);
     this._drawNoteLabel(hd.nx, hd.ny + 1, hd.w, hd.label, labelColorFor(fill));
   }
 
