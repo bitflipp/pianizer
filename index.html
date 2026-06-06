@@ -275,6 +275,15 @@
     return false;
   }
 
+  // Guard shared by the velocity / duration / delta / curve-group tools: they
+  // need a non-empty selection with no locked curve-group members. Flashes
+  // `lockedMsg` and returns false when the selection can't be edited.
+  function selectionEditable(lockedMsg) {
+    if (state.selectedNoteIndices.size === 0) return false;
+    if (selectionHasLocked()) { flashStatus(lockedMsg); return false; }
+    return true;
+  }
+
   // ── Tool window system ────────────────────────────────────────────
   let _currentTool = null;
   let _velCurveWin = null;
@@ -658,8 +667,7 @@
 
   // ── Tool: Note velocity [2] ───────────────────────────────────────
   function openVelocityTool() {
-    if (state.selectedNoteIndices.size === 0) return;
-    if (selectionHasLocked()) { flashStatus('Selection has locked curve-group notes — dissolve the group to edit'); return; }
+    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to edit')) return;
     openToolWindow('Note velocity', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'velocity-grid';
@@ -747,8 +755,7 @@
   }
 
   function openCurveGroupTool() {
-    if (state.selectedNoteIndices.size === 0) return;
-    if (selectionHasLocked()) { flashStatus('Selection has locked curve-group notes — dissolve the group to re-scale'); return; }
+    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to re-scale')) return;
 
     const indices = [...state.selectedNoteIndices];
 
@@ -762,8 +769,7 @@
 
   // ── Tool: Duration delta [3] ─────────────────────────────────────
   function openDurationDeltaTool() {
-    if (state.selectedNoteIndices.size === 0) return;
-    if (selectionHasLocked()) { flashStatus('Selection has locked curve-group notes — dissolve the group to edit'); return; }
+    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to edit')) return;
     openToolWindow('Duration delta', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'delta-grid';
@@ -784,8 +790,7 @@
 
   // ── Tool: Velocity delta [4] ─────────────────────────────────────
   function openDeltaTool() {
-    if (state.selectedNoteIndices.size === 0) return;
-    if (selectionHasLocked()) { flashStatus('Selection has locked curve-group notes — dissolve the group to edit'); return; }
+    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to edit')) return;
     openToolWindow('Velocity delta', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'delta-grid';

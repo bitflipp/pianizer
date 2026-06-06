@@ -9,7 +9,7 @@ custom element both listen to these events.
 **Communication flow:**
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
   `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `midiportschanged`,
-  `undochanged`, `bookmarkschanged`, `velocitycurvechanged`, `playspeedchanged`,
+  `undochanged`, `bookmarkschanged`, `playspeedchanged`,
   `restrikegapchanged`, `groupschanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle

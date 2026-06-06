@@ -1,6 +1,8 @@
 // ui/curve-lane.js
 // Base class for the tempo and pedal curve editors.
-// Each lane edits a piecewise-linear curve of {tick, value} control points.
+// Each lane edits a curve of {tick, value} control points — drawn piecewise-linear
+// by default, or smooth when the config supplies a `makeSampler` (the tempo lane's
+// monotone cubic).
 //
 // Config shape:
 //   label           string   — 'PED' | 'TEMPO'
