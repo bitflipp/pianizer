@@ -172,9 +172,8 @@ engine/CLAUDE.md). On the roll:
 ## Curve Lanes (`curve-lane.js`, `tempo-lane.js`, `pedal-lane.js`)
 
 Both lanes share the `CurveLane` base class, parameterised via a config object (label,
-colors, value range, data accessors, add/remove/move callbacks, optional `drawAnnotations`
-hook). Lane-specific reticle colors are read from `lane.config.reticleColor/reticleHotColor`
-by `roll.js`.
+colors, value range, data accessors, add/remove/move callbacks). Lane-specific reticle
+colors are read from `lane.config.reticleColor/reticleHotColor` by `roll.js`.
 
 **Controls (identical for both lanes):**
 - `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to roll)
@@ -201,16 +200,6 @@ Linear sustain pedal curve. Control points are `{tick, value}` pairs (value 0–
 - Top of lane = CC64 127 (fully depressed), bottom = CC64 0 (fully released)
 - Curve is drawn as a connected teal polyline; control points shown as small squares
 - Hovering the lane shows a dashed vertical reticle in the roll at the cursor tick
-
-### Rubato Balance Labels (tempo lane only)
-`tempo-lane.js` supplies a `drawAnnotations` callback that finds every span between two
-consecutive control points with value exactly 1.0 and at least one non-baseline point
-between them. For each such span it computes `(curvedTime − baseTime) × 1000` and draws
-the rounded ms delta next to **every** inner non-baseline point in the region (same value,
-repeated per point — so the delta stays visible even if other points in the same gesture
-are scrolled off). Each label flips to the lane edge opposite its own point's value
-(point above 1.0 → label at bottom, point below → label at top). Green within ±1 ms,
-amber otherwise. A balanced rubato gesture reads `0 ms`.
 
 ---
 

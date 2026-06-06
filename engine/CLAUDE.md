@@ -102,10 +102,11 @@ Grid renders: sub-beat lines (faint `#222`), beat lines (`#2a2a2a`), bar lines (
 The tempo ratio follows a **monotone cubic (PCHIP / Fritsch–Carlson) spline** through the
 `tempoPoints`, not straight segments — `monotoneTangents` / `evalMonotoneCubic` in
 `state.js`. Monotone tangents (zero slope at local extrema and equal-valued runs) keep
-flats exactly flat and prevent overshoot beyond the points' own value range, so a run of
-baseline-1.0 points still maps to base time (the rubato-balance feature relies on this)
-and the ratio never escapes `[min, max]` of its neighbours. Outside the point range the
-ratio holds flat at the nearest endpoint.
+flats exactly flat and prevent overshoot beyond the points' own value range, so an anchor
+placed to return to a tempo actually holds it (a run of baseline-1.0 points maps cleanly
+to base time, no wobble approaching the flat) and the ratio never escapes `[min, max]` of
+its neighbours — the curve never injects a tempo bump you didn't draw. Outside the point
+range the ratio holds flat at the nearest endpoint.
 
 Because the integrand `1/ratio(tick)` has no closed form under a cubic, `curvedTickToTime`
 integrates each break sub-segment (bounded by `tempoMap` baseBpm steps and `tempoPoints`

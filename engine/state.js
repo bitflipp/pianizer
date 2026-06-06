@@ -753,8 +753,9 @@ function simpson(f, a, b, panels) {
 // Monotone cubic (Fritsch–Carlson / PCHIP) tangents for a [{tick, value}] curve
 // sorted by tick — one slope per point. Local extrema and equal-valued runs get
 // a zero slope, so flats stay flat and the spline never overshoots the data
-// range. That keeps the rubato baseline (value exactly 1.0) intact and the
-// ratio bounded within the points' own min/max.
+// range. That means an anchor placed to return to a tempo actually holds it
+// (no wobble approaching the flat) and the ratio stays bounded within the
+// points' own min/max — the curve never injects a tempo bump you didn't draw.
 export function monotoneTangents(pts) {
   const n = pts.length;
   if (n < 2) return n ? [0] : [];

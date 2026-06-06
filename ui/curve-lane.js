@@ -19,7 +19,6 @@
 //   addPoint        (tick, value)=>void
 //   removePoint     (index)=>void
 //   movePoint       (point, tick, value)=>void
-//   drawAnnotations (ctx, canvas, lane)=>void   — optional, called after _drawCurve
 
 import { state, snapGridTicks } from '../engine/state.js';
 import { KEY_WIDTH, canvasPos } from './dom-utils.js';
@@ -73,7 +72,6 @@ export class CurveLane {
     this._drawBackground();
     if (state.tempoMap.length) this._drawGrid();
     this._drawCurve();
-    if (this.config.drawAnnotations) this.config.drawAnnotations(ctx, canvas, this);
     this._drawPlayhead();
     this._drawLabel();
   }
