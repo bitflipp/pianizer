@@ -398,7 +398,17 @@ export class PianoRoll {
       const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
                : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
                : this._hoverNoteLeftEdge;
-      if (hi >= 0) this._drawResizeHandles(state.notes[hi]);
+      // A resize on a selected note carries the whole selection by the same tick
+      // delta (see _beginEdgeResize), so show grips on every selected note — not
+      // just the one under the cursor. Locked members never resize, so skip them.
+      if (hi >= 0 && state.selectedNoteIndices.has(hi)) {
+        for (const i of state.selectedNoteIndices) {
+          const n = state.notes[i];
+          if (n && !state.isLocked(n)) this._drawResizeHandles(n);
+        }
+      } else if (hi >= 0) {
+        this._drawResizeHandles(state.notes[hi]);
+      }
     }
 
     ctx.restore();
@@ -546,7 +556,12 @@ export class PianoRoll {
     const willRemove = effective.inDrag && effective.removingHits
                        && effective.removingHits.has(i)
                        && state.selectedNoteIndices.has(i);
-    const hovered  = !effective.inDrag && i === this._hoverNoteIdx;
+    // Hovering a note highlights it; hovering a *selected* note highlights the
+    // whole selection as a unit (they all move/resize together, so they read as one).
+    const hovered  = !effective.inDrag
+                     && (i === this._hoverNoteIdx
+                         || (this._hoverNoteIdx >= 0 && selected
+                             && effective.set.has(this._hoverNoteIdx)));
 
     let colorState = 'normal';
     // willRemove dims explicitly (independent of hasSel — removing the whole

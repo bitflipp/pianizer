@@ -22,7 +22,7 @@
 - `Left drag` — teal add rectangle; works **anywhere, even starting on top of a note** (moving/resizing is Shift-gated, so a bare drag is always a rubber-band)
 - `Ctrl+left drag` — red deselect rectangle (removes covered notes); `Ctrl+click note` removes one
 - `Shift+left drag note body` — move selection, **dominant-axis locked**: the axis with clearly more travel (timing or pitch) wins and holds, flipping only when the other clearly dominates (1.3× hysteresis) — so a careful horizontal nudge never bumps pitch
-- `Shift+left drag note left/right edge` — resize start / end (snapped to grid); if the dragged note is selected, all selected notes resize together by the same tick delta. While Shift is held, the note under the cursor draws explicit left/right grip bars
+- `Shift+left drag note left/right edge` — resize start / end (snapped to grid); if the dragged note is selected, all selected notes resize together by the same tick delta. While Shift is held, the note under the cursor draws explicit left/right grip bars — and if that note is selected, every selected note draws them (they all resize as a unit)
 - Moving and resizing **require Shift** (the "edit" modifier). Without it, a press on a note falls through to selection. A bare `Shift+click` (no drag) is a no-op.
 - `Delete` / `Backspace` — delete selected notes
 - `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) — undo / redo
@@ -87,7 +87,7 @@ saturation 65–80%, lightness 8–62%, both scaled linearly with velocity. Thre
 states adjust the base lightness:
 - **Normal**: notes in the current selection, or all notes when nothing is selected
 - **Dimmed**: unselected notes when a selection exists (lightness × 0.55)
-- **Highlighted**: hovered note, or notes being added by an in-progress rect drag (lightness + 16, capped at 78%)
+- **Highlighted**: hovered note (or, when the hovered note is selected, the whole selection — they read as one unit), or notes being added by an in-progress rect drag (lightness + 16, capped at 78%)
 
 Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi-transparent
 white for others. Label text color is **luminance-adaptive** (`labelColorFor` in `roll.js`):
