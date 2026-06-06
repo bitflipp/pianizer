@@ -185,8 +185,8 @@ describe('curvedTickToTime', () => {
     expect(s.timeToTick(s.curvedTickToTime(720))).toBeCloseTo(720, 0);
   });
 
-  // A run of baseline (1.0) points must stay exactly at base time — the rubato
-  // balance feature depends on the monotone spline keeping flats flat.
+  // A run of baseline (1.0) points must stay exactly at base time — an anchor
+  // placed to hold a tempo relies on the monotone spline keeping flats flat.
   test('all-baseline region preserves base time', () => {
     const s = mkState({
       tempoMap:    [{ tick: 0, bpm: 120 }],
