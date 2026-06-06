@@ -3,6 +3,10 @@ import { CurveLane } from './curve-lane.js';
 import { state, monotoneTangents, evalMonotoneCubic } from '../engine/state.js';
 import { KEY_WIDTH } from './dom-utils.js';
 
+// A control point counts as "on the baseline" (tempo ratio 1.0) within this
+// tolerance — anchors a rubato region and is excluded from its inner points.
+const BASELINE_EPS = 1e-9;
+
 export class TempoLane extends CurveLane {
   constructor(canvas, roll) {
     super(canvas, roll, {
@@ -75,7 +79,7 @@ function computeRubatoRegions(points) {
 
   const anchorIdx = [];
   for (let i = 0; i < points.length; i++) {
-    if (Math.abs(points[i].value - 1) < 1e-9) anchorIdx.push(i);
+    if (Math.abs(points[i].value - 1) < BASELINE_EPS) anchorIdx.push(i);
   }
   if (anchorIdx.length < 2) return [];
 
@@ -88,7 +92,7 @@ function computeRubatoRegions(points) {
 
     const innerPoints = [];
     for (let m = i + 1; m < j; m++) {
-      if (Math.abs(points[m].value - 1) >= 1e-9) innerPoints.push(points[m]);
+      if (Math.abs(points[m].value - 1) >= BASELINE_EPS) innerPoints.push(points[m]);
     }
     if (innerPoints.length === 0) continue; // no rubato between these anchors
 

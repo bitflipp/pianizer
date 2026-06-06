@@ -140,7 +140,6 @@ export class AppState extends EventTarget {
 
   setVelocityCurve(curve) {
     this.velocityCurve = curve.slice();
-    this.dispatch('velocitycurvechanged');
   }
 
   setRestrikeGap(ms) {

@@ -32,7 +32,8 @@ auto-humanization — the tool is an instrument.
 - **Minimap** — full-piece overview with viewport indicator; click or drag to pan
 - **Bookmarks** — ruler markers added with Ctrl+click; `←`/`→` seek between them
 - **Web MIDI output** — lookahead scheduler (30 ms tick / 150 ms window) sends
-  note on/off and CC64 to any browser MIDI port (e.g. FluidSynth, hardware piano)
+  note on/off and CC64 to any browser MIDI port (e.g. FluidSynth, hardware piano);
+  an adjustable re-strike gap gives a repeated key's action time to reset
 - **Project save/load** — versioned JSON preserving all edits; auto-save to
   `localStorage` with per-piece view state restoration
 - **No build step, no dependencies** — vanilla JS ES modules, Canvas 2D, served
@@ -72,7 +73,9 @@ to pick a MIDI output port, then load a MusicXML file.
 | Key / gesture | Action |
 |---|---|
 | Click note | Add note to selection |
-| Drag | Rectangle select (adds to selection) |
+| Drag | Rectangle select (adds; works anywhere, even over notes) |
+| Ctrl+drag | Red rectangle: removes covered notes from selection |
+| Ctrl+click note | Remove that note from selection |
 | Click empty | Clear selection |
 | Ctrl+Z | Undo (removes the last selection change) |
 | Escape | Clear selection |
@@ -86,10 +89,10 @@ to pick a MIDI output port, then load a MusicXML file.
 | 3 | Duration delta tool |
 | 4 | Velocity delta tool |
 | Click curve-group note | Curve-group menu: re-pick ramp (same as [1]) / dissolve |
+| Glyph on curve start box | Curve shape — "-" linear, "/" ease in, "\" ease out, "~" S-curve |
 | Alt+click empty | Insert note at cursor |
-| Drag note body | Move selection horizontally |
-| Shift+drag note body | Move selection horizontally + pitch |
-| Drag left / right edge | Resize note start / end |
+| Shift+drag note body | Move selection (axis-locked: timing or pitch) |
+| Shift+drag left / right edge | Resize note start / end (handles show while Shift held) |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 
