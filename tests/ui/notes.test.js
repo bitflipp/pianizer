@@ -184,6 +184,66 @@ test('Ctrl+Z undoes deletion', async ({ page }) => {
   expect(count).toBe(3);
 });
 
+// Drag from a note's body/edge: optional modifier, dx/dy in target ticks/rows.
+async function dragNote(page, { noteIndex, deltaTicks = 0, deltaRows = 0, fromEdge = null, mod = null }) {
+  const d = await page.evaluate(({ i, dt, dr, edge }) => {
+    const roll = window._roll, s = window._state;
+    const r = document.getElementById('roll').getBoundingClientRect();
+    const n = s.notes[i];
+    const w = roll._noteWidthPx(n);
+    const anchorTick = edge === 'right' ? n.endTick
+                     : edge === 'left'  ? n.startTick
+                     : n.startTick;                       // body → use centre x below
+    const sx = edge ? roll.tickToX(anchorTick) : roll.tickToX(n.startTick) + w / 2;
+    const sy = roll.pitchToY(n.pitch) + roll.noteHeight / 2;
+    return {
+      sx: r.left + sx,                       sy: r.top + sy,
+      ex: r.left + sx + dt * roll.pixelsPerTick,
+      ey: r.top  + sy - dr * roll.noteHeight,   // +rows = up in pitch
+    };
+  }, { i: noteIndex, dt: deltaTicks, dr: deltaRows, edge: fromEdge });
+
+  if (mod) await page.keyboard.down(mod);
+  await page.mouse.move(d.sx, d.sy);
+  await page.mouse.down();
+  await page.mouse.move(d.ex, d.ey, { steps: 10 });
+  await page.mouse.up();
+  if (mod) await page.keyboard.up(mod);
+}
+
+// ── editing: Shift-gated move / resize ─────────────────────────────────────────
+
+test('Shift+drag note body moves it horizontally (timing)', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaTicks: 480, mod: 'Shift' });
+  const n = await page.evaluate(() => window._state.notes[0]);
+  expect(n.startTick).toBeGreaterThan(0);
+  expect(n.pitch).toBe(60);                  // axis-locked: pitch untouched
+  expect(n.endTick - n.startTick).toBe(480); // duration preserved
+});
+
+test('Shift+drag note body up changes pitch (axis-locked, timing untouched)', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaRows: 2, mod: 'Shift' });
+  const n = await page.evaluate(() => window._state.notes[0]);
+  expect(n.pitch).toBe(62);
+  expect(n.startTick).toBe(0);
+});
+
+test('Shift+drag right edge resizes the note end', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaTicks: 480, fromEdge: 'right', mod: 'Shift' });
+  const n = await page.evaluate(() => window._state.notes[0]);
+  expect(n.startTick).toBe(0);
+  expect(n.endTick).toBeGreaterThan(480);
+});
+
+test('bare drag over a note rubber-band selects instead of moving it', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaTicks: 200 });   // no modifier
+  const n   = await page.evaluate(() => window._state.notes[0]);
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices]);
+  expect(n.startTick).toBe(0);   // not moved
+  expect(n.endTick).toBe(480);
+  expect(sel).toContain(0);      // swept into the selection
+});
+
 // ── tool windows ─────────────────────────────────────────────────────────────
 
 test('[2] velocity tool sets velocity', async ({ page }) => {

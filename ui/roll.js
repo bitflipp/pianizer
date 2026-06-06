@@ -142,6 +142,7 @@ export class PianoRoll {
     this._hoverGroupId  = -1;       // curve group whose member is under the cursor (-1 = none)
     this._hoverNoteRightEdge = -1;  // index of note whose right edge is under the cursor
     this._lastMousePos  = null;
+    this._shiftHeld     = false;  // Shift = the move/resize edit modifier; tracked for handle drawing
 
     // Rectangle selection drag
     this._rectSelActive      = false;
@@ -175,7 +176,8 @@ export class PianoRoll {
     this._dragOrigins       = [];
     this._dragStartTick     = 0;
     this._dragStartPitch    = 0;
-    this._dragAllowPitch    = false;
+    this._dragStartPos      = null;  // canvas px at drag activation (axis-lock origin)
+    this._dragAxis          = null;  // dominant-axis lock during a Shift-move: 'h' | 'v' | null
     this._dragDidMove       = false;
     this._didNoteDrag       = false;
     this._pendingNoteHandle = -1;
@@ -389,6 +391,16 @@ export class PianoRoll {
 
     this._drawCurveGroups();
 
+    // Shift (edit modifier) held: draw resize handles on the note under the cursor so
+    // its grippable edges are explicit. Locked group notes never set these hover indices
+    // (suppressed in _trackEdgeHover), so they never show handles.
+    if (this._shiftHeld) {
+      const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
+               : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
+               : this._hoverNoteLeftEdge;
+      if (hi >= 0) this._drawResizeHandles(state.notes[hi]);
+    }
+
     ctx.restore();
   }
 
@@ -567,6 +579,20 @@ export class PianoRoll {
     }
   }
 
+  // Left/right grip bars on a note, shown while Shift is held over it. Drawn within
+  // _drawNotes' roll clip. Width caps at half the note so short notes still show two grips.
+  _drawResizeHandles(n) {
+    const { ctx } = this;
+    const x  = this.tickToX(n.startTick);
+    const w  = this._noteWidthPx(n);
+    const y  = this.pitchToY(n.pitch) + 1;
+    const h  = this.noteHeight - 1;
+    const hw = Math.min(HANDLE_WIDTH, w / 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(x, y, hw, h);
+    ctx.fillRect(x + w - hw, y, hw, h);
+  }
+
   _drawLaneReticles() {
     for (const lane of [this.pedalLane, this.tempoLane]) this._drawLaneReticle(lane);
   }
@@ -695,6 +721,7 @@ export class PianoRoll {
     c.addEventListener('mouseleave', () => this._onMouseLeave());
     window.addEventListener('keyup', e => {
       if (e.key === 'Alt' && !this._panning) this._refreshCursor();
+      if (e.key === 'Shift') { this._shiftHeld = false; this._refreshShiftAffordances(); }
     });
     // move/up on window so dragging off-canvas still registers (critical for ruler seek)
     window.addEventListener('mousemove', e => this._onMouseMove(e));
@@ -711,6 +738,7 @@ export class PianoRoll {
         && this._inRoll(this._lastMousePos)) {
       this.canvas.style.cursor = 'cell';
     }
+    if (e.key === 'Shift' && !this._shiftHeld) { this._shiftHeld = true; this._refreshShiftAffordances(); }
     if (e.key === 'Escape' && state.loaded) {
       if (this._rectSelActive || state.selectedNoteIndices.size > 0) {
         e.preventDefault();
@@ -784,6 +812,22 @@ export class PianoRoll {
     } else {
       this.canvas.style.cursor = '';
     }
+  }
+
+  // Re-resolve edit-hover affordances at the last mouse position when Shift is pressed
+  // or released without the mouse moving, so the hovered note's resize handles and the
+  // grab/resize cursor appear or clear at once (mirrors the Alt 'cell' cursor handling).
+  _refreshShiftAffordances() {
+    const pos = this._lastMousePos;
+    if (!pos || !state.loaded || this._panning || this._draggingNotes
+        || this._rectSelActive || this._resizingNoteRightIdx >= 0
+        || this._resizingNoteLeftIdx >= 0) return;
+    const inRoll = this._inRoll(pos);
+    const { edgeNi, leftEdgeNi, handleNi } = this._trackEdgeHover(pos, inRoll, this._shiftHeld);
+    const overHandle = inRoll ? (this._handleAt(pos) || this._groupNoteAt(pos)) : null;
+    if (overHandle) this.canvas.style.cursor = 'pointer';
+    else this._setHoverCursor(false, inRoll, edgeNi, leftEdgeNi, handleNi);
+    this.render();
   }
 
   _canvasPos(e) { return canvasPos(this.canvas, e); }
@@ -971,20 +1015,24 @@ export class PianoRoll {
       return;
     }
 
-    if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
-    if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
-
-    if (this._hoverNoteHandle >= 0) {
-      this._pendingNoteHandle = this._hoverNoteHandle;
-      this._pendingDragStart  = pos;
-      return;
+    // Move and resize are gated behind Shift (the edit modifier); without it a press on
+    // a note falls through to rubber-band selection. The hover indices are only set while
+    // Shift is held (see _trackEdgeHover), but gate on e.shiftKey too for clarity.
+    if (e.shiftKey) {
+      if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
+      if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
+      if (this._hoverNoteHandle    >= 0) {
+        this._pendingNoteHandle = this._hoverNoteHandle;
+        this._pendingDragStart  = pos;
+        return;
+      }
     }
 
-    // Modifier picks the rect mode. Alt and Shift are reserved for other gestures
-    // (Alt = insert note on click, Shift = pitch-unlock on note-body drags) and are
+    // Modifier picks the rect mode. Alt (insert) and Shift (move/resize over a note —
+    // here it landed on empty or a locked note) are reserved for other gestures and are
     // easy to leave held by accident, so they make the rect 'inert' — it still tracks
-    // the drag (to suppress the trailing click) but draws/selects nothing. Ctrl gives
-    // the red deselect rect; a bare drag the teal add rect.
+    // the drag (to suppress the trailing click) but draws/selects nothing. Ctrl gives the
+    // red deselect rect; a bare drag the teal add rect (now anywhere, even over a note).
     this._rectSelActive     = true;
     this._rectSelStart      = pos;
     this._rectSelStartWorld = { tick: this.xToTick(pos.x), worldY: pos.y - HEADER_HEIGHT + this.scrollY };
@@ -998,6 +1046,7 @@ export class PianoRoll {
   _onMouseMove(e) {
     const pos = this._canvasPos(e);
     this._lastMousePos = pos;
+    this._shiftHeld    = e.shiftKey;
 
     const newHoverPitch = (pos.y > HEADER_HEIGHT && pos.y < this.canvas.height)
       ? Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.yToPitch(pos.y))) : -1;
@@ -1047,7 +1096,7 @@ export class PianoRoll {
     if (this._pendingNoteHandle >= 0) {
       const dx = pos.x - this._pendingDragStart.x;
       const dy = pos.y - this._pendingDragStart.y;
-      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) this._activateNoteDrag(e, pos);
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) this._activateNoteDrag(pos);
     }
 
     // Note drag — update positions live, skip all other tracking
@@ -1080,7 +1129,7 @@ export class PianoRoll {
       return;
     }
 
-    const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
+    const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll, e.shiftKey);
 
     // A curve-group member under the cursor (endpoint label or note body) takes
     // priority over note edit affordances and shows a pointer — clicking it
@@ -1107,14 +1156,16 @@ export class PianoRoll {
     }
 
     if (overHandle) this.canvas.style.cursor = 'pointer';
-    else this._setHoverCursor(e, inRoll, edgeNi, leftEdgeNi, handleNi);
+    else this._setHoverCursor(e.altKey, inRoll, edgeNi, leftEdgeNi, handleNi);
     if (hoverChanged || edgeHoverChanged || hoverPitchChanged) this.render();
   }
 
   // Resolves right-edge / left-edge / body hover (all forced to -1 during a rect-select
   // drag) and returns the indices plus whether any of the three changed since last move.
-  _trackEdgeHover(pos, inRoll) {
-    const active     = inRoll && !this._rectSelActive;
+  _trackEdgeHover(pos, inRoll, shiftHeld) {
+    // Move/resize are Shift-gated, so edge and body hover affordances only light up while
+    // Shift is held; otherwise a drag here is a rubber-band selection.
+    const active     = shiftHeld && inRoll && !this._rectSelActive;
     let   edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
     let   leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
     let   handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
@@ -1133,19 +1184,19 @@ export class PianoRoll {
     return { edgeNi, leftEdgeNi, handleNi, changed };
   }
 
-  _setHoverCursor(e, inRoll, edgeNi, leftEdgeNi, handleNi) {
+  _setHoverCursor(altKey, inRoll, edgeNi, leftEdgeNi, handleNi) {
     if (edgeNi >= 0 || leftEdgeNi >= 0) {
       this.canvas.style.cursor = 'ew-resize';
     } else if (handleNi >= 0) {
       this.canvas.style.cursor = 'grab';
-    } else if (e.altKey && inRoll) {
+    } else if (altKey && inRoll) {
       this.canvas.style.cursor = 'cell';
     } else {
       this.canvas.style.cursor = '';
     }
   }
 
-  _activateNoteDrag(e, pos) {
+  _activateNoteDrag(pos) {
     const ni = this._pendingNoteHandle;
     this._pendingNoteHandle = -1;
     this._pendingDragStart  = null;
@@ -1178,18 +1229,33 @@ export class PianoRoll {
 
     this._dragStartTick  = this.xToTick(pos.x);
     this._dragStartPitch = this.yToPitch(pos.y);
-    this._dragAllowPitch = e.shiftKey;
+    this._dragStartPos   = pos;
+    this._dragAxis       = null;
     this._dragDidMove    = false;
     this._draggingNotes  = true;
     this.canvas.style.cursor = 'grabbing';
   }
 
   _updateNoteDrag(pos) {
-    const rawDeltaTick  = this.xToTick(pos.x) - this._dragStartTick;
-    const anchorSnapped = state.snapTick(this._dragOrigins[0].startTick + rawDeltaTick);
-    const snappedDelta  = anchorSnapped - this._dragOrigins[0].startTick;
+    // Dominant-axis lock: the first clear direction (timing vs pitch) wins and holds,
+    // flipping only once the other axis travels clearly farther (HYST margin) — so a
+    // careful horizontal nudge never bumps pitch, but a deliberate vertical drag still can.
+    const dxPx = Math.abs(pos.x - this._dragStartPos.x);
+    const dyPx = Math.abs(pos.y - this._dragStartPos.y);
+    const HYST = 1.3;
+    let axis = this._dragAxis;
+    if      (axis === null)                       axis = dxPx >= dyPx ? 'h' : 'v';
+    else if (axis === 'h' && dyPx > dxPx * HYST)  axis = 'v';
+    else if (axis === 'v' && dxPx > dyPx * HYST)  axis = 'h';
+    this._dragAxis = axis;
 
-    const deltaPitch = this._dragAllowPitch
+    let snappedDelta = 0;
+    if (axis === 'h') {
+      const rawDeltaTick  = this.xToTick(pos.x) - this._dragStartTick;
+      const anchorSnapped = state.snapTick(this._dragOrigins[0].startTick + rawDeltaTick);
+      snappedDelta        = anchorSnapped - this._dragOrigins[0].startTick;
+    }
+    const deltaPitch = axis === 'v'
       ? Math.round(this.yToPitch(pos.y) - this._dragStartPitch)
       : 0;
 
@@ -1287,6 +1353,9 @@ export class PianoRoll {
 
     const pos = this._canvasPos(e);
     if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
+
+    // Shift is the move/resize modifier; a bare Shift+click performs no selection.
+    if (e.shiftKey) return;
 
     if (e.altKey) {
       const tick  = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
