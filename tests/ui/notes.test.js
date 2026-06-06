@@ -42,6 +42,101 @@ test('click extends selection without a modifier', async ({ page }) => {
   expect(sel).toBe(2);
 });
 
+test('Ctrl+click a selected note removes it from the selection', async ({ page }) => {
+  const p0 = await notePagePos(page, 0);
+  const p1 = await notePagePos(page, 1);
+  await page.mouse.click(p0.x, p0.y);
+  await page.mouse.click(p1.x, p1.y);
+  expect(await page.evaluate(() => window._state.selectedNoteIndices.size)).toBe(2);
+
+  await page.keyboard.down('Control');
+  await page.mouse.click(p0.x, p0.y);
+  await page.keyboard.up('Control');
+
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices]);
+  expect(sel).toEqual([1]);
+});
+
+test('Ctrl+click empty space does not clear the selection', async ({ page }) => {
+  const p0 = await notePagePos(page, 0);
+  await page.mouse.click(p0.x, p0.y);
+  const empty = await page.evaluate(() => {
+    const note   = window._state.notes[0];
+    const roll   = window._roll;
+    const canvas = document.getElementById('roll');
+    const rect   = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + roll.tickToX(note.startTick) + 4,
+      y: rect.top  + roll.pitchToY(note.pitch - 6) + roll.noteHeight / 2,
+    };
+  });
+  await page.keyboard.down('Control');
+  await page.mouse.click(empty.x, empty.y);
+  await page.keyboard.up('Control');
+  expect(await page.evaluate(() => window._state.selectedNoteIndices.size)).toBe(1);
+});
+
+test('Ctrl+drag (red rect) removes covered notes from the selection', async ({ page }) => {
+  // Start with all three notes selected, then sweep a Ctrl rect over note 0 only.
+  await page.evaluate(() => window._state.setSelection([0, 1, 2]));
+
+  const box = await page.evaluate(() => {
+    const roll = window._roll, s = window._state;
+    const r = document.getElementById('roll').getBoundingClientRect();
+    const KEY_WIDTH = 36, HEADER_HEIGHT = 24;
+    const n = s.notes[0];
+    const x = roll.tickToX(n.startTick), w = roll._noteWidthPx(n);
+    const y = roll.pitchToY(n.pitch);
+    // Anchor in the empty row just above note 0 so it starts a rect (not a note grab).
+    return {
+      start: { x: r.left + Math.max(KEY_WIDTH + 2, x - 2), y: r.top + Math.max(HEADER_HEIGHT + 2, y - 4) },
+      end:   { x: r.left + x + w, y: r.top + y + roll.noteHeight },
+    };
+  });
+
+  await page.keyboard.down('Control');
+  await page.mouse.move(box.start.x, box.start.y);
+  await page.mouse.down();
+  await page.mouse.move(box.end.x, box.end.y, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  expect(sel).toEqual([1, 2]);
+});
+
+for (const mod of ['Alt', 'Shift']) {
+  test(`${mod}+drag does not start a selection rectangle`, async ({ page }) => {
+    await page.evaluate(() => window._state.setSelection([0, 1, 2]));
+
+    const box = await page.evaluate(() => {
+      const roll = window._roll, s = window._state;
+      const r = document.getElementById('roll').getBoundingClientRect();
+      const KEY_WIDTH = 36, HEADER_HEIGHT = 24;
+      const n = s.notes[0];
+      const x = roll.tickToX(n.startTick), w = roll._noteWidthPx(n);
+      const y = roll.pitchToY(n.pitch);
+      return {
+        start: { x: r.left + Math.max(KEY_WIDTH + 2, x - 2), y: r.top + Math.max(HEADER_HEIGHT + 2, y - 4) },
+        end:   { x: r.left + x + w, y: r.top + y + roll.noteHeight },
+      };
+    });
+
+    await page.keyboard.down(mod);
+    await page.mouse.move(box.start.x, box.start.y);
+    await page.mouse.down();
+    await page.mouse.move(box.end.x, box.end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up(mod);
+
+    // The selection is untouched and no rect drag is left active.
+    const sel    = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+    const active = await page.evaluate(() => window._roll._rectSelActive);
+    expect(sel).toEqual([0, 1, 2]);
+    expect(active).toBe(false);
+  });
+}
+
 test('click empty space clears selection', async ({ page }) => {
   const p0 = await notePagePos(page, 0);
   await page.mouse.click(p0.x, p0.y);
