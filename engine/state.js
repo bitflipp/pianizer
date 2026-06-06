@@ -282,6 +282,54 @@ export class AppState extends EventTarget {
     return t;
   }
 
+  // Batched tick→time. Returns a closure `tick => seconds` numerically identical
+  // to tickToTime() but with the tempo timeline precomputed once, so converting
+  // many ticks is O(breaks + queries) instead of curvedTickToTime()'s O(breaks)
+  // *per call* (which re-derives tangents and re-integrates from tick 0 each
+  // time → O(N·breaks) for N notes). Used by the MIDI scheduler, which converts
+  // every note's start/end up front. Rebuild after any tempo change.
+  buildTickToTime() {
+    if (this.tempoPoints.length === 0) return tick => this.baseTickToTime(tick);
+
+    const tpb = this.ticksPerBeat;
+    const pts = this.tempoPoints;
+    const m   = monotoneTangents(pts);
+    const ratioAt = t => evalMonotoneCubic(pts, m, t, 1);
+
+    // Global break set: 0, every tempoMap step, every spline knot. baseBpm is
+    // constant within each [breaks[i], breaks[i+1]] segment, so the partial
+    // integral for a query tick uses the segment-start baseBpm — matching
+    // curvedTickToTime's per-call partitioning exactly.
+    const breakSet = new Set([0]);
+    for (const seg of this.tempoMap) if (seg.tick > 0) breakSet.add(seg.tick);
+    for (const pt  of pts)           if (pt.tick  > 0) breakSet.add(pt.tick);
+    const breaks = [...breakSet].sort((a, b) => a - b);
+
+    // cumTime[i] = time at breaks[i]; segC[i] = seconds-per-tick at ratio 1 for
+    // the segment starting at breaks[i] (and for any tick beyond the last break).
+    const cumTime = new Array(breaks.length);
+    const segC    = new Array(breaks.length);
+    cumTime[0] = 0;
+    for (let i = 0; i < breaks.length; i++) {
+      segC[i] = 60 / (tpb * this._baseBpmAtTick(breaks[i]));
+      if (i + 1 < breaks.length) {
+        cumTime[i + 1] = cumTime[i]
+          + segC[i] * simpson(τ => 1 / ratioAt(τ), breaks[i], breaks[i + 1], TEMPO_INTEGRATION_PANELS);
+      }
+    }
+
+    return tick => {
+      if (tick <= 0) return 0;
+      let lo = 0, hi = breaks.length - 1; // largest break <= tick
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (breaks[mid] <= tick) lo = mid; else hi = mid - 1;
+      }
+      if (breaks[lo] === tick) return cumTime[lo];
+      return cumTime[lo] + segC[lo] * simpson(τ => 1 / ratioAt(τ), breaks[lo], tick, TEMPO_INTEGRATION_PANELS);
+    };
+  }
+
   // ── Note editing ───────────────────────────────────────────────────
 
   deleteNotes(indices) {

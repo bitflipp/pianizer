@@ -230,3 +230,44 @@ describe('curvedTickToTime', () => {
     expect(s._tempoValueAtTick(TPB + 1)).toBeLessThan(s._tempoValueAtTick(TPB));
   });
 });
+
+// ── buildTickToTime (batched) ─────────────────────────────────────────────────
+// The closure must be numerically identical to tickToTime() — it just hoists the
+// tempo-timeline build out of the per-tick loop.
+
+describe('buildTickToTime', () => {
+  const sampleTicks = [0, 1, 37, 240, 480, 719, 720, 1000, 1440, 2400, 9600, 12000];
+
+  test('matches baseTickToTime when there is no tempo curve', () => {
+    const s = mkState({ tempoMap: [{ tick: 0, bpm: 120 }, { tick: TPB, bpm: 60 }], tempoPoints: [] });
+    const f = s.buildTickToTime();
+    for (const tk of sampleTicks) expect(f(tk)).toBeCloseTo(s.tickToTime(tk), 10);
+  });
+
+  test('matches curvedTickToTime across a varying curve + tempo step', () => {
+    const s = mkState({
+      tempoMap:    [{ tick: 0, bpm: 120 }, { tick: TPB * 3, bpm: 90 }],
+      tempoPoints: [{ tick: 0, value: 1.0 }, { tick: TPB, value: 1.2 },
+                    { tick: TPB * 2, value: 0.9 }, { tick: TPB * 4, value: 1.0 }],
+    });
+    const f = s.buildTickToTime();
+    for (const tk of sampleTicks) expect(f(tk)).toBeCloseTo(s.curvedTickToTime(tk), 9);
+  });
+
+  test('exact at break ticks (knots and tempo steps)', () => {
+    const s = mkState({
+      tempoMap:    [{ tick: 0, bpm: 120 }, { tick: TPB * 3, bpm: 90 }],
+      tempoPoints: [{ tick: 0, value: 1.0 }, { tick: TPB, value: 1.2 }, { tick: TPB * 2, value: 0.9 }],
+    });
+    const f = s.buildTickToTime();
+    for (const tk of [TPB, TPB * 2, TPB * 3]) expect(f(tk)).toBeCloseTo(s.curvedTickToTime(tk), 9);
+  });
+
+  test('tick ≤ 0 → 0', () => {
+    const s = mkState({ tempoMap: [{ tick: 0, bpm: 120 }],
+                        tempoPoints: [{ tick: 0, value: 1.0 }, { tick: TPB, value: 1.2 }] });
+    const f = s.buildTickToTime();
+    expect(f(0)).toBe(0);
+    expect(f(-50)).toBe(0);
+  });
+});

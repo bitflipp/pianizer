@@ -37,12 +37,28 @@ export class MidiOut {
   // startTime: piece time in seconds to start from.
   // getPieceTime(): returns current playback position in piece-seconds.
 
-  schedulePlayback(startTime, getPieceTime) {
-    this.stopPlayback();
-
-    // Collect unique MIDI channels used by notes (for CC64 broadcast)
+  // onReady (optional): called once, synchronously, *after* all the per-note
+  // prep below and immediately *before* the first schedule() tick. The caller
+  // uses it to (re)baseline the playback clock — building sortedNotes runs
+  // state.tickToTime() twice per note (numerically integrating the tempo curve),
+  // which can take ~100ms on a large score. If the clock origin were set before
+  // that work, getPieceTime() would already read ~100ms by the first tick, every
+  // note in that gap would clamp to nowMs+5 and fire bunched, and the playhead
+  // (same clock) would have jumped ahead — the "silence then compressed catch-up"
+  // at the start of playback. Baselining here keeps prep cost off the clock.
+  schedulePlayback(startTime, getPieceTime, onReady = null) {
+    // Collect unique MIDI channels used by notes (for CC64 broadcast + reset).
     const channels = [...new Set(state.notes.map(n => (n.channel ?? 0) & 0xf))];
     if (channels.length === 0) channels.push(0);
+
+    // Reset only the channels we're about to play on. A full 16-channel reset
+    // here would push ~48 untimed messages onto the pipe ahead of the note-ons
+    // we schedule below; on a serial/USB-MIDI port (or ALSA → FluidSynth, which
+    // floats immediate sends ahead of slightly-future ones) that head-of-line
+    // drain stalls the first ~100ms of output, so the playhead advances in
+    // silence and the backlog then fires compressed. Scoping the reset to the
+    // channels in use (one, for a piano score) keeps the start tight.
+    this.stopPlayback(channels);
 
     // Assert the pedal state for the start point *immediately*, on the same
     // untimed/direct path as stopPlayback()'s CC64=0 reset (which just ran). A
@@ -59,11 +75,15 @@ export class MidiOut {
       }
     }
 
+    // One precomputed tempo timeline for the whole batch — converting every
+    // note's start/end via state.tickToTime() would re-integrate the curve from
+    // tick 0 each call (O(N·breaks)) and is what made playback start ~100ms late.
+    const tickToTime = state.buildTickToTime();
     const sortedNotes = state.notes
       .map(n => ({
         n,
-        noteStart: state.tickToTime(n.startTick),
-        noteEnd:   state.tickToTime(n.endTick),
+        noteStart: tickToTime(n.startTick),
+        noteEnd:   tickToTime(n.endTick),
       }))
       .filter(({ noteStart }) => noteStart >= startTime - 0.05)
       .sort((a, b) => a.noteStart - b.noteStart);
@@ -147,11 +167,15 @@ export class MidiOut {
       }
     };
 
+    onReady?.(); // baseline the playback clock now that the heavy prep is done
     schedule();
     this._scheduleInterval = setInterval(schedule, SCHEDULE_INTERVAL_MS);
   }
 
-  stopPlayback() {
+  // channels: which MIDI channels to reset. Defaults to all 16 (a standalone
+  // Stop wants a clean slate); schedulePlayback passes just the channels in use
+  // so the pre-playback reset doesn't flood the pipe — see there.
+  stopPlayback(channels = null) {
     if (this._scheduleInterval !== null) {
       clearInterval(this._scheduleInterval);
       this._scheduleInterval = null;
@@ -159,7 +183,8 @@ export class MidiOut {
     const out = this.selectedOutput;
     if (!out) return;
     try { out.clear(); } catch {}
-    for (let ch = 0; ch < 16; ch++) {
+    const chans = channels ?? [...Array(16).keys()];
+    for (const ch of chans) {
       try {
         out.send([0xb0 | ch, 64,  0]); // CC64 pedal release
         out.send([0xb0 | ch, 123, 0]); // All Notes Off

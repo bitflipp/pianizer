@@ -116,6 +116,15 @@ samples. `timeToTick` binary-searches over this monotonic mapping. The curve aff
 playback scheduling, playhead position, and project duration. The pedal curve is unrelated
 and stays piecewise-linear (`interpolateCurveAtTick`).
 
+`curvedTickToTime` re-derives the tangents and re-integrates from tick 0 on **every**
+call — fine for one-offs, O(N·breaks) when converting many ticks. `buildTickToTime()`
+is the batched form: it builds the break timeline once (cumulative time per break +
+per-segment seconds-per-tick), then each `tick → seconds` query is a binary search plus
+one partial-segment Simpson — numerically identical to `tickToTime`, O(breaks + queries).
+The MIDI scheduler uses it to convert every note's start/end up front; doing that
+per-call instead is what delayed playback start by ~100ms on large scores. Rebuild the
+closure after any tempo change.
+
 ---
 
 ## Velocity Curve (applied at scheduling time only)
@@ -179,8 +188,16 @@ and CC64 messages using `performance.now()` timestamps.
   loop (`buildPedalEvents`) then only schedules control points *after* the start point.
   This keeps pedal state correct both at tick 0 and when starting mid-piece.
 
-**`stopPlayback()`** calls `out.clear()` then sends CC64=0, All Notes Off (CC 123),
-All Sound Off (CC 120) on all 16 channels for a clean stop.
+**`stopPlayback(channels = null)`** calls `out.clear()` then sends CC64=0, All
+Notes Off (CC 123), All Sound Off (CC 120) on each channel in `channels`,
+defaulting to all 16 for a clean standalone Stop. `schedulePlayback` passes just
+the channels actually carrying notes: a full 16-channel reset there would push
+~48 untimed messages onto the pipe ahead of the note-ons it schedules next, and
+on a serial/USB-MIDI port (or ALSA → FluidSynth, which floats immediate sends
+ahead of slightly-future ones) that head-of-line drain stalls the first ~100ms
+of output — the playhead advances in silence and the backlog then fires
+compressed before catching up. Scoping the reset (one channel for a piano score)
+keeps the start tight.
 
 **Port management:** `requestAccess()` opens MIDI access, auto-selects first port,
 dispatches `midiportschanged`. `onstatechange` handles hot-plug; if the selected port
@@ -188,6 +205,17 @@ disappears, falls back to the first available.
 
 **Playback timing:** `getPieceTime()` in `index.html` uses `performance.now()` (not
 `AudioContext.currentTime`). `startPlayback()` is synchronous — no async needed.
+
+**Clock baselining (`onReady`):** `schedulePlayback(startTime, getPieceTime, onReady)`
+builds `sortedNotes` by calling `state.tickToTime()` twice per note, and that
+numerical tempo-curve integration can take ~100ms on a large score. The playback
+clock origin (`playStartPerfMs`) must therefore be set *after* that prep, not before:
+`schedulePlayback` invokes `onReady()` once, right before its first `schedule()` tick,
+and each `index.html` caller uses it to `playStartPerfMs = performance.now()`. If the
+origin were set before the prep, `getPieceTime()` would already read ~100ms by the
+first tick — every note in that gap would clamp to `nowMs+5` and fire bunched while the
+playhead (same clock) jumped ahead, i.e. "silence then a compressed catch-up" at the
+start of playback.
 
 **Play-from anchor:** `playAnchor` in `index.html` records the position to start
 playback from. Set by `user-seek` events (ruler click/drag, bookmark seeks);
