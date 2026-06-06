@@ -44,6 +44,21 @@ export class MidiOut {
     const channels = [...new Set(state.notes.map(n => (n.channel ?? 0) & 0xf))];
     if (channels.length === 0) channels.push(0);
 
+    // Assert the pedal state for the start point *immediately*, on the same
+    // untimed/direct path as stopPlayback()'s CC64=0 reset (which just ran). A
+    // queued, slightly-future send can be reordered behind an immediate one on
+    // some MIDI backends (notably Linux/ALSA → FluidSynth), so the held pedal
+    // value would otherwise lose a race with the reset and never take effect.
+    // The lookahead loop below only schedules control points *after* startTime.
+    const startOut = this.selectedOutput;
+    if (startOut) {
+      const startTick = state.timeToTick(startTime);
+      const cc64 = Math.round(interpolateCurveAtTick(state.pedalPoints, startTick, 0) * 127);
+      for (const ch of channels) {
+        try { startOut.send([0xb0 | ch, 64, cc64]); } catch {}
+      }
+    }
+
     const sortedNotes = state.notes
       .map(n => ({
         n,
@@ -64,7 +79,8 @@ export class MidiOut {
       lastStartForKey.set(key, noteStart);
     }
 
-    // Pedal events: initial value at seek point + one event per control point after it
+    // Pedal events: one per control point after the start point (the start-point
+    // value was already asserted immediately above).
     const pedalEvents = buildPedalEvents(startTime);
 
     let notePtr  = 0;
@@ -155,16 +171,13 @@ export class MidiOut {
 
 // ── Pedal helpers ──────────────────────────────────────────────────────────
 
-// Returns [{time, value}] sorted by time: initial value at startTime,
-// then one entry per control point that falls after startTime.
+// Returns [{time, value}] sorted by time: one entry per control point that falls
+// after startTime. The held value at startTime is asserted eagerly in
+// schedulePlayback (see there), so it is intentionally not included here.
 function buildPedalEvents(startTime) {
-  const pts = state.pedalPoints;
   const events = [];
 
-  const startTick = state.timeToTick(startTime);
-  events.push({ time: startTime, value: interpolateCurveAtTick(pts, startTick, 0) });
-
-  for (const p of pts) {
+  for (const p of state.pedalPoints) {
     const t = state.tickToTime(p.tick);
     if (t > startTime) events.push({ time: t, value: p.value });
   }

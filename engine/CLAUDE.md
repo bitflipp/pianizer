@@ -171,8 +171,13 @@ and CC64 messages using `performance.now()` timestamps.
   floor still guarantees a minimum note length when the repeat is very close.
   Device-scoped (a property of the output instrument, not the score) — see persistence
   below.
-- CC64 sent on all channels that have notes; initial value interpolated at seek point
-  so pedal state is correct when starting mid-piece
+- CC64 sent on all channels that have notes. The held pedal value at the start point
+  (interpolated from the curve) is asserted **immediately/untimed** in `schedulePlayback`,
+  right after `stopPlayback`'s CC64=0 reset and on the same direct path — so the held
+  value can't lose a delivery race with the reset on backends that reorder a queued
+  (slightly-future) send behind an immediate one (Linux/ALSA → FluidSynth). The lookahead
+  loop (`buildPedalEvents`) then only schedules control points *after* the start point.
+  This keeps pedal state correct both at tick 0 and when starting mid-piece.
 
 **`stopPlayback()`** calls `out.clear()` then sends CC64=0, All Notes Off (CC 123),
 All Sound Off (CC 120) on all 16 channels for a clean stop.
