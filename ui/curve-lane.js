@@ -34,7 +34,10 @@ const COL_GRID_BEAT = '#2a2a2a';
 const COL_GRID_BAR  = '#3a3a3a';
 
 // Reference lines drawn across the value range and used as Y-snap targets.
-const REF_FRACS = [0.25, 0.5, 0.75];
+// Eighths of the range (plus the edges and baseline) — the lanes are sized
+// tall enough (see #tempo/#pedal-container height) that these stay >Y_SNAP_RADIUS
+// apart, so free placement between snap lines is still possible.
+const REF_FRACS = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
 
 export class CurveLane {
   constructor(canvas, roll, config) {
