@@ -8,6 +8,8 @@ const PITCH_HI = 108;
 const DEFAULT_BPM         = 120;  // assumed tempo before the first tempoMap entry
 const UNDO_STACK_LIMIT    = 100;  // oldest snapshots drop once the stack passes this
 const RESTRIKE_GAP_MAX_MS = 200;  // upper clamp for setRestrikeGap
+const MAX_GROUPS_PER_NOTE = 2;    // a note can end one phrase and begin another, no more
+const NO_GROUPS = [];             // shared empty result for groupsOfNote — never mutated
 
 export class AppState extends EventTarget {
   constructor() {
@@ -46,7 +48,7 @@ export class AppState extends EventTarget {
     // stored — the curve tool bakes velocities one-shot, see applyVelocityCurve.
     this.groups = [];                // [{id, members:[noteId]}]
     this._nextGroupId = 0;
-    this._groupByNoteId = new Map(); // noteId → group, rebuilt on any group change
+    this._groupsByNoteId = new Map(); // noteId → group[] (≤ MAX_GROUPS_PER_NOTE), rebuilt on any group change
 
     this.pieceId = null;
 
@@ -474,13 +476,18 @@ export class AppState extends EventTarget {
   }
 
   _rebuildGroupIndex() {
-    this._groupByNoteId = new Map();
+    this._groupsByNoteId = new Map();
     for (const g of this.groups) {
-      for (const id of g.members) this._groupByNoteId.set(id, g);
+      for (const id of g.members) {
+        const list = this._groupsByNoteId.get(id);
+        if (list) list.push(g); else this._groupsByNoteId.set(id, [g]);
+      }
     }
   }
 
-  groupOfNote(note)      { return note ? (this._groupByNoteId.get(note.id) ?? null) : null; }
+  // The groups a note belongs to (0, 1, or up to MAX_GROUPS_PER_NOTE), in `groups` order.
+  // Returns a shared empty array when ungrouped — callers must not mutate the result.
+  groupsOfNote(note)     { return note ? (this._groupsByNoteId.get(note.id) ?? NO_GROUPS) : NO_GROUPS; }
   groupMembers(g)        { return this._notesByIds(g.members); }
   // Member ids → current selection indices, for selecting a group as a unit.
   groupMemberIndices(g) {
@@ -496,15 +503,33 @@ export class AppState extends EventTarget {
     this.groups = this.groups.filter(g => g.members.length >= 2);
   }
 
-  // Records the selected notes as a selection group. Needs ≥2 notes. Any member
-  // already in another group is detached from it first (a note belongs to one
-  // group at most); groups left with <2 members are discarded.
+  // Frees a group slot for each given note id already at the MAX_GROUPS_PER_NOTE cap by
+  // dropping it from its oldest group (its first entry in `groups`); groups left with <2
+  // members are discarded. Notes below the cap are untouched. Reads the current lookup
+  // index (so call before pushing the new group) and leaves it stale for the caller to
+  // rebuild.
+  _evictToMakeRoom(ids) {
+    let changed = false;
+    for (const id of ids) {
+      const gs = this._groupsByNoteId.get(id);
+      if (gs && gs.length >= MAX_GROUPS_PER_NOTE) {
+        gs[0].members = gs[0].members.filter(m => m !== id);
+        changed = true;
+      }
+    }
+    if (changed) this.groups = this.groups.filter(g => g.members.length >= 2);
+  }
+
+  // Records the selected notes as a selection group. Needs ≥2 notes. A note may belong to
+  // up to MAX_GROUPS_PER_NOTE groups at once (so one note can end a phrase and begin the
+  // next); a member already at that cap is evicted from its oldest group to make room.
+  // Groups left with <2 members are discarded.
   createGroup(indices) {
     const members = indices.map(i => this.notes[i]).filter(Boolean);
     if (members.length < 2) return;
     this._pushUndo();
     const ids = new Set(members.map(n => n.id));
-    this._detachIds(ids);
+    this._evictToMakeRoom(ids);
     this.groups.push({ id: this._nextGroupId++, members: [...ids] });
     this._rebuildGroupIndex();
     this.dispatch('groupschanged');

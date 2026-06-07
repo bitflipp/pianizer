@@ -6,7 +6,7 @@ test('Group tool [1] groups the selection; a member selects alone, a double-clic
 
   await page.evaluate(() => window._state.setSelection(window._state.notes.map((_, i) => i)));
   await page.keyboard.press('1');
-  await page.locator('.tool-window-body button', { hasText: 'Group selection' }).click();
+  await page.locator('.tool-window-body button', { hasText: /^Group$/ }).click();
 
   const info = await page.evaluate(() => {
     const s = window._state;
@@ -24,6 +24,26 @@ test('Group tool [1] groups the selection; a member selects alone, a double-clic
   // Double-clicking a member selects the whole group.
   await page.mouse.dblclick(pos.x, pos.y);
   sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
+  expect(sel).toEqual([0, 1, 2]);
+});
+
+test('double-clicking a boundary note in two groups selects both', async ({ page }) => {
+  await gotoApp(page);
+  await loadProject(page);
+
+  // Note 1 ends group A {0,1} and begins group B {1,2} — a boundary note in two groups.
+  await page.evaluate(() => {
+    const s = window._state;
+    s.createGroup([0, 1]);
+    s.createGroup([1, 2]);
+    s.setSelection([]);
+  });
+  const inTwo = await page.evaluate(() => window._state.groupsOfNote(window._state.notes[1]).length);
+  expect(inTwo).toBe(2);
+
+  const pos = await notePagePos(page, 1);
+  await page.mouse.dblclick(pos.x, pos.y);
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
   expect(sel).toEqual([0, 1, 2]);
 });
 

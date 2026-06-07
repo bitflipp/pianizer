@@ -444,13 +444,23 @@ describe('createGroup', () => {
     expect(s.groups).toHaveLength(0);
   });
 
-  test('re-grouping detaches members from their old group', () => {
+  test('a boundary note may join a second group (up to two)', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1]);
-    s.createGroup([1, 2]); // note 1 moves out of the first group, which then drops <2
-    expect(s.groups).toHaveLength(1);
-    expect(s.groups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
-    expect(s.groupOfNote(s.notes[0])).toBe(null);
+    s.createGroup([1, 2]); // note 1 ends the first phrase and begins the second
+    expect(s.groups).toHaveLength(2);
+    expect(s.groupsOfNote(s.notes[1])).toHaveLength(2);
+    expect(s.groupsOfNote(s.notes[0])).toHaveLength(1);
+  });
+
+  test('a third group evicts the note from its oldest group', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440), n(1440, 1920)]);
+    s.createGroup([0, 1]); // group A: 0, 1
+    s.createGroup([1, 2]); // group B: 1, 2  (note 1 now in A and B)
+    s.createGroup([1, 3]); // group C: 1, 3  → note 1 evicted from oldest group A
+    expect(s.groupsOfNote(s.notes[1])).toHaveLength(2);
+    expect(s.groups).toHaveLength(2);            // A dropped to one member (note 0) → dissolved
+    expect(s.groupsOfNote(s.notes[0])).toHaveLength(0);
   });
 });
 
@@ -461,7 +471,7 @@ describe('removeFromGroup', () => {
     s.removeFromGroup([0]);                       // pull note 0 out; 1 and 2 stay grouped
     expect(s.groups).toHaveLength(1);
     expect(s.groups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
-    expect(s.groupOfNote(s.notes[0])).toBe(null);
+    expect(s.groupsOfNote(s.notes[0])).toHaveLength(0);
   });
 
   test('dissolves the group once it drops below 2 members', () => {
@@ -478,6 +488,15 @@ describe('removeFromGroup', () => {
     s.removeFromGroup([0, 1]);                    // neither note is grouped
     expect(s.groups).toHaveLength(0);
     expect(s._undoStack).toHaveLength(0);
+  });
+
+  test('extracts a boundary note from both of its groups', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
+    s.createGroup([0, 1]);                         // group A: 0, 1
+    s.createGroup([1, 2]);                         // group B: 1, 2  (note 1 in both)
+    s.removeFromGroup([1]);                        // both groups fall to 1 member → dissolved
+    expect(s.groups).toHaveLength(0);
+    expect(s.groupsOfNote(s.notes[1])).toHaveLength(0);
   });
 });
 

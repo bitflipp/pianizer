@@ -693,8 +693,9 @@
     const touched   = new Map();
     let   ungrouped = 0;
     for (const i of indices) {
-      const g = state.groupOfNote(state.notes[i]);
-      if (g) touched.set(g.id, g); else ungrouped++;
+      const gs = state.groupsOfNote(state.notes[i]);
+      if (gs.length) for (const g of gs) touched.set(g.id, g);
+      else ungrouped++;
     }
     // ≥2 notes to group; "would change something" means there's an ungrouped note,
     // or notes spread across more than one existing group to merge.

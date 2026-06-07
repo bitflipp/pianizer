@@ -131,10 +131,11 @@ to front so the topmost note wins.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Group** — `state.createGroup` / `state.removeFromGroup`. Offers a **Group selection**
-  button (when ≥2 selected notes would form/merge a group) and an **Ungroup** button (when the
-  selection touches existing groups; extracts the selected members, dissolving a group once it
-  drops below 2). See Selection Groups.
+- **[1] Group** — `state.createGroup` / `state.removeFromGroup`. Offers a **Group**
+  button (when ≥2 selected notes would form/merge a group — a selected note already in another
+  group can join a second) and an **Ungroup** button (when the selection touches existing groups;
+  extracts the selected members from **all** their groups, dissolving a group once it drops below
+  2). See Selection Groups.
 - **[2] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
   `SCALE_EASINGS` in engine/state.js, default S-curve; the selector row is built by the
   shared `buildShapeRow` helper, the picker by `buildRampPicker`), then two-click: first click
@@ -169,19 +170,26 @@ On the roll:
   (between consecutive run notes, between a chord's pitches). Single colored stroke
   (`threadHSL(GROUP_COLORS[id % …], hot)`); off-screen groups are culled and the thread is clipped
   to the roll. **Hovering any member lights up the whole group** as a unit — the hovered group's
-  thread brightens (`hot`, via `_hoverGroupId`), and every member note also forces `'hovered'`
-  velocity-blue, since members ignore the per-note hover state. (Thread hover emphasis is
-  suppressed mid rect-drag.)
+  thread brightens (`hot`, via the `_hoverGroupIds` set), and every member note also forces
+  `'hovered'` velocity-blue, since members ignore the per-note hover state. (Thread hover emphasis
+  is suppressed mid rect-drag.)
+- **A note may belong to two groups** (a boundary note that ends one phrase and begins the next;
+  the cap is `MAX_GROUPS_PER_NOTE` in engine/state.js). For such a note the two threads **do not**
+  both pass through the box centroid — `_noteAnchor(n, g)` splits the box width into two padded
+  slots (`THREAD_NODE_PAD` per side, lower group id on the left) so the threads sit **side by side**
+  through the box instead of overlapping. A note in a single group still anchors at its centroid.
+  Hovering a boundary note lights up **both** its groups.
 - **Members select individually; a double-click selects the group.** `_onClick` treats a
   grouped note exactly like any other — a single click adds (or Ctrl-removes) just that note, and
   the rubber-band picks members up too (`_notesInRect` no longer excludes them). `_onDblClick`
-  is the one gesture that selects a group as a unit: double-clicking a member adds its whole group
-  (`state.groupMemberIndices`) to the selection. This lets you pull a note **out** of a group's
-  worth of selection without dissolving the group — select the group, then Ctrl+click the strays.
+  is the one gesture that selects a group as a unit: double-clicking a member adds **every** group
+  it belongs to (`state.groupsOfNote` → `state.groupMemberIndices`) to the selection. This lets you
+  pull a note **out** of a group's worth of selection without dissolving the group — select the
+  group, then Ctrl+click the strays.
 - **Extracting members**: the Group tool's **Ungroup** button calls `state.removeFromGroup` on
-  the current selection — the selected notes leave their group(s), and a group dissolves once it
-  falls below 2 members. (There's no whole-group dissolve primitive: double-click the group,
-  then Ungroup.)
+  the current selection — the selected notes leave **every** group they're in (both, for a
+  boundary note), and a group dissolves once it falls below 2 members. (There's no whole-group
+  dissolve primitive: double-click the group, then Ungroup.)
 - **Members stay editable**: they move (Shift+drag), resize, and delete like any note. A Shift+drag
   carries whatever is selected (`_activateNoteDrag` follows `selectedNoteIndices`), so dragging a
   lone-selected member moves just that note, while dragging once the group is selected carries it
