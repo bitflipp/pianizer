@@ -826,7 +826,7 @@ export function interpolateCurveAtTick(points, tick, fallback) {
 
 // ── Snap grid ──────────────────────────────────────────────────────────
 
-export const SNAP_GRIDS = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T'];
+export const SNAP_GRIDS = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T', '1/64', '1/64T'];
 
 export function snapGridTicks(grid, tpb) {
   switch (grid) {
@@ -839,6 +839,8 @@ export function snapGridTicks(grid, tpb) {
     case '1/16T': return tpb / 3;
     case '1/32':  return tpb / 8;
     case '1/32T': return tpb / 6;
+    case '1/64':  return tpb / 16;
+    case '1/64T': return tpb / 12;
     default:      return tpb / 2;
   }
 }

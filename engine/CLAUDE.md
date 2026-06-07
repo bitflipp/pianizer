@@ -90,8 +90,8 @@ part of undo.
 
 ## Snap Grid
 
-Snap resolutions: `1/1`, `1/2`, `1/4`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`
-Triplet grids (`T`) are `tpb * 2/3` (`1/8T`), `tpb / 3` (`1/16T`), and `tpb / 6` (`1/32T`).
+Snap resolutions: `1/1`, `1/2`, `1/4`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`, `1/64T`
+Triplet grids (`T`) are `tpb * 2/3` (`1/8T`), `tpb / 3` (`1/16T`), `tpb / 6` (`1/32T`), and `tpb / 12` (`1/64T`).
 `state.snapTick(tick)` returns the nearest snapped tick for a given value.
 Grid renders: sub-beat lines (faint `#222`), beat lines (`#2a2a2a`), bar lines (`#3a3a3a`).
 
