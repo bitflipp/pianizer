@@ -41,14 +41,17 @@ remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resize
 
 **Selection groups** (`state.groups`): `[{id, members:[noteId]}]`. A pure selection
 convenience created by the Group tool [1] (`createGroup(indices)`, needs ≥2 notes):
-**double-clicking** a member selects the whole group and members highlight together, but each
-member stays **fully editable** and selectable **individually** (a single click or rubber-band
-picks one up like any other note). A note belongs to one group at most — `createGroup` detaches
-members from any prior group and discards groups left with <2 members. `removeFromGroup(indices)`
-extracts the given notes from whatever group each is in (the Ungroup button), dissolving a group
-once it drops below 2 members; `deleteNotes` prunes deleted ids the same way (`_pruneGroups`).
-API: `createGroup` / `removeFromGroup` (both push undo, dispatch `groupschanged`);
-`groupOfNote(note)` / `groupMembers(g)` / `groupMemberIndices(g)` read a `noteId→group` index
+**double-clicking** a member selects the whole group (both groups if it's a boundary note) and
+members highlight together, but each member stays **fully editable** and selectable
+**individually** (a single click or rubber-band picks one up like any other note). A note belongs
+to up to `MAX_GROUPS_PER_NOTE` (= 2) groups at once — so one note can end a phrase and begin the
+next. `createGroup` evicts a member already at that cap from its **oldest** group
+(`_evictToMakeRoom`) to make room, and discards groups left with <2 members.
+`removeFromGroup(indices)` extracts the given notes from **every** group each is in (the Ungroup
+button), dissolving a group once it drops below 2 members; `deleteNotes` prunes deleted ids the
+same way (`_pruneGroups`). API: `createGroup` / `removeFromGroup` (both push undo, dispatch
+`groupschanged`); `groupsOfNote(note)` (→ `group[]`, ≤2, shared empty array when ungrouped — do
+not mutate) / `groupMembers(g)` / `groupMemberIndices(g)` read a `noteId→group[]` index
 rebuilt on every group change. (Saved under the JSON key `groups`.)
 
 **Curve tool** (`applyVelocityCurve(indices, from, to, shape)`): a **one-shot** velocity

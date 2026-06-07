@@ -46,6 +46,9 @@ function threadHSL(c, hot) {
 }
 const THREAD_WIDTH      = 1.5;                 // thread / spine stroke
 const THREAD_WIDTH_HOT  = 2.5;                 // …of the hovered group
+// Padding inside a note box (px per side) when a boundary note's box is split between the
+// two groups it belongs to, so their threads sit side by side rather than over the centroid.
+const THREAD_NODE_PAD   = 3;
 // Relative luminance (WCAG) of an `hsl(h,s%,l%)` string, 0 (black) … 1 (white).
 // HSL lightness alone isn't perceptual — gold and blue at the same `l` differ
 // wildly in brightness — so we convert through sRGB and weight the channels.
@@ -141,7 +144,7 @@ export class PianoRoll {
 
     // Hover
     this._hoverNoteIdx  = -1;
-    this._hoverGroupId  = -1;       // selection group whose member is under the cursor (-1 = none)
+    this._hoverGroupIds = new Set(); // ids of selection groups whose member is under the cursor (a boundary note is in two)
     this._hoverNoteRightEdge = -1;  // index of note whose right edge is under the cursor
     this._lastMousePos  = null;
     this._shiftHeld     = false;  // Shift = the move/resize edit modifier; tracked for handle drawing
@@ -492,10 +495,12 @@ export class PianoRoll {
 
     // Group membership is drawn as a constellation thread (see _drawGroupThreads), not
     // as a fill — every note keeps its velocity-blue. Hovering any member still lights up
-    // the *whole* group as a unit: members ignore the per-note hover, so the hovered
-    // group forces 'hovered' across all of them.
-    const grp = state.groupOfNote(n);
-    if (!effective.inDrag && grp && grp.id === this._hoverGroupId) colorState = 'hovered';
+    // the *whole* group(s) as a unit: members ignore the per-note hover, so any hovered
+    // group a note belongs to forces 'hovered' across all of them.
+    if (!effective.inDrag && this._hoverGroupIds.size) {
+      const grps = state.groupsOfNote(n);
+      if (grps.some(g => this._hoverGroupIds.has(g.id))) colorState = 'hovered';
+    }
     const fill = noteHSL(n.velocity, colorState);
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
@@ -526,20 +531,36 @@ export class PianoRoll {
     ctx.fillRect(x + w - hw, y, hw, h);
   }
 
+  // Anchor point inside note n's box for group g's thread. A note in a single group
+  // anchors at its box centroid; a boundary note shared by two groups splits its box width
+  // into two padded slots (lower group id on the left) so the two threads sit side by side
+  // with padding instead of overlapping at the centroid.
+  _noteAnchor(n, g) {
+    const x0 = this.tickToX(n.startTick);
+    const w  = this._noteWidthPx(n);
+    const yc = this.pitchToY(n.pitch) + this.noteHeight / 2;
+    const groups = state.groupsOfNote(n);
+    if (groups.length < 2) return { x: x0 + w / 2, y: yc };
+    const slot  = [...groups].sort((a, b) => a.id - b.id)[0].id === g.id ? 0 : 1;
+    const pad   = Math.min(THREAD_NODE_PAD, w / 4);
+    const inner = w - 2 * pad;
+    return { x: x0 + pad + inner * (slot + 0.5) / 2, y: yc };
+  }
+
   // Selection groups drawn as constellation threads (see ui/CLAUDE.md). Each group's
   // members are bucketed by onset tick into clusters; a cluster spanning >1 pitch draws
   // a vertical spine across its pitch range, and a thread links consecutive clusters
   // (in tick order) through each cluster's centroid waypoint — so a chord reads as a
   // lone spine, a run as a contour line, and a chordal phrase as spines strung along a
-  // thread. Drawn *behind* the notes (over the grid), anchored to the note-box centroids,
-  // so the thread weaves through the boxes and shows in the gaps; the group under the
-  // cursor brightens as a unit.
+  // thread. Drawn *behind* the notes (over the grid), anchored to each note's box anchor
+  // (_noteAnchor: the box centroid, or one of two side-by-side slots for a boundary note
+  // shared by two groups), so the thread weaves through the boxes and shows in the gaps;
+  // the group under the cursor brightens as a unit.
   _drawGroupThreads() {
     if (!state.groups.length) return;
     const { ctx } = this;
     const tickStart = this.scrollX;
     const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
-    const halfH     = this.noteHeight / 2;
     // A rect drag is previewing a selection change — suppress the hover emphasis then.
     const dragging  = this._rectSelActive && this._rectDidDrag;
 
@@ -561,8 +582,7 @@ export class PianoRoll {
       for (const n of members) {
         let c = byTick.get(n.startTick);
         if (!c) { c = { tick: n.startTick, xSum: 0, ySum: 0, count: 0, yTop: Infinity, yBot: -Infinity }; byTick.set(n.startTick, c); }
-        const cx = this.tickToX(n.startTick) + this._noteWidthPx(n) / 2;
-        const cy = this.pitchToY(n.pitch) + halfH;
+        const { x: cx, y: cy } = this._noteAnchor(n, g);
         c.xSum += cx; c.ySum += cy; c.count++;
         if (cy < c.yTop) c.yTop = cy;
         if (cy > c.yBot) c.yBot = cy;
@@ -571,7 +591,7 @@ export class PianoRoll {
       // Whole-group cull: sorted, so all clusters off one side means the thread can't cross.
       if (clusters[clusters.length - 1].tick < tickStart || clusters[0].tick > tickEnd) continue;
 
-      const hot   = !dragging && g.id === this._hoverGroupId;
+      const hot   = !dragging && this._hoverGroupIds.has(g.id);
       ctx.strokeStyle = threadHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], hot);
       ctx.lineWidth   = hot ? THREAD_WIDTH_HOT : THREAD_WIDTH;
       const pts = clusters.map(c => ({ x: c.xSum / c.count, y: c.ySum / c.count, yTop: c.yTop, yBot: c.yBot }));
@@ -882,7 +902,7 @@ export class PianoRoll {
 
   _onMouseLeave() {
     this._hoverNoteIdx       = -1;
-    this._hoverGroupId       = -1;
+    this._hoverGroupIds.clear();
     this._hoverNoteRightEdge = -1;
     this._hoverNoteHandle    = -1;
     this._hoverNoteLeftEdge  = -1;
@@ -1160,10 +1180,11 @@ export class PianoRoll {
     const hoverNi = inRoll ? this._noteAtPos(pos) : -1;
     const hoverChanged = hoverNi !== this._hoverNoteIdx;
     this._hoverNoteIdx = hoverNi;
-    // Light up every member of the group under the cursor (derived from the hovered
+    // Light up every member of the group(s) under the cursor (derived from the hovered
     // note — a group change always implies a note change, so hoverChanged covers render).
-    const hoverGrp = hoverNi >= 0 ? state.groupOfNote(state.notes[hoverNi]) : null;
-    this._hoverGroupId = hoverGrp ? hoverGrp.id : -1;
+    this._hoverGroupIds = new Set(
+      hoverNi >= 0 ? state.groupsOfNote(state.notes[hoverNi]).map(g => g.id) : []
+    );
 
     if (this.draggingPlayhead) {
       this._seekTime = state.tickToTime(Math.max(0, this.xToTick(pos.x)));
@@ -1407,18 +1428,19 @@ export class PianoRoll {
   }
 
   // Double-click a grouped note → add its whole group to the selection (the single
-  // gesture that selects a group as a unit; plain clicks pick members individually).
+  // gesture that selects a group as a unit; plain clicks pick members individually). A
+  // boundary note in two groups pulls in both.
   _onDblClick(e) {
     if (!state.loaded) return;
     const pos = this._canvasPos(e);
     if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
     const ni = this._noteAtPos(pos);
     if (ni === -1) return;
-    const grp = state.groupOfNote(state.notes[ni]);
-    if (!grp) return;
+    const grps = state.groupsOfNote(state.notes[ni]);
+    if (!grps.length) return;
     e.stopPropagation();
     const current = state.selectedNoteIndices;
-    const members = state.groupMemberIndices(grp);
+    const members = [...new Set(grps.flatMap(g => state.groupMemberIndices(g)))];
     if (members.some(i => !current.has(i))) {
       state.setSelection([...new Set([...current, ...members])]);
     }
