@@ -66,7 +66,7 @@ function relativeLuminance(hsl) {
 // Black or white label, whichever has the higher WCAG contrast against `fill`.
 // The crossover (luminance ≈ 0.179) is exactly where black-on-fill and
 // white-on-fill contrast ratios meet, so this is genuinely maximum contrast.
-// One rule for every roll label — velocity numbers and curve-group endpoints —
+// One rule for every roll label — the per-note velocity numbers —
 // adapting to the actual rendered fill, so it tracks velocity and the hover /
 // group-highlight brightening alike (a near-threshold fill flips on hover, by
 // design: the label always follows the most legible choice for the current fill).

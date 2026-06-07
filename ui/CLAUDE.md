@@ -153,7 +153,7 @@ whatever is selected, grouped or not — there are no locked notes.
 
 ## Selection Groups
 
-The Group tool [1] records a selection group (`state.curveGroups`, shape `{id, members}`, see
+The Group tool [1] records a selection group (`state.groups`, shape `{id, members}`, see
 engine/CLAUDE.md). A group is **purely a selection convenience** — members stay fully editable.
 On the roll:
 
