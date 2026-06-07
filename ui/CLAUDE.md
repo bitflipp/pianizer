@@ -115,9 +115,9 @@ choice tracks hover/dim brightening. Each note has a 1 px top gap (`y+1`, `h = n
 visually separating adjacent pitches.
 
 Each note box shows its velocity number (top-left), clipped to the note interior — **every**
-note, grouped or not. Notes in a selection group are filled with their group's accent color
-(not the velocity-blue) so the group reads as a unit, with the velocity number drawn on top in
-the luminance-adaptive label color; see Selection Groups below.
+note, grouped or not. Notes in a selection group keep their velocity-blue fill — group
+membership is shown by a **constellation thread** drawn over the notes, not by recoloring them
+(so velocity stays legible); see Selection Groups below.
 
 Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
 longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
@@ -157,15 +157,21 @@ The Group tool [1] records a selection group (`state.groups`, shape `{id, member
 engine/CLAUDE.md). A group is **purely a selection convenience** — members stay fully editable.
 On the roll:
 
-- **Member notes** are **filled with the group's accent color** (`GROUP_COLORS`, HSL tuples
-  cycled by group id; `state.groupOfNote` in `_drawNote`), overriding the velocity-blue fill so a
-  group reads as a unit — **and still show their velocity number** on top (luminance-adaptive
-  `labelColorFor`). The accent fill follows the **same selection feedback** as a plain note
-  (`groupHSL(c, displayState)` mirrors `noteHSL`'s `'normal'/'hovered'/'dimmed'`): a member
-  **brightens** when a rect drag is adding it (`willAdd`) and **dims** when it's leaving
-  (`willRemove`) or when a selection elsewhere makes it inactive. Additionally, **hovering any
-  member lights up the whole group** as a unit — `_hoverGroupId` (the hovered note's group) forces
-  `'hovered'` across every member, since members ignore the per-note hover state.
+- **Member notes keep their velocity-blue fill** — group membership is drawn as a
+  **constellation thread** (`_drawGroupThreads`, called *before* `_drawNotes` so it sits **behind
+  the boxes**, over the grid), not by recoloring the notes, so velocity stays legible. Each
+  group's members are bucketed by **onset tick** into clusters; a cluster spanning more than one
+  pitch draws a vertical **spine** across its pitch range, and a **thread** links consecutive
+  clusters (in tick order) through each cluster's **centroid waypoint** (mean of its members' note-
+  box centers) — so a chord reads as a lone spine, a run as a contour line, and a chordal phrase
+  as spines strung along a thread. Anchored to the box centroids and drawn behind the boxes, the
+  thread **weaves through the notes**: it's occluded where it crosses a box and shows in the gaps
+  (between consecutive run notes, between a chord's pitches). Single colored stroke
+  (`threadHSL(GROUP_COLORS[id % …], hot)`); off-screen groups are culled and the thread is clipped
+  to the roll. **Hovering any member lights up the whole group** as a unit — the hovered group's
+  thread brightens (`hot`, via `_hoverGroupId`), and every member note also forces `'hovered'`
+  velocity-blue, since members ignore the per-note hover state. (Thread hover emphasis is
+  suppressed mid rect-drag.)
 - **Members select individually; a double-click selects the group.** `_onClick` treats a
   grouped note exactly like any other — a single click adds (or Ctrl-removes) just that note, and
   the rubber-band picks members up too (`_notesInRect` no longer excludes them). `_onDblClick`
