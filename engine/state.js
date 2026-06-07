@@ -488,11 +488,16 @@ export class AppState extends EventTarget {
     this.dispatch('groupschanged');
   }
 
-  dissolveGroup(groupId) {
-    const idx = this.curveGroups.findIndex(g => g.id === groupId);
-    if (idx < 0) return;
+  // Extracts the given notes from whichever group each belongs to (a note is in one
+  // group at most), then discards any group left with <2 members. Ungrouped notes are
+  // ignored; a no-op (no undo entry) when none of them are grouped.
+  removeFromGroup(indices) {
+    const ids = new Set();
+    for (const i of indices) { const note = this.notes[i]; if (note) ids.add(note.id); }
+    if (!this.curveGroups.some(g => g.members.some(id => ids.has(id)))) return;
     this._pushUndo();
-    this.curveGroups.splice(idx, 1);
+    for (const g of this.curveGroups) g.members = g.members.filter(id => !ids.has(id));
+    this.curveGroups = this.curveGroups.filter(g => g.members.length >= 2);
     this._rebuildGroupIndex();
     this.dispatch('groupschanged');
   }

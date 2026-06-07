@@ -1,6 +1,6 @@
 import { test, expect, gotoApp, loadProject, notePagePos } from './helpers.js';
 
-test('Group tool [1] groups the selection; a member selects alone, a second click selects the group', async ({ page }) => {
+test('Group tool [1] groups the selection; a member selects alone, a double-click selects the group', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);
 
@@ -14,15 +14,15 @@ test('Group tool [1] groups the selection; a member selects alone, a second clic
   });
   expect(info).toMatchObject({ groups: 1, members: 3 });
 
-  // Clear, then a first click on a member selects only that note.
+  // Clear, then a single click on a member selects only that note (not the group).
   await page.evaluate(() => window._state.setSelection([]));
   const pos = await notePagePos(page, 1);
   await page.mouse.click(pos.x, pos.y);
   let sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
   expect(sel).toEqual([1]);
 
-  // Clicking the already-selected member promotes to the whole group.
-  await page.mouse.click(pos.x, pos.y);
+  // Double-clicking a member selects the whole group.
+  await page.mouse.dblclick(pos.x, pos.y);
   sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
   expect(sel).toEqual([0, 1, 2]);
 });
@@ -64,11 +64,11 @@ test('Curve tool [2] bakes a ramp without creating a group or locking', async ({
   expect(info).toMatchObject({ groups: 0, firstVel: 30, lastVel: 110 });
 });
 
-test('rubber-band selection skips grouped notes', async ({ page }) => {
+test('rubber-band selection includes grouped notes', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);
 
-  // Group notes 0 and 1; note 2 stays ungrouped.
+  // Group notes 0 and 1; note 2 stays ungrouped. Members select like any other note.
   await page.evaluate(() => window._state.createGroup([0, 1]));
 
   // A rubber-band rectangle covering all three notes. The mousedown corner sits in
@@ -98,8 +98,8 @@ test('rubber-band selection skips grouped notes', async ({ page }) => {
   await page.mouse.up();
 
   const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
-  // Only note 2 (ungrouped) is selected; the grouped members are skipped.
-  expect(sel).toEqual([2]);
+  // All three notes are selected — grouped members are picked up like any other note.
+  expect(sel).toEqual([0, 1, 2]);
 });
 
 test('grouped notes are deletable', async ({ page }) => {

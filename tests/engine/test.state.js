@@ -454,14 +454,30 @@ describe('createGroup', () => {
   });
 });
 
-describe('dissolveGroup', () => {
-  test('removes the group, leaving velocities intact', () => {
-    const s = mkGroupState([n(0, 480), n(480, 960)]);
+describe('removeFromGroup', () => {
+  test('extracts selected members, keeping the group when ≥2 remain', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
+    s.createGroup([0, 1, 2]);
+    s.removeFromGroup([0]);                       // pull note 0 out; 1 and 2 stay grouped
+    expect(s.curveGroups).toHaveLength(1);
+    expect(s.curveGroups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
+    expect(s.groupOfNote(s.notes[0])).toBe(null);
+  });
+
+  test('dissolves the group once it drops below 2 members', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1]);
     const baked = s.notes.map(x => x.velocity);
-    s.dissolveGroup(s.curveGroups[0].id);
+    s.removeFromGroup([0]);                       // group falls to 1 member → discarded
     expect(s.curveGroups).toHaveLength(0);
-    expect(s.notes.map(x => x.velocity)).toEqual(baked);
+    expect(s.notes.map(x => x.velocity)).toEqual(baked); // velocities untouched
+  });
+
+  test('ignores ungrouped notes and records no undo when nothing changes', () => {
+    const s = mkGroupState([n(0, 480), n(480, 960)]);
+    s.removeFromGroup([0, 1]);                    // neither note is grouped
+    expect(s.curveGroups).toHaveLength(0);
+    expect(s._undoStack).toHaveLength(0);
   });
 });
 

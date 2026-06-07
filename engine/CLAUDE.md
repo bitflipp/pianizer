@@ -40,14 +40,17 @@ remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resize
 `beginCurvePointMove()` to push undo once at drag start.
 
 **Selection groups** (`state.curveGroups`): `[{id, members:[noteId]}]`. A pure selection
-convenience created by the Group tool [1] (`createGroup(indices)`, needs ≥2 notes): clicking
-one member selects the whole group and they highlight together, but members stay **fully
-editable** (move/resize/delete/velocity). A note belongs to one group at most — `createGroup`
-detaches members from any prior group and discards groups left with <2 members; `deleteNotes`
-prunes deleted ids the same way (`_pruneGroups`). API: `createGroup` / `dissolveGroup` (both
-push undo, dispatch `groupschanged`); `groupOfNote(note)` / `groupMembers(g)` /
-`groupMemberIndices(g)` read a `noteId→group` index rebuilt on every group change. (The
-JSON/field name stays `curveGroups` for back-compat with existing projects.)
+convenience created by the Group tool [1] (`createGroup(indices)`, needs ≥2 notes):
+**double-clicking** a member selects the whole group and members highlight together, but each
+member stays **fully editable** and selectable **individually** (a single click or rubber-band
+picks one up like any other note). A note belongs to one group at most — `createGroup` detaches
+members from any prior group and discards groups left with <2 members. `removeFromGroup(indices)`
+extracts the given notes from whatever group each is in (the Ungroup button), dissolving a group
+once it drops below 2 members; `deleteNotes` prunes deleted ids the same way (`_pruneGroups`).
+API: `createGroup` / `removeFromGroup` (both push undo, dispatch `groupschanged`);
+`groupOfNote(note)` / `groupMembers(g)` / `groupMemberIndices(g)` read a `noteId→group` index
+rebuilt on every group change. (The JSON/field name stays `curveGroups` for back-compat with
+existing projects.)
 
 **Curve tool** (`applyVelocityCurve(indices, from, to, shape)`): a **one-shot** velocity
 shaper invoked by tool [2]. Bakes a start→end ramp (eased by `shape`, one of `SCALE_EASINGS`,

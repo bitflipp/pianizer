@@ -35,12 +35,14 @@ const GROUP_COLORS  = [
   { h: 345, s: 72, l: 56 },  // pink
 ];
 
-// Accent fill for a group member. `hovered` brightens every member of the group
-// under the cursor as a unit (lightness +18, capped), the same brightness idiom
-// noteHSL uses for plain notes.
-function groupHSL(c, hovered) {
-  const l = hovered ? Math.min(82, c.l + 18) : c.l;
-  return `hsl(${c.h},${c.s}%,${l}%)`;
+// Accent fill for a group member. `displayState` mirrors noteHSL's vocabulary so a
+// group member reflects the same selection feedback as a plain note: 'hovered'
+// brightens (lightness +18, capped), 'dimmed' darkens (×0.55), 'normal' is the base.
+function groupHSL(c, displayState) {
+  let l = c.l;
+  if (displayState === 'dimmed')  l *= 0.55;
+  if (displayState === 'hovered') l  = Math.min(82, c.l + 18);
+  return `hsl(${c.h},${c.s}%,${Math.round(l)}%)`;
 }
 // Relative luminance (WCAG) of an `hsl(h,s%,l%)` string, 0 (black) … 1 (white).
 // HSL lightness alone isn't perceptual — gold and blue at the same `l` differ
@@ -422,7 +424,7 @@ export class PianoRoll {
     this._drawOrderDirty = false;
   }
 
-  _groupColor(g, hovered) { return groupHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], hovered); }
+  _groupColor(g, displayState) { return groupHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], displayState); }
 
   // Draws a clipped, top-left label inside a note box. `y` is the box top
   // (pitchToY + 1). Used for the per-note velocity number.
@@ -487,13 +489,16 @@ export class PianoRoll {
     else if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
     else if (hovered || willAdd) colorState = 'hovered';
 
-    // Group members always read as a unit in the group's accent color, overriding
-    // the per-note velocity-blue fill so a group is recognisable at a glance.
+    // Group members read as a unit in the group's accent color, overriding the per-note
+    // velocity-blue fill so a group is recognisable at a glance — but otherwise follow
+    // the same selection feedback as plain notes (willAdd brightens during a rect drag,
+    // willRemove/unselected-with-a-selection dims). Hovering any member additionally
+    // lights up the *whole* group as a unit, since members ignore the per-note hover.
     const grp = state.groupOfNote(n);
-    // Hovering any member lights up the whole group as a unit (group members
-    // otherwise ignore the per-note `hovered` state, which only tints the blue fill).
+    let groupState = colorState;
+    if (!effective.inDrag && grp && grp.id === this._hoverGroupId) groupState = 'hovered';
     const fill = grp
-      ? this._groupColor(grp, !effective.inDrag && grp.id === this._hoverGroupId)
+      ? this._groupColor(grp, groupState)
       : noteHSL(n.velocity, colorState);
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
@@ -649,6 +654,7 @@ export class PianoRoll {
     c.addEventListener('mousedown',  e  => this._onMouseDown(e));
     c.addEventListener('wheel',      e  => this._onWheel(e), { passive: false });
     c.addEventListener('click',      e  => this._onClick(e));
+    c.addEventListener('dblclick',   e  => this._onDblClick(e));
     c.addEventListener('mouseleave', () => this._onMouseLeave());
     window.addEventListener('keyup', e => {
       if (e.key === 'Alt' && !this._panning) this._refreshCursor();
@@ -914,14 +920,13 @@ export class PianoRoll {
   }
 
   // Returns a Set of note indices whose canvas rects overlap the current selection rect.
-  // Grouped notes are excluded — a group is selected as a unit by clicking a member,
-  // so the rubber-band deliberately passes over them rather than picking up fragments.
+  // Grouped notes are included — members select individually like any other note (a
+  // group is selected as a unit by double-clicking a member, not by the rubber-band).
   _notesInRect() {
     const { x1, y1, x2, y2 } = this._selectionRect();
     const hits = new Set();
     for (let i = 0; i < state.notes.length; i++) {
       const n   = state.notes[i];
-      if (state.groupOfNote(n)) continue;
       const nx1 = this.tickToX(n.startTick);
       const nx2 = nx1 + this._noteWidthPx(n);
       const ny1 = this.pitchToY(n.pitch);
@@ -1311,24 +1316,13 @@ export class PianoRoll {
     if (ni !== -1) {
       e.stopPropagation();
       const current = state.selectedNoteIndices;
-      const grp     = state.groupOfNote(state.notes[ni]);
-      const members = grp ? state.groupMemberIndices(grp) : null;
-      // Grouped notes select in two stages so a member can still be edited alone:
-      // clicking an unselected member picks just that note; clicking it again (now
-      // selected) promotes to the whole group. Ctrl mirrors this on removal —
-      // dropping the whole group only once it's fully selected, else just the note.
+      // A single click acts on just the clicked note — grouped or not, members select
+      // individually. Ctrl removes, a bare click adds. The whole group is reached by
+      // double-clicking a member (see _onDblClick).
       if (e.ctrlKey || e.metaKey) {
-        const groupFull = members && members.every(i => current.has(i));
-        const targets   = groupFull ? members : [ni];
-        if (targets.some(i => current.has(i))) {
-          const drop = new Set(targets);
-          state.setSelection([...current].filter(i => !drop.has(i)));
-        }
+        if (current.has(ni)) state.setSelection([...current].filter(i => i !== ni));
       } else {
-        const targets = (members && current.has(ni)) ? members : [ni];
-        if (targets.some(i => !current.has(i))) {
-          state.setSelection([...new Set([...current, ...targets])]);
-        }
+        if (!current.has(ni)) state.setSelection([...current, ni]);
       }
       return;
     }
@@ -1344,6 +1338,24 @@ export class PianoRoll {
     this.canvas.dispatchEvent(new CustomEvent('user-seek', {
       bubbles: true, detail: { time }
     }));
+  }
+
+  // Double-click a grouped note → add its whole group to the selection (the single
+  // gesture that selects a group as a unit; plain clicks pick members individually).
+  _onDblClick(e) {
+    if (!state.loaded) return;
+    const pos = this._canvasPos(e);
+    if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
+    const ni = this._noteAtPos(pos);
+    if (ni === -1) return;
+    const grp = state.groupOfNote(state.notes[ni]);
+    if (!grp) return;
+    e.stopPropagation();
+    const current = state.selectedNoteIndices;
+    const members = state.groupMemberIndices(grp);
+    if (members.some(i => !current.has(i))) {
+      state.setSelection([...new Set([...current, ...members])]);
+    }
   }
 
   _onWheel(e) {

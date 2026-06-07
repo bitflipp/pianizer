@@ -335,11 +335,11 @@
   // ── Help overlay ──────────────────────────────────────────────────
   const HELP_SECTIONS = [
     ['Selection', [
-      ['Click note',           'Add note to selection'],
-      ['Click grouped note',   'Add the whole group to selection'],
-      ['Drag',                 'Rectangle select (adds; works anywhere, even over notes; skips grouped notes)'],
+      ['Click note',           'Add note to selection (grouped notes select individually)'],
+      ['Double-click note',    'Add its whole group to selection'],
+      ['Drag',                 'Rectangle select (adds; works anywhere, even over notes)'],
       ['Ctrl+drag',            'Red rectangle: removes covered notes from selection'],
-      ['Ctrl+click note',      'Remove that note (or whole group) from selection'],
+      ['Ctrl+click note',      'Remove that note from selection'],
       ['Click empty',          'Clear selection'],
       ['Ctrl+Z',               'Undo (removes the last selection change)'],
       ['Escape',               'Clear selection'],
@@ -679,10 +679,11 @@
   }
 
   // ── Tool: Group [1] ──────────────────────────────────────────────
-  // A selection group is a pure selection convenience (state.createGroup): clicking
-  // any member selects the whole group and they highlight together, but the notes
-  // stay fully editable. The tool window groups the current selection, or ungroups
-  // when the selection already touches one or more groups.
+  // A selection group is a pure selection convenience (state.createGroup): double-
+  // clicking any member selects the whole group, but the notes stay fully editable and
+  // members can still be selected individually. The tool window groups the current
+  // selection, and/or extracts the selected notes from any group they're in (Ungroup,
+  // state.removeFromGroup) — dissolving a group once it drops below 2 members.
   function openGroupTool() {
     if (!requireSelection()) return;
 
@@ -698,6 +699,8 @@
     // ≥2 notes to group; "would change something" means there's an ungrouped note,
     // or notes spread across more than one existing group to merge.
     const canGroup   = indices.length >= 2 && (ungrouped > 0 || touched.size > 1);
+    // Ungroup extracts the selected members from their group(s); offered whenever the
+    // selection touches one.
     const canUngroup = touched.size > 0;
 
     openToolWindow('Group', (body, close) => {
@@ -712,10 +715,10 @@
         const btn = document.createElement('button');
         btn.className = 'delta-btn';
         if (canGroup) btn.style.marginTop = '5px';
-        btn.textContent = touched.size > 1 ? 'Ungroup groups' : 'Ungroup';
+        btn.textContent = 'Ungroup';
         btn.addEventListener('click', ev => {
           ev.stopPropagation();
-          for (const id of touched.keys()) state.dissolveGroup(id);
+          state.removeFromGroup(indices);
           close();
         });
         body.appendChild(btn);
