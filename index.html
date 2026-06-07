@@ -267,21 +267,10 @@
   }
   document.addEventListener('roll-flash', e => flashStatus(e.detail.message));
 
-  // True when the selection includes any locked (curve-group) note. The velocity
-  // and duration tools refuse such selections — locked notes change only by
-  // reshaping their group's handles or dissolving the group.
-  function selectionHasLocked() {
-    for (const i of state.selectedNoteIndices) if (state.isLocked(state.notes[i])) return true;
-    return false;
-  }
-
-  // Guard shared by the velocity / duration / delta / curve-group tools: they
-  // need a non-empty selection with no locked curve-group members. Flashes
-  // `lockedMsg` and returns false when the selection can't be edited.
-  function selectionEditable(lockedMsg) {
-    if (state.selectedNoteIndices.size === 0) return false;
-    if (selectionHasLocked()) { flashStatus(lockedMsg); return false; }
-    return true;
+  // Guard shared by the curve / velocity / duration / delta tools: they need a
+  // non-empty selection. Returns false (and the tool aborts) when nothing is selected.
+  function requireSelection() {
+    return state.selectedNoteIndices.size > 0;
   }
 
   // ── Tool window system ────────────────────────────────────────────
@@ -347,20 +336,20 @@
   const HELP_SECTIONS = [
     ['Selection', [
       ['Click note',           'Add note to selection'],
-      ['Drag',                 'Rectangle select (adds; works anywhere, even over notes)'],
+      ['Click grouped note',   'Add the whole group to selection'],
+      ['Drag',                 'Rectangle select (adds; works anywhere, even over notes; skips grouped notes)'],
       ['Ctrl+drag',            'Red rectangle: removes covered notes from selection'],
-      ['Ctrl+click note',      'Remove that note from selection'],
+      ['Ctrl+click note',      'Remove that note (or whole group) from selection'],
       ['Click empty',          'Clear selection'],
       ['Ctrl+Z',               'Undo (removes the last selection change)'],
       ['Escape',               'Clear selection'],
     ]],
     ['Editing', [
-      ['1',                       'Curve group tool (locks selection as a curve group)'],
-      ['2',                       'Velocity tool'],
-      ['3',                       'Duration delta tool'],
-      ['4',                       'Velocity delta tool'],
-      ['Click curve-group note',  'Curve-group menu: re-pick ramp (same as [1]) / dissolve'],
-      ['Glyph on curve start box', 'Curve shape — "-" linear, "/" ease in, "\\" ease out, "~" S-curve'],
+      ['1',                       'Group tool (group / ungroup the selection)'],
+      ['2',                       'Curve tool (bake an eased velocity ramp over the selection)'],
+      ['3',                       'Velocity tool'],
+      ['4',                       'Duration delta tool'],
+      ['5',                       'Velocity delta tool'],
       ['Alt+click empty',         'Insert note at cursor'],
       ['Shift+drag note body',    'Move selection (axis-locked: timing or pitch)'],
       ['Shift+drag left / right edge', 'Resize note start / end (handles show while Shift held)'],
@@ -644,10 +633,11 @@
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (isFormFocused(e.target)) return;
 
-    if (e.key === '1' && state.loaded) { e.preventDefault(); openCurveGroupTool(); }
-    if (e.key === '2' && state.loaded) { e.preventDefault(); openVelocityTool(); }
-    if (e.key === '3' && state.loaded) { e.preventDefault(); openDurationDeltaTool(); }
-    if (e.key === '4' && state.loaded) { e.preventDefault(); openDeltaTool(); }
+    if (e.key === '1' && state.loaded) { e.preventDefault(); openGroupTool(); }
+    if (e.key === '2' && state.loaded) { e.preventDefault(); openCurveTool(); }
+    if (e.key === '3' && state.loaded) { e.preventDefault(); openVelocityTool(); }
+    if (e.key === '4' && state.loaded) { e.preventDefault(); openDurationDeltaTool(); }
+    if (e.key === '5' && state.loaded) { e.preventDefault(); openDeltaTool(); }
   }, true);
 
   // Applies velocity-based background/border to a velocity grid button.
@@ -669,9 +659,9 @@
     return btn;
   }
 
-  // ── Tool: Note velocity [2] ───────────────────────────────────────
+  // ── Tool: Note velocity [3] ───────────────────────────────────────
   function openVelocityTool() {
-    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to edit')) return;
+    if (!requireSelection()) return;
     openToolWindow('Note velocity', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'velocity-grid';
@@ -688,15 +678,65 @@
     });
   }
 
-  // ── Tool: Curve group [1] ────────────────────────────────────────
-  // Ramp shapes (SCALE_EASINGS, in engine/state.js) map a normalized onset
-  // position t∈[0,1] → eased fraction of the start→end velocity span, so the
-  // musician picks a crescendo/decrescendo contour deliberately. The two-click
-  // pick (start, then end velocity) records the selection as a locked curve group.
+  // ── Tool: Group [1] ──────────────────────────────────────────────
+  // A selection group is a pure selection convenience (state.createGroup): clicking
+  // any member selects the whole group and they highlight together, but the notes
+  // stay fully editable. The tool window groups the current selection, or ungroups
+  // when the selection already touches one or more groups.
+  function openGroupTool() {
+    if (!requireSelection()) return;
+
+    const indices = [...state.selectedNoteIndices];
+    // Groups the selection touches (each opened once), and the count of selected
+    // notes not yet in any group — both drive which buttons are offered.
+    const touched   = new Map();
+    let   ungrouped = 0;
+    for (const i of indices) {
+      const g = state.groupOfNote(state.notes[i]);
+      if (g) touched.set(g.id, g); else ungrouped++;
+    }
+    // ≥2 notes to group; "would change something" means there's an ungrouped note,
+    // or notes spread across more than one existing group to merge.
+    const canGroup   = indices.length >= 2 && (ungrouped > 0 || touched.size > 1);
+    const canUngroup = touched.size > 0;
+
+    openToolWindow('Group', (body, close) => {
+      if (canGroup) {
+        const btn = document.createElement('button');
+        btn.className = 'delta-btn';
+        btn.textContent = 'Group selection';
+        btn.addEventListener('click', ev => { ev.stopPropagation(); state.createGroup(indices); close(); });
+        body.appendChild(btn);
+      }
+      if (canUngroup) {
+        const btn = document.createElement('button');
+        btn.className = 'delta-btn';
+        if (canGroup) btn.style.marginTop = '5px';
+        btn.textContent = touched.size > 1 ? 'Ungroup groups' : 'Ungroup';
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          for (const id of touched.keys()) state.dissolveGroup(id);
+          close();
+        });
+        body.appendChild(btn);
+      }
+      if (!canGroup && !canUngroup) {
+        const msg = document.createElement('div');
+        msg.textContent = 'Select 2+ notes to group';
+        body.appendChild(msg);
+      }
+    });
+  }
+
+  // ── Tool: Curve [2] ──────────────────────────────────────────────
+  // One-shot velocity shaper (state.applyVelocityCurve): bakes an eased start→end
+  // ramp across the selection by onset time and stops there — no group is formed,
+  // nothing locked. Ramp shapes (SCALE_EASINGS, in engine/state.js) map a normalized
+  // onset position t∈[0,1] → eased fraction of the start→end velocity span, so the
+  // musician picks a crescendo/decrescendo contour deliberately.
 
   // Builds the Linear / Ease in / Ease out / S-curve selector row, calling
-  // onPick(name) when a button is chosen. Shared by the curve-group tool and the
-  // handle popover. `selected` highlights the current shape.
+  // onPick(name) when a button is chosen. `selected` highlights the current shape.
   function buildShapeRow(selected, onPick) {
     const row = document.createElement('div');
     row.className = 'shape-row';
@@ -715,23 +755,14 @@
     return row;
   }
 
-  // Builds the shared two-click velocity-ramp picker: the shape selector row and
-  // the 5–120 velocity grid. The first click sets the start
-  // velocity, the second the end; then onPick(from, to, shape) fires. Shared by
-  // the curve-group tool [1] and the curve-group menu so creating and editing a
-  // ramp look and feel identical.
-  //
-  // Optional onShapeCommit(shape) makes the shape buttons apply-and-close on their
-  // own — used by the edit menu, where the group already has from/to so a shape
-  // change is a complete edit. (Creation omits it: a new group needs both clicks.)
-  function buildRampPicker(body, initialShape, onPick, onShapeCommit) {
+  // Builds the two-click velocity-ramp picker: the shape selector row and the
+  // 5–120 velocity grid. The first click sets the start velocity, the second the
+  // end; then onPick(from, to, shape) fires.
+  function buildRampPicker(body, initialShape, onPick) {
     let firstValue = null;
     let shape      = initialShape;
 
-    body.appendChild(buildShapeRow(shape, name => {
-      shape = name;
-      if (onShapeCommit) onShapeCommit(name);
-    }));
+    body.appendChild(buildShapeRow(shape, name => { shape = name; }));
 
     const grid = document.createElement('div');
     grid.className = 'velocity-grid';
@@ -752,22 +783,22 @@
     body.appendChild(grid);
   }
 
-  function openCurveGroupTool() {
-    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to re-scale')) return;
+  function openCurveTool() {
+    if (!requireSelection()) return;
 
     const indices = [...state.selectedNoteIndices];
 
-    openToolWindow('Curve group', (body, close) => {
+    openToolWindow('Curve', (body, close) => {
       buildRampPicker(body, 'S-curve', (from, to, shape) => {
-        state.createCurveGroup(indices, from, to, shape);
+        state.applyVelocityCurve(indices, from, to, shape);
         close();
       });
     });
   }
 
-  // ── Tool: Duration delta [3] ─────────────────────────────────────
+  // ── Tool: Duration delta [4] ─────────────────────────────────────
   function openDurationDeltaTool() {
-    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to edit')) return;
+    if (!requireSelection()) return;
     openToolWindow('Duration delta', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'delta-grid';
@@ -786,9 +817,9 @@
     });
   }
 
-  // ── Tool: Velocity delta [4] ─────────────────────────────────────
+  // ── Tool: Velocity delta [5] ─────────────────────────────────────
   function openDeltaTool() {
-    if (!selectionEditable('Selection has locked curve-group notes — dissolve the group to edit')) return;
+    if (!requireSelection()) return;
     openToolWindow('Velocity delta', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'delta-grid';
@@ -807,42 +838,6 @@
       body.appendChild(grid);
     });
   }
-
-  // ── Curve-group handle menu ──────────────────────────────────────
-  // Opened by clicking a curve-group endpoint label in the roll. Re-picks the
-  // ramp with the same two-click picker as the curve-group tool [1], or dissolves
-  // the group.
-  document.addEventListener('curve-handle-menu', e => {
-    const groupId = e.detail.groupId;
-    const g = state.curveGroups.find(gg => gg.id === groupId);
-    if (!g) return;
-    openToolWindow('Curve group', (body, close) => {
-      // Same UI as creating the group; re-baking instead of creating, one undo step.
-      // A shape click alone re-bakes with the group's current from/to and closes —
-      // changing only the contour is a complete edit, and the window dismissing is
-      // the confirmation that it landed.
-      buildRampPicker(body, g.shape, (from, to, shape) => {
-        state.beginCurvePointMove();
-        state.reshapeCurveGroup(groupId, { from, to, shape });
-        close();
-      }, shape => {
-        state.beginCurvePointMove();
-        state.reshapeCurveGroup(groupId, { from: g.from, to: g.to, shape });
-        close();
-      });
-
-      const dissolve = document.createElement('button');
-      dissolve.className = 'delta-btn';
-      dissolve.style.marginTop = '5px';
-      dissolve.textContent = 'Dissolve group';
-      dissolve.addEventListener('click', ev => {
-        ev.stopPropagation();
-        state.dissolveCurveGroup(groupId);
-        close();
-      });
-      body.appendChild(dissolve);
-    });
-  });
 
   // ── Toolbar events ─────────────────────────────────────────────────
   document.addEventListener('load-file', () => {

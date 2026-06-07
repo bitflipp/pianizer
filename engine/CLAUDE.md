@@ -15,16 +15,16 @@ custom element both listen to these events.
   `toggle-playback` on `document` for the app layer to handle
 - `user-seek` bubbling event dispatched from roll canvas when playhead is dragged;
   caught in `index.html` to restart MIDI scheduling from the new position
-- Tool windows ([1]/[2]/[3]/[4]) and the velocity-curve editor are plain DOM elements
+- Tool windows ([1]/[2]/[3]/[4]/[5]) and the velocity-curve editor are plain DOM elements
   created in `index.html`; capture-phase keydown intercepts shortcuts before
   roll.js handlers
 
 **Note data shape:**
 ```js
 {
-  id: int,                // stable, assigned on load / mint on add; curve groups reference notes by id
+  id: int,                // stable, assigned on load / mint on add; selection groups reference notes by id
   pitch: 0-127,
-  velocity: 1-127,        // editable via tools [1], [2], or [4]; frozen when the note is in a curve group
+  velocity: 1-127,        // editable via the curve [2] / velocity [3] / velocity-delta [5] tools
   startTick: int,
   endTick: int,
   track: int,
@@ -39,20 +39,23 @@ that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `scaleNoteDurati
 remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resizeNotesLeft`.) Curve drag begins call
 `beginCurvePointMove()` to push undo once at drag start.
 
-**Curve groups** (`state.curveGroups`): `[{id, members:[noteId], from, to, shape}]`. The
-curve-group tool [1] bakes a start→end velocity ramp (eased by `shape`, one of
-`SCALE_EASINGS` — now defined and exported here in `state.js`) across the selection,
-indexed by onset time so a chord gets one value, and records it as a group when the
-selection spans ≥2 distinct onsets (a single-onset selection just sets a flat velocity, no
-group). Member velocities are **frozen scalars** baked from the ramp; `from/to/shape` are
-kept so the roll's endpoint handles can re-derive. API: `createCurveGroup` / `dissolveCurveGroup`
-(leaves velocities intact) / `reshapeCurveGroup` (re-bakes; clamps `from/to`; does **not**
-push undo — the caller pushes via `beginCurvePointMove`, e.g. the curve-group menu's
-two-click ramp re-pick, one step per re-pick). `isLocked(note)` /
-`groupOfNote(note)` / `groupMembers(g)` read a `noteId→group` index rebuilt on every group
-change. All mutators dispatch `groupschanged`. Member notes are locked in the roll: immovable,
-unresizable, undeletable, and not editable by the velocity/duration tools — change them only by
-reshaping the group's handles or dissolving it.
+**Selection groups** (`state.curveGroups`): `[{id, members:[noteId]}]`. A pure selection
+convenience created by the Group tool [1] (`createGroup(indices)`, needs ≥2 notes): clicking
+one member selects the whole group and they highlight together, but members stay **fully
+editable** (move/resize/delete/velocity). A note belongs to one group at most — `createGroup`
+detaches members from any prior group and discards groups left with <2 members; `deleteNotes`
+prunes deleted ids the same way (`_pruneGroups`). API: `createGroup` / `dissolveGroup` (both
+push undo, dispatch `groupschanged`); `groupOfNote(note)` / `groupMembers(g)` /
+`groupMemberIndices(g)` read a `noteId→group` index rebuilt on every group change. (The
+JSON/field name stays `curveGroups` for back-compat with existing projects.)
+
+**Curve tool** (`applyVelocityCurve(indices, from, to, shape)`): a **one-shot** velocity
+shaper invoked by tool [2]. Bakes a start→end ramp (eased by `shape`, one of `SCALE_EASINGS`,
+defined and exported here in `state.js`) across the selection by onset time so a chord gets one
+value, then stops — it sets velocities directly, forms **no group**, and locks nothing. Pushes
+undo, dispatches `selectionchanged`. (Replaces the old locked curve-group concept: the lock,
+the stored `from/to/shape` ramp, and the roll's endpoint-handle menu are gone. Legacy projects
+that stored locked curve groups load as plain selection groups — see Project Save/Load.)
 
 **State fields of note:**
 - `state.loaded` — boolean, true once a MusicXML or project file has been loaded
@@ -61,7 +64,7 @@ reshaping the group's handles or dissolving it.
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
-- `state.curveGroups` — `[{id, members:[noteId], from, to, shape}]`; locked velocity-ramp groups (see above)
+- `state.curveGroups` — `[{id, members:[noteId]}]`; selection groups (see above)
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
 - `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
@@ -232,9 +235,12 @@ pauses (rather than stops) so the anchor survives.
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
 totalTime, notes (with `id`), pedalPoints, tempoPoints, curveGroups, bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
-resets and re-renders. Curve groups load after notes: members referencing missing
-note ids are dropped, emptied groups discarded, and the group-id counter reseeded. `totalTime` is written for forward compatibility but
-always recomputed from the tempo curve on load (the stored value is ignored).
+resets and re-renders. Selection groups (`curveGroups`) load after notes: members
+referencing missing note ids are dropped, groups left with <2 members discarded, and the
+group-id counter reseeded. Legacy locked curve-groups migrate automatically — any stored
+`from/to/shape` ramp fields are ignored, the members carry over as a plain selection group,
+and the already-baked velocities stay on the (now editable) notes. `totalTime` is written for
+forward compatibility but always recomputed from the tempo curve on load (the stored value is ignored).
 
 ---
 

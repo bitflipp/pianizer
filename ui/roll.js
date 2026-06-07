@@ -16,8 +16,8 @@ const COL_PLAYHEAD   = '#ffffff';
 const COL_BOOKMARK     = '#e08030';
 const COL_BOOKMARK_HOT = '#ffb060';
 
-// Curve-group accents — cycled by group id so side-by-side groups (e.g. a melody
-// line and its accompaniment) read as distinct. Hues are spread around the wheel,
+// Selection-group accents — cycled by group id so side-by-side groups (e.g. a
+// melody line and its accompaniment) read as distinct. Hues are spread around the wheel,
 // skipping the ~205–250 band so they stay distinct from the velocity-blue notes
 // (hue 213). Stored as HSL with a deliberately moderate base lightness so a hover
 // can brighten the whole group by bumping lightness (see groupHSL / _hoverGroupId,
@@ -71,17 +71,7 @@ function relativeLuminance(hsl) {
 function labelColorFor(fill) {
   return relativeLuminance(fill) > 0.179 ? '#000' : '#fff';
 }
-const NOTE_LABEL_FONT = '9px monospace'; // velocity number + curve endpoint label
-
-// One-character prefix on the start ('from') endpoint label marking the ramp's
-// easing shape, so a group's type stays legible on the roll after the tool window
-// closes. The glyph evokes the curve: flat ramp, accelerating, decelerating, S.
-const SHAPE_GLYPHS = {
-  'Linear':   '-',
-  'Ease in':  '/',
-  'Ease out': '\\',
-  'S-curve':  '~',
-};
+const NOTE_LABEL_FONT = '9px monospace'; // per-note velocity number
 
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
 export function noteHSL(velocity, displayState) {
@@ -147,7 +137,7 @@ export class PianoRoll {
 
     // Hover
     this._hoverNoteIdx  = -1;
-    this._hoverGroupId  = -1;       // curve group whose member is under the cursor (-1 = none)
+    this._hoverGroupId  = -1;       // selection group whose member is under the cursor (-1 = none)
     this._hoverNoteRightEdge = -1;  // index of note whose right edge is under the cursor
     this._lastMousePos  = null;
     this._shiftHeld     = false;  // Shift = the move/resize edit modifier; tracked for handle drawing
@@ -194,8 +184,6 @@ export class PianoRoll {
     this._hoverNoteLeftEdge = -1;
     this._hoverBookmarkIdx  = -1;
     this._hoverPitch        = -1;
-    this._pendingHandle     = null;  // handle pressed but not yet released (opens menu)
-    this._didHandleInteract = false; // suppress the click event after a handle press
 
     // Indices into state.notes sorted by duration descending: longest drawn first
     // (bottom), shortest drawn last (top), so contained notes are always on top.
@@ -398,22 +386,19 @@ export class PianoRoll {
       this._drawNote(i, n, effective, hasSel);
     }
 
-    this._drawCurveGroups(effective.inDrag);
-
     // Shift (edit modifier) held: draw resize handles on the note under the cursor so
-    // its grippable edges are explicit. Locked group notes never set these hover indices
-    // (suppressed in _trackEdgeHover), so they never show handles.
+    // its grippable edges are explicit.
     if (this._shiftHeld) {
       const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
                : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
                : this._hoverNoteLeftEdge;
       // A resize on a selected note carries the whole selection by the same tick
       // delta (see _beginEdgeResize), so show grips on every selected note — not
-      // just the one under the cursor. Locked members never resize, so skip them.
+      // just the one under the cursor.
       if (hi >= 0 && state.selectedNoteIndices.has(hi)) {
         for (const i of state.selectedNoteIndices) {
           const n = state.notes[i];
-          if (n && !state.isLocked(n)) this._drawResizeHandles(n);
+          if (n) this._drawResizeHandles(n);
         }
       } else if (hi >= 0) {
         this._drawResizeHandles(state.notes[hi]);
@@ -439,65 +424,8 @@ export class PianoRoll {
 
   _groupColor(g, hovered) { return groupHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], hovered); }
 
-  // Endpoint descriptors for one group: a 'from' label in every earliest-onset
-  // member's box and a 'to' label in every latest-onset member's box (a chord
-  // shares an onset, so each note in it gets its own label).
-  _groupHandles(g) {
-    const members = state.groupMembers(g);
-    if (!members.length) return [];
-    let minOn = Infinity, maxOn = -Infinity;
-    for (const n of members) {
-      if (n.startTick < minOn) minOn = n.startTick;
-      if (n.startTick > maxOn) maxOn = n.startTick;
-    }
-    const handles = [];
-    for (const n of members) {
-      if (n.startTick === minOn) handles.push(this._mkHandle(g, 'from', n));
-      if (n.startTick === maxOn) handles.push(this._mkHandle(g, 'to',   n));
-    }
-    return handles;
-  }
-
-  // Builds one endpoint descriptor. The velocity label is drawn at the note box's
-  // top-left, exactly where a normal note's velocity number sits (just dark, for
-  // contrast against the group's accent fill). The 'from' label is prefixed with a
-  // shape glyph (SHAPE_GLYPHS) so the group's easing type reads off the start box.
-  // `x`/`y` mark the label centre, used for hit-testing the group menu.
-  _mkHandle(g, end, n) {
-    const nx    = this.tickToX(n.startTick);
-    const ny    = this.pitchToY(n.pitch);
-    const vel   = String(Math.round(end === 'from' ? g.from : g.to));
-    const label = end === 'from' ? (SHAPE_GLYPHS[g.shape] ?? '') + vel : vel;
-    this.ctx.font = NOTE_LABEL_FONT;
-    const lw = this.ctx.measureText(label).width;
-    return {
-      groupId: g.id, end, note: n, label, lw,
-      nx, ny, w: this._noteWidthPx(n),
-      x: nx + 3 + lw / 2,                 // label centre (hit)
-      y: ny + this.noteHeight / 2,
-    };
-  }
-
-  _drawCurveGroups(inDrag) {
-    if (!state.curveGroups.length) return;
-    for (const g of state.curveGroups) {
-      for (const hd of this._groupHandles(g)) this._drawHandle(hd, inDrag);
-    }
-  }
-
-  // The group's endpoint label is the same box-label draw as a note's velocity
-  // number — its color adapts to the group's accent fill (labelColorFor) for
-  // maximum contrast, mirroring the fill's hover brightening so the two stay in sync.
-  // The hover brightening is suppressed during a rect-select drag, matching _drawNote
-  // (locked members never join the selection, so they must not react to the rubber band).
-  _drawHandle(hd, inDrag) {
-    const hovered = !inDrag && hd.groupId === this._hoverGroupId;
-    const fill = groupHSL(GROUP_COLORS[hd.groupId % GROUP_COLORS.length], hovered);
-    this._drawNoteLabel(hd.nx, hd.ny + 1, hd.w, hd.label, labelColorFor(fill));
-  }
-
   // Draws a clipped, top-left label inside a note box. `y` is the box top
-  // (pitchToY + 1). Shared by the per-note velocity number and curve endpoint labels.
+  // (pitchToY + 1). Used for the per-note velocity number.
   _drawNoteLabel(x, y, w, text, color) {
     const { ctx } = this;
     ctx.save();
@@ -510,26 +438,6 @@ export class PianoRoll {
     ctx.textAlign    = 'left';
     ctx.fillText(text, x + 3, y + 4);
     ctx.restore();
-  }
-
-  // Returns the endpoint descriptor under `pos`, or null. The hit box spans the
-  // label's width over the full note row height.
-  _handleAt(pos) {
-    for (const g of state.curveGroups) {
-      for (const hd of this._groupHandles(g)) {
-        if (Math.abs(pos.x - hd.x) <= hd.lw / 2 + 3
-            && Math.abs(pos.y - hd.y) <= this.noteHeight / 2) return hd;
-      }
-    }
-    return null;
-  }
-
-  // Returns the curve group whose locked member note is under `pos`, or null.
-  // Members are hard-locked, so a click anywhere on the note body — not just on
-  // the endpoint labels — opens the group menu (their only interaction).
-  _groupNoteAt(pos) {
-    const ni = this._noteAtPos(pos);
-    return ni < 0 ? null : state.groupOfNote(state.notes[ni]);
   }
 
   // Returns the visible selection set, accounting for an in-progress rect drag:
@@ -579,8 +487,8 @@ export class PianoRoll {
     else if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
     else if (hovered || willAdd) colorState = 'hovered';
 
-    // Curve-group members always read as a unit in the group's accent color,
-    // overriding the per-note velocity-blue fill.
+    // Group members always read as a unit in the group's accent color, overriding
+    // the per-note velocity-blue fill so a group is recognisable at a glance.
     const grp = state.groupOfNote(n);
     // Hovering any member lights up the whole group as a unit (group members
     // otherwise ignore the per-note `hovered` state, which only tints the blue fill).
@@ -597,12 +505,9 @@ export class PianoRoll {
     ctx.strokeStyle = isSel ? '#ffffff' : 'rgba(255,255,255,0.5)';
     ctx.strokeRect(x + bOff, y + bOff, w - bw, h - bw);
 
-    // Locked curve-group notes hide their per-note number — the accent fill
-    // already marks the group, and its endpoint labels (drawn in _drawHandle)
-    // carry the from/to values. The absence of a number is the "curve-controlled" cue.
-    if (!state.isLocked(n)) {
-      this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill));
-    }
+    // Every note shows its velocity number — group members included (the label
+    // colour adapts to the accent fill via labelColorFor).
+    this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill));
   }
 
   // Left/right grip bars on a note, shown while Shift is held over it. Drawn within
@@ -794,11 +699,7 @@ export class PianoRoll {
     const sel = state.selectedNoteIndices;
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
       e.preventDefault();
-      const deletable = [...sel].filter(i => !state.isLocked(state.notes[i]));
-      if (deletable.length < sel.size) {
-        this._flash('Locked curve-group notes can’t be deleted — dissolve the group first');
-      }
-      if (deletable.length > 0) state.deleteNotes(deletable);
+      state.deleteNotes([...sel]);
     }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); this._seekToBookmark(-1); }
     if (e.key === 'ArrowRight') { e.preventDefault(); this._seekToBookmark( 1); }
@@ -850,9 +751,7 @@ export class PianoRoll {
         || this._resizingNoteLeftIdx >= 0) return;
     const inRoll = this._inRoll(pos);
     const { edgeNi, leftEdgeNi, handleNi } = this._trackEdgeHover(pos, inRoll, this._shiftHeld);
-    const overHandle = inRoll ? (this._handleAt(pos) || this._groupNoteAt(pos)) : null;
-    if (overHandle) this.canvas.style.cursor = 'pointer';
-    else this._setHoverCursor(false, inRoll, edgeNi, leftEdgeNi, handleNi);
+    this._setHoverCursor(false, inRoll, edgeNi, leftEdgeNi, handleNi);
     this.render();
   }
 
@@ -1015,14 +914,14 @@ export class PianoRoll {
   }
 
   // Returns a Set of note indices whose canvas rects overlap the current selection rect.
-  // Locked curve-group members are excluded — the tools can't act on them anyway, so
-  // sweeping them in alongside editable notes would only poison the whole selection.
+  // Grouped notes are excluded — a group is selected as a unit by clicking a member,
+  // so the rubber-band deliberately passes over them rather than picking up fragments.
   _notesInRect() {
     const { x1, y1, x2, y2 } = this._selectionRect();
     const hits = new Set();
     for (let i = 0; i < state.notes.length; i++) {
       const n   = state.notes[i];
-      if (state.isLocked(n)) continue;
+      if (state.groupOfNote(n)) continue;
       const nx1 = this.tickToX(n.startTick);
       const nx2 = nx1 + this._noteWidthPx(n);
       const ny1 = this.pitchToY(n.pitch);
@@ -1037,9 +936,7 @@ export class PianoRoll {
   // so the grid snap is applied to it and the others follow by the same delta.
   _beginEdgeResize(anchorIdx, side) {
     const isSelected    = state.selectedNoteIndices.has(anchorIdx);
-    // Locked notes never resize, even when carried along by a selected anchor.
-    const resizeIndices = (isSelected ? [...state.selectedNoteIndices] : [anchorIdx])
-      .filter(i => !state.isLocked(state.notes[i]));
+    const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
     const ai = resizeIndices.indexOf(anchorIdx);
     if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
     state.resizeNoteStart();
@@ -1089,23 +986,6 @@ export class PianoRoll {
     }
     if (pos.x < KEY_WIDTH) return;
 
-    // Curve-group handle: a press-and-release opens the handle menu (shape,
-    // endpoint velocities, dissolve). Endpoint velocities are edited there, not
-    // by dragging, so the press only needs to suppress the trailing click.
-    // Pressing anywhere on a locked member note opens the same menu — locked
-    // notes have no other affordance — but the endpoint labels still take
-    // priority so their displayed velocity reads as the click target.
-    const handle = this._handleAt(pos);
-    if (handle) {
-      this._pendingHandle = handle;
-      return;
-    }
-    const grp = this._groupNoteAt(pos);
-    if (grp) {
-      this._pendingHandle = { groupId: grp.id };
-      return;
-    }
-
     // Move and resize are gated behind Shift (the edit modifier); without it a press on
     // a note falls through to rubber-band selection. The hover indices are only set while
     // Shift is held (see _trackEdgeHover), but gate on e.shiftKey too for clarity.
@@ -1120,7 +1000,7 @@ export class PianoRoll {
     }
 
     // Modifier picks the rect mode. Alt (insert) and Shift (move/resize over a note —
-    // here it landed on empty or a locked note) are reserved for other gestures and are
+    // here it landed on empty) are reserved for other gestures and are
     // easy to leave held by accident, so they make the rect 'inert' — it still tracks
     // the drag (to suppress the trailing click) but draws/selects nothing. Ctrl gives the
     // red deselect rect; a bare drag the teal add rect (now anywhere, even over a note).
@@ -1222,13 +1102,6 @@ export class PianoRoll {
 
     const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll, e.shiftKey);
 
-    // A curve-group member under the cursor (endpoint label or note body) takes
-    // priority over note edit affordances and shows a pointer — clicking it
-    // opens the group menu. hoverGrp is exactly _groupNoteAt(pos) (group of the
-    // note under the cursor), already resolved above — reuse it, no second hit-test.
-    const overHandle = (inRoll && !this._rectSelActive)
-      ? (this._handleAt(pos) || hoverGrp) : null;
-
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
       if (!this._rectDidDrag) {
@@ -1246,8 +1119,7 @@ export class PianoRoll {
       return;
     }
 
-    if (overHandle) this.canvas.style.cursor = 'pointer';
-    else this._setHoverCursor(e.altKey, inRoll, edgeNi, leftEdgeNi, handleNi);
+    this._setHoverCursor(e.altKey, inRoll, edgeNi, leftEdgeNi, handleNi);
     if (hoverChanged || edgeHoverChanged || hoverPitchChanged) this.render();
   }
 
@@ -1260,12 +1132,6 @@ export class PianoRoll {
     let   edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
     let   leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
     let   handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
-    // Curve-group notes are locked: immovable and unresizable. Drop any edit
-    // affordance on them so the cursor never offers a resize/move grab. (They
-    // stay clickable/selectable via the separate click + rect-select paths.)
-    if (edgeNi     >= 0 && state.isLocked(state.notes[edgeNi]))     edgeNi     = -1;
-    if (leftEdgeNi >= 0 && state.isLocked(state.notes[leftEdgeNi])) leftEdgeNi = -1;
-    if (handleNi   >= 0 && state.isLocked(state.notes[handleNi]))   handleNi   = -1;
     const changed    = edgeNi     !== this._hoverNoteRightEdge
                     || leftEdgeNi !== this._hoverNoteLeftEdge
                     || handleNi   !== this._hoverNoteHandle;
@@ -1292,12 +1158,9 @@ export class PianoRoll {
     this._pendingNoteHandle = -1;
     this._pendingDragStart  = null;
 
-    // Locked curve-group notes stay put even when dragged as part of a mixed
-    // selection — only the unlocked notes move. (ni itself is never locked: the
-    // hover handle is suppressed on locked notes.)
-    const dragIndices = (state.selectedNoteIndices.has(ni)
+    const dragIndices = state.selectedNoteIndices.has(ni)
       ? [...state.selectedNoteIndices]
-      : [ni]).filter(i => !state.isLocked(state.notes[i]));
+      : [ni];
 
     // Clear hover state before mutation so no ghost highlights appear during drag
     this._hoverNoteIdx       = -1;
@@ -1376,16 +1239,6 @@ export class PianoRoll {
       return;
     }
 
-    if (this._pendingHandle) {
-      const h = this._pendingHandle;
-      this._pendingHandle     = null;
-      this._didHandleInteract = true; // suppress the trailing click
-      // A handle press opens its menu (shape selector, endpoint velocities, dissolve).
-      document.dispatchEvent(new CustomEvent('curve-handle-menu', { detail: { groupId: h.groupId } }));
-      this._refreshCursor();
-      return;
-    }
-
     if (this._pendingNoteHandle >= 0) {
       this._pendingNoteHandle = -1;
       this._pendingDragStart  = null;
@@ -1440,7 +1293,6 @@ export class PianoRoll {
     if (!state.loaded) return;
     if (this._didRectSel)  { this._didRectSel  = false; return; }
     if (this._didNoteDrag) { this._didNoteDrag = false; return; }
-    if (this._didHandleInteract) { this._didHandleInteract = false; return; }
 
     const pos = this._canvasPos(e);
     if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
@@ -1458,13 +1310,19 @@ export class PianoRoll {
     const ni = this._noteAtPos(pos);
     if (ni !== -1) {
       e.stopPropagation();
-      // Ctrl+click removes that note from the selection; a plain click adds it.
+      // A grouped note acts as the whole group: clicking any member adds (or, with
+      // Ctrl, removes) every member at once, so a group reads and selects as a unit.
+      const grp     = state.groupOfNote(state.notes[ni]);
+      const targets = grp ? state.groupMemberIndices(grp) : [ni];
+      const current = state.selectedNoteIndices;
+      // Ctrl+click removes the target(s) from the selection; a plain click adds them.
       if (e.ctrlKey || e.metaKey) {
-        if (state.selectedNoteIndices.has(ni)) {
-          state.setSelection([...state.selectedNoteIndices].filter(i => i !== ni));
+        const drop = new Set(targets);
+        if (targets.some(i => current.has(i))) {
+          state.setSelection([...current].filter(i => !drop.has(i)));
         }
-      } else if (!state.selectedNoteIndices.has(ni)) {
-        state.setSelection([...state.selectedNoteIndices, ni]);
+      } else if (targets.some(i => !current.has(i))) {
+        state.setSelection([...new Set([...current, ...targets])]);
       }
       return;
     }
