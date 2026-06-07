@@ -33,9 +33,10 @@ export class AppState extends EventTarget {
     // Tempo envelope — [{tick, value}] sorted by tick, value 0.8–1.2
     this.tempoPoints = [];
 
-    // Velocity-curve groups — each {id, members:[noteId], from, to, shape}.
-    // Member notes are locked: their velocity is a frozen scalar baked from the
-    // ramp and can only change by reshaping the group via its handles.
+    // Selection groups — each {id, members:[noteId]}. A pure selection convenience:
+    // clicking one member selects the whole group and they highlight together, but
+    // members stay fully editable (move/resize/delete/velocity). No velocity ramp is
+    // stored — the curve tool bakes velocities one-shot, see applyVelocityCurve.
     this.curveGroups = [];
     this._nextGroupId = 0;
     this._groupByNoteId = new Map(); // noteId → group, rebuilt on any group change
@@ -172,7 +173,7 @@ export class AppState extends EventTarget {
       notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
-      curveGroups:    this.curveGroups.map(g => ({ id: g.id, members: g.members.slice(), from: g.from, to: g.to, shape: g.shape })),
+      curveGroups:    this.curveGroups.map(g => ({ id: g.id, members: g.members.slice() })),
       bookmarks:      this.bookmarks.slice(),
     };
   }
@@ -335,9 +336,24 @@ export class AppState extends EventTarget {
   deleteNotes(indices) {
     this._pushUndo();
     const toDelete = new Set(indices);
+    const deletedIds = new Set();
+    for (const i of toDelete) if (this.notes[i]) deletedIds.add(this.notes[i].id);
     this.notes = this.notes.filter((_, i) => !toDelete.has(i));
+    this._pruneGroups(deletedIds);
     this.selectedNoteIndices = new Set();
     this.dispatch('selectionchanged');
+  }
+
+  // Drops the given note ids from every group and discards groups left with <2
+  // members (a one-note group is meaningless), then rebuilds the lookup index.
+  _pruneGroups(removedIds) {
+    let changed = false;
+    for (const g of this.curveGroups) {
+      const kept = g.members.filter(id => !removedIds.has(id));
+      if (kept.length !== g.members.length) { g.members = kept; changed = true; }
+    }
+    this.curveGroups = this.curveGroups.filter(g => g.members.length >= 2);
+    if (changed) this._rebuildGroupIndex();
   }
 
   // deltaPitch and deltaTick may each be 0.
@@ -435,22 +451,7 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
-  // ── Velocity-curve groups ──────────────────────────────────────────
-
-  // Bakes a start→end velocity ramp (eased by `shape`) across `members`,
-  // indexed by onset time — notes sharing a startTick (a chord) get one value.
-  _bakeCurve(members, from, to, shape) {
-    const ease   = SCALE_EASINGS[shape] ?? SCALE_EASINGS.Linear;
-    const sorted = members.slice().sort((a, b) => a.startTick - b.startTick);
-    if (!sorted.length) return;
-    const minTick = sorted[0].startTick;
-    const maxTick = sorted[sorted.length - 1].startTick;
-    const range   = maxTick - minTick;
-    for (const n of sorted) {
-      const t = range === 0 ? 0 : (n.startTick - minTick) / range;
-      n.velocity = clampVelocity(from + (to - from) * ease(t));
-    }
-  }
+  // ── Selection groups ───────────────────────────────────────────────
 
   _notesByIds(ids) {
     const set = new Set(ids);
@@ -464,31 +465,30 @@ export class AppState extends EventTarget {
     }
   }
 
-  isLocked(note)    { return !!note && this._groupByNoteId.has(note.id); }
-  groupOfNote(note) { return note ? (this._groupByNoteId.get(note.id) ?? null) : null; }
-  groupMembers(g)   { return this._notesByIds(g.members); }
+  groupOfNote(note)      { return note ? (this._groupByNoteId.get(note.id) ?? null) : null; }
+  groupMembers(g)        { return this._notesByIds(g.members); }
+  // Member ids → current selection indices, for selecting a group as a unit.
+  groupMemberIndices(g) {
+    const ids = new Set(g.members);
+    return this.notes.flatMap((n, i) => ids.has(n.id) ? [i] : []);
+  }
 
-  // Bakes the ramp onto the selected notes and, when they span ≥2 distinct
-  // onsets, records them as a locked group. A single-onset selection has no
-  // curve to speak of, so it just sets a flat velocity and stays unlocked.
-  createCurveGroup(indices, from, to, shape) {
+  // Records the selected notes as a selection group. Needs ≥2 notes. Any member
+  // already in another group is detached from it first (a note belongs to one
+  // group at most); groups left with <2 members are discarded.
+  createGroup(indices) {
     const members = indices.map(i => this.notes[i]).filter(Boolean);
-    if (!members.length) return;
+    if (members.length < 2) return;
     this._pushUndo();
-    this._bakeCurve(members, from, to, shape);
-    const distinctOnsets = new Set(members.map(n => n.startTick)).size;
-    if (distinctOnsets >= 2) {
-      this.curveGroups.push({
-        id: this._nextGroupId++,
-        members: members.map(n => n.id),
-        from, to, shape,
-      });
-      this._rebuildGroupIndex();
-    }
+    const ids = new Set(members.map(n => n.id));
+    for (const g of this.curveGroups) g.members = g.members.filter(id => !ids.has(id));
+    this.curveGroups = this.curveGroups.filter(g => g.members.length >= 2);
+    this.curveGroups.push({ id: this._nextGroupId++, members: [...ids] });
+    this._rebuildGroupIndex();
     this.dispatch('groupschanged');
   }
 
-  dissolveCurveGroup(groupId) {
+  dissolveGroup(groupId) {
     const idx = this.curveGroups.findIndex(g => g.id === groupId);
     if (idx < 0) return;
     this._pushUndo();
@@ -497,31 +497,39 @@ export class AppState extends EventTarget {
     this.dispatch('groupschanged');
   }
 
-  // Updates a group's ramp parameters and re-bakes its members. Does not push
-  // undo — callers push once via beginCurvePointMove() at a drag/edit start, as
-  // the curve-lane points do, so a live drag collapses to a single undo step.
-  reshapeCurveGroup(groupId, { from, to, shape } = {}) {
-    const g = this.curveGroups.find(gg => gg.id === groupId);
-    if (!g) return;
-    if (from  !== undefined) g.from  = clampVelocity(from);
-    if (to    !== undefined) g.to    = clampVelocity(to);
-    if (shape !== undefined) g.shape = shape;
-    this._bakeCurve(this._notesByIds(g.members), g.from, g.to, g.shape);
-    this.dispatch('groupschanged');
+  // One-shot velocity shaper: bakes a start→end ramp (eased by `shape`) across the
+  // selected notes by onset time — notes sharing a startTick (a chord) get one
+  // value. Sets velocities directly; forms no group and locks nothing.
+  applyVelocityCurve(indices, from, to, shape) {
+    const members = indices.map(i => this.notes[i]).filter(Boolean);
+    if (!members.length) return;
+    this._pushUndo();
+    const ease   = SCALE_EASINGS[shape] ?? SCALE_EASINGS.Linear;
+    const sorted = members.slice().sort((a, b) => a.startTick - b.startTick);
+    const minTick = sorted[0].startTick;
+    const maxTick = sorted[sorted.length - 1].startTick;
+    const range   = maxTick - minTick;
+    for (const n of sorted) {
+      const t = range === 0 ? 0 : (n.startTick - minTick) / range;
+      n.velocity = clampVelocity(from + (to - from) * ease(t));
+    }
+    this.dispatch('selectionchanged');
   }
 
   // Rebuilds groups from saved data: drops member ids that no longer exist,
-  // discards emptied groups, and seeds the id counter past any stored group id.
+  // discards groups left with <2 members, and seeds the id counter past any
+  // stored group id. Legacy fields (from/to/shape from the old locked curve
+  // groups) are ignored — members migrate to plain selection groups.
   _loadCurveGroups(raw) {
     const noteIds = new Set(this.notes.map(n => n.id));
     let maxId = -1;
     const groups = [];
     for (const g of raw) {
       const members = (g.members ?? []).filter(id => noteIds.has(id));
-      if (!members.length) continue;
+      if (members.length < 2) continue;
       const id = typeof g.id === 'number' ? g.id : null;
       if (id !== null && id > maxId) maxId = id;
-      groups.push({ id, members, from: g.from, to: g.to, shape: g.shape });
+      groups.push({ id, members });
     }
     this._nextGroupId = maxId + 1;
     for (const g of groups) if (g.id === null) g.id = this._nextGroupId++;

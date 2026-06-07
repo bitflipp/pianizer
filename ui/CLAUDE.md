@@ -43,13 +43,14 @@ out from under the drag). To take notes back out: Ctrl+drag a deselect rect, Ctr
 note, **undo** (`setSelection` snapshots the selection onto the undo stack), or clear with
 empty-click/Escape.
 
-- **Left click note** — add that note to the selection (no-op if already selected)
-- **Ctrl+left click note** — remove that note from the selection (no-op if not selected)
+- **Left click note** — add that note to the selection (no-op if already selected). A **grouped**
+  note acts as the whole group: clicking any member adds **every** member at once (see Selection Groups)
+- **Ctrl+left click note** — remove that note (or, for a grouped note, the whole group) from the selection
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
   (**Ctrl+click empty is a no-op** — Ctrl means "remove", so it must not wipe everything)
-- **Left drag** — draws a **teal** rubber-band rectangle; overlapping notes are **added** to the current selection on release (locked curve-group members are excluded — see Curve Groups)
+- **Left drag** — draws a **teal** rubber-band rectangle; overlapping notes are **added** to the current selection on release (grouped notes are excluded — see Selection Groups)
 - **Ctrl+left drag** — draws a **red** rectangle; overlapping notes are **removed** from the current selection on release
-- **Alt+ / Shift+left drag (on empty or a locked note)** — **no rubber-band at all** (`inert`): these modifiers belong to other gestures (Alt = insert, Shift = move/resize) and are easy to leave held by accident, so dragging with them held leaves the selection untouched. (Shift+drag *on an editable note* is a move/resize, handled before the rect logic.)
+- **Alt+ / Shift+left drag (on empty)** — **no rubber-band at all** (`inert`): these modifiers belong to other gestures (Alt = insert, Shift = move/resize) and are easy to leave held by accident, so dragging with them held leaves the selection untouched. (Shift+drag *on a note* is a move/resize, handled before the rect logic.)
 - **Escape** — clears the selection (also cancels an in-progress rect drag)
 - **Right drag** — pans the view (see Controls); does not affect selection
 
@@ -61,8 +62,8 @@ accidental Alt-drag would fall through to the `click` handler and insert a note.
 `click` is already a no-op, but `inert` still keeps an accidental Shift-drag from drawing a
 misleading band.) A bare *click* (no drag) still passes through: Alt+click inserts a note,
 plain click on empty clears, and a bare **Shift+click is a no-op** (Shift means move/resize). During a rect drag, `_rectHitSet` is updated each frame (via
-`_notesInRect`, which **skips locked curve-group members** so they neither preview nor commit
-— they'd only poison tools that refuse mixed selections). `_effectiveSelection()` previews the
+`_notesInRect`, which **skips grouped notes** so they neither preview nor commit — a group is
+selected as a unit by clicking a member, not by sweeping fragments of it). `_effectiveSelection()` previews the
 pending result live: in **add** mode the effective set is `committed ∪ hits` and incoming notes
 brighten (`willAdd`); in **remove** mode it is `committed ∖ hits` and departing notes dim
 (`willRemove`, dimmed independently of `hasSel` so removing the whole selection still reads as
@@ -110,10 +111,10 @@ actual fill — so low/mid-velocity blue notes read white, bright ones flip to b
 choice tracks hover/dim brightening. Each note has a 1 px top gap (`y+1`, `h = noteHeight−1`),
 visually separating adjacent pitches.
 
-Each note box shows its velocity number (top-left), clipped to the note interior —
-**except** locked curve-group notes, which hide the number. Those notes are also filled
-with their group's accent color (not the velocity-blue), with the ramp's endpoint values
-shown as labels on the first/last member; see Curve Groups below.
+Each note box shows its velocity number (top-left), clipped to the note interior — **every**
+note, grouped or not. Notes in a selection group are filled with their group's accent color
+(not the velocity-blue) so the group reads as a unit, with the velocity number drawn on top in
+the luminance-adaptive label color; see Selection Groups below.
 
 Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
 longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
@@ -127,59 +128,47 @@ to front so the topmost note wins.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Curve group** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
+- **[1] Group** — `state.createGroup` / `state.dissolveGroup`. Offers a **Group selection**
+  button (when ≥2 selected notes would form/merge a group) and an **Ungroup** button (when the
+  selection touches existing groups; dissolves each). See Selection Groups.
+- **[2] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
   `SCALE_EASINGS` in engine/state.js, default S-curve; the selector row is built by the
-  shared `buildShapeRow` helper), then two-click: first click sets start velocity, second
-  sets end. The eased ramp is baked across the selection by onset time and **recorded as a
-  locked curve group** (see Curve Groups) — `state.createCurveGroup`.
-- **[2] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
-- **[3] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
+  shared `buildShapeRow` helper, the picker by `buildRampPicker`), then two-click: first click
+  sets start velocity, second sets end. The eased ramp is baked across the selection by onset
+  time — **a one-shot velocity edit, no group formed** (`state.applyVelocityCurve`).
+- **[3] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
+- **[4] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
   by the given factor (minimum 1 tick)
-- **[4] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
+- **[5] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
 
-Tools [1]–[4] refuse a selection containing locked curve-group notes (a status flash
-tells the user to dissolve the group first).
+Tools [2]–[5] require a non-empty selection (`requireSelection`); otherwise they act on
+whatever is selected, grouped or not — there are no locked notes.
 
 ---
 
-## Curve Groups (velocity ramps)
+## Selection Groups
 
-The curve-group tool [1] records its result as a locked group (`state.curveGroups`, see
-engine/CLAUDE.md). On the roll:
+The Group tool [1] records a selection group (`state.curveGroups`, shape `{id, members}`, see
+engine/CLAUDE.md). A group is **purely a selection convenience** — members stay fully editable.
+On the roll:
 
 - **Member notes** are **always filled with the group's accent color** (`GROUP_COLORS`,
   HSL tuples cycled by group id; `state.groupOfNote` in `_drawNote`), overriding the
-  velocity-blue fill so a group reads as a unit at all times. **Hovering any member lights
-  up the whole group**: `_hoverGroupId` (derived from the hovered note in the move handler)
-  brightens every member's accent fill via `groupHSL(..., hovered)` — the same lightness-bump
-  idiom `noteHSL` uses for plain notes, since group members otherwise ignore the per-note
-  hover state. They hide their velocity number and are
-  fully locked: `_trackEdgeHover` drops the resize/move affordance on them, mixed-selection
-  drags and edge-resizes filter them out, rect-selection (`_notesInRect`) skips them so they
-  never join the selection, Delete skips them (flashing a hint), and tools [1]–[4] refuse them. The only way to change them is the menu (below) or dissolving the group.
-- **Endpoint labels** — the only group chrome on the roll (no square handles). The `from`
-  velocity is drawn on every earliest-onset member and the `to` velocity on every
-  latest-onset member, at the note box's top-left — the exact position/font of a normal
-  note's velocity number (`_drawHandle` mirrors `_drawNote`'s number draw, clipped to the
-  box). The label color is luminance-adaptive (`labelColorFor`, shared with note numbers):
-  black or white for maximum contrast against the group's accent fill, tracking its hover
-  brightening — so the near-blue violet accent now reads white instead of a barely-legible dark.
-  The `from` label
-  is prefixed with a one-char **shape glyph** (`SHAPE_GLYPHS`: Linear `-`, Ease in `/`,
-  Ease out `\`, S-curve `~`) so the group's easing type stays legible on the start box once
-  the tool window closes (e.g. `~64`). Geometry/hit-test
-  (hit box spans the label width over the note row): `_groupHandles` / `_mkHandle` / `_handleAt`.
-- **Clicking any member note** opens the group menu — since locked members have no other
-  affordance, the whole note body is a click target (`_groupNoteAt`), not just the endpoint
-  labels. The cursor is `pointer` over any member, and this takes priority over note edit
-  affordances; the endpoint-label hit (`_handleAt`) still wins where they overlap so the
-  displayed velocity reads as the target. A press dispatches `curve-handle-menu`; index.html
-  opens a "Curve group" tool window that reuses the curve-group tool's `buildRampPicker` — the
-  **same shape selector + two-click velocity picker as creating the group** — but calls
-  `state.reshapeCurveGroup` (one undo step via `state.beginCurvePointMove`) instead of
-  `createCurveGroup`, plus a **Dissolve group** button (unlocks, keeps velocities). The
-  trailing canvas click is suppressed via `_didHandleInteract`.
+  velocity-blue fill so a group reads as a unit at all times — **and still show their velocity
+  number** on top (luminance-adaptive `labelColorFor`). **Hovering any member lights up the
+  whole group**: `_hoverGroupId` (derived from the hovered note in the move handler) brightens
+  every member's accent fill via `groupHSL(..., hovered)` — the same lightness-bump idiom
+  `noteHSL` uses for plain notes, since group members otherwise ignore the per-note hover state.
+- **Clicking any member** selects the **whole group** as a unit: `_onClick` maps the clicked
+  note's group via `state.groupMemberIndices` and adds (or, with Ctrl, removes) every member at
+  once. Grouped notes are **skipped by the rubber-band** (`_notesInRect` excludes
+  `state.groupOfNote(n)`), so a group is only ever selected by clicking a member.
+- **Members stay editable**: they move (Shift+drag), resize, and delete like any note. Because a
+  click selects the whole group, a Shift+drag on a selected member carries the entire group; to
+  edit a single member in isolation, ungroup first (tool [1]).
+- **Deleting** a member prunes it from the group (`state._pruneGroups`); a group left with <2
+  members is discarded.
 
 ---
 
