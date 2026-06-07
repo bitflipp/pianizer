@@ -1,6 +1,6 @@
 import { test, expect, gotoApp, loadProject, notePagePos } from './helpers.js';
 
-test('Group tool [1] groups the selection; clicking a member selects the whole group', async ({ page }) => {
+test('Group tool [1] groups the selection; a member selects alone, a second click selects the group', async ({ page }) => {
   await gotoApp(page);
   await loadProject(page);
 
@@ -14,12 +14,16 @@ test('Group tool [1] groups the selection; clicking a member selects the whole g
   });
   expect(info).toMatchObject({ groups: 1, members: 3 });
 
-  // Clear the selection, then a single click on one member selects the whole group.
+  // Clear, then a first click on a member selects only that note.
   await page.evaluate(() => window._state.setSelection([]));
   const pos = await notePagePos(page, 1);
   await page.mouse.click(pos.x, pos.y);
+  let sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
+  expect(sel).toEqual([1]);
 
-  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
+  // Clicking the already-selected member promotes to the whole group.
+  await page.mouse.click(pos.x, pos.y);
+  sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort((a, b) => a - b));
   expect(sel).toEqual([0, 1, 2]);
 });
 

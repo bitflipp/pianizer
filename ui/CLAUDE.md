@@ -44,8 +44,10 @@ note, **undo** (`setSelection` snapshots the selection onto the undo stack), or 
 empty-click/Escape.
 
 - **Left click note** — add that note to the selection (no-op if already selected). A **grouped**
-  note acts as the whole group: clicking any member adds **every** member at once (see Selection Groups)
-- **Ctrl+left click note** — remove that note (or, for a grouped note, the whole group) from the selection
+  note selects in **two stages**: clicking an unselected member adds just that note; clicking an
+  already-selected member promotes to the **whole group** (see Selection Groups)
+- **Ctrl+left click note** — remove that note from the selection. For a grouped note: remove the
+  **whole group** if it's fully selected, otherwise just that member (the inverse of the two-stage add)
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
   (**Ctrl+click empty is a no-op** — Ctrl means "remove", so it must not wipe everything)
 - **Left drag** — draws a **teal** rubber-band rectangle; overlapping notes are **added** to the current selection on release (grouped notes are excluded — see Selection Groups)
@@ -160,13 +162,16 @@ On the roll:
   whole group**: `_hoverGroupId` (derived from the hovered note in the move handler) brightens
   every member's accent fill via `groupHSL(..., hovered)` — the same lightness-bump idiom
   `noteHSL` uses for plain notes, since group members otherwise ignore the per-note hover state.
-- **Clicking any member** selects the **whole group** as a unit: `_onClick` maps the clicked
-  note's group via `state.groupMemberIndices` and adds (or, with Ctrl, removes) every member at
-  once. Grouped notes are **skipped by the rubber-band** (`_notesInRect` excludes
-  `state.groupOfNote(n)`), so a group is only ever selected by clicking a member.
-- **Members stay editable**: they move (Shift+drag), resize, and delete like any note. Because a
-  click selects the whole group, a Shift+drag on a selected member carries the entire group; to
-  edit a single member in isolation, ungroup first (tool [1]).
+- **Clicking a member selects in two stages** so a single member stays reachable: `_onClick`
+  adds only the clicked note when it isn't selected yet, and promotes to the **whole group**
+  (via `state.groupMemberIndices`) when the clicked member is already selected. Ctrl+click is the
+  inverse — it removes the whole group only once every member is selected, otherwise just the
+  clicked member. Grouped notes are **skipped by the rubber-band** (`_notesInRect` excludes
+  `state.groupOfNote(n)`), so a group is only ever selected through its members.
+- **Members stay editable**: they move (Shift+drag), resize, and delete like any note. A Shift+drag
+  carries whatever is selected (`_activateNoteDrag` follows `selectedNoteIndices`), so dragging a
+  lone-selected member moves just that note, while dragging once the group is selected carries it
+  all — no need to ungroup to nudge one member.
 - **Deleting** a member prunes it from the group (`state._pruneGroups`); a group left with <2
   members is discarded.
 

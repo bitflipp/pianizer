@@ -1310,19 +1310,25 @@ export class PianoRoll {
     const ni = this._noteAtPos(pos);
     if (ni !== -1) {
       e.stopPropagation();
-      // A grouped note acts as the whole group: clicking any member adds (or, with
-      // Ctrl, removes) every member at once, so a group reads and selects as a unit.
-      const grp     = state.groupOfNote(state.notes[ni]);
-      const targets = grp ? state.groupMemberIndices(grp) : [ni];
       const current = state.selectedNoteIndices;
-      // Ctrl+click removes the target(s) from the selection; a plain click adds them.
+      const grp     = state.groupOfNote(state.notes[ni]);
+      const members = grp ? state.groupMemberIndices(grp) : null;
+      // Grouped notes select in two stages so a member can still be edited alone:
+      // clicking an unselected member picks just that note; clicking it again (now
+      // selected) promotes to the whole group. Ctrl mirrors this on removal —
+      // dropping the whole group only once it's fully selected, else just the note.
       if (e.ctrlKey || e.metaKey) {
-        const drop = new Set(targets);
+        const groupFull = members && members.every(i => current.has(i));
+        const targets   = groupFull ? members : [ni];
         if (targets.some(i => current.has(i))) {
+          const drop = new Set(targets);
           state.setSelection([...current].filter(i => !drop.has(i)));
         }
-      } else if (targets.some(i => !current.has(i))) {
-        state.setSelection([...new Set([...current, ...targets])]);
+      } else {
+        const targets = (members && current.has(ni)) ? members : [ni];
+        if (targets.some(i => !current.has(i))) {
+          state.setSelection([...new Set([...current, ...targets])]);
+        }
       }
       return;
     }
