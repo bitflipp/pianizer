@@ -12,8 +12,9 @@ export class PedalLane extends CurveLane {
       valueMax:        1,
       emptyValue:      0,
       // Coarser snap than the default eighths — the pedal can't realistically be
-      // controlled to that precision, so quarter-of-range reference lines suffice.
-      refFracs:        [0.25, 0.5, 0.75],
+      // controlled to that precision, so quarter-of-range reference lines suffice
+      // (edges included so fully-released / fully-down stay snappable).
+      refFracs:        [0, 0.25, 0.5, 0.75, 1],
       color:           '#5cc8c8',
       colorHot:        '#a0ecec',
       reticleColor:    'rgba(92,200,200,0.45)',
