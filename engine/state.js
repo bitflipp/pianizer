@@ -2,6 +2,13 @@
 // Single source of truth. The canvas engine reads and writes here.
 // The toolbar custom element reads via events dispatched from here.
 
+// Piano key range — MIDI note numbers for A0…C8; note edits clamp pitch here.
+const PITCH_LO = 21;
+const PITCH_HI = 108;
+const DEFAULT_BPM         = 120;  // assumed tempo before the first tempoMap entry
+const UNDO_STACK_LIMIT    = 100;  // oldest snapshots drop once the stack passes this
+const RESTRIKE_GAP_MAX_MS = 200;  // upper clamp for setRestrikeGap
+
 export class AppState extends EventTarget {
   constructor() {
     super();
@@ -37,7 +44,7 @@ export class AppState extends EventTarget {
     // clicking one member selects the whole group and they highlight together, but
     // members stay fully editable (move/resize/delete/velocity). No velocity ramp is
     // stored — the curve tool bakes velocities one-shot, see applyVelocityCurve.
-    this.curveGroups = [];
+    this.groups = [];                // [{id, members:[noteId]}]
     this._nextGroupId = 0;
     this._groupByNoteId = new Map(); // noteId → group, rebuilt on any group change
 
@@ -67,7 +74,7 @@ export class AppState extends EventTarget {
   loadScore(notes, tempoMap, timeSigs, tpb) {
     this.notes          = notes.slice().sort((a, b) => a.startTick - b.startTick);
     this._assignIds(this.notes);
-    this.curveGroups    = [];
+    this.groups         = [];
     this._nextGroupId   = 0;
     this._rebuildGroupIndex();
     this.tempoMap       = tempoMap;
@@ -111,6 +118,8 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
+  // ── Note value edits (velocity / duration) ─────────────────────────
+
   setNoteVelocities(indices, velocity) {
     this._pushUndo();
     const v = clampVelocity(velocity);
@@ -139,14 +148,18 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
+  // ── Device calibration ─────────────────────────────────────────────
+
   setVelocityCurve(curve) {
     this.velocityCurve = curve.slice();
   }
 
   setRestrikeGap(ms) {
-    this.restrikeGapMs = Math.max(0, Math.min(200, Math.round(ms)));
+    this.restrikeGapMs = Math.max(0, Math.min(RESTRIKE_GAP_MAX_MS, Math.round(ms)));
     this.dispatch('restrikegapchanged');
   }
+
+  // ── Bookmarks ──────────────────────────────────────────────────────
 
   addBookmark(tick) {
     if (!this.bookmarks.includes(tick)) {
@@ -161,6 +174,8 @@ export class AppState extends EventTarget {
     this.dispatch('bookmarkschanged');
   }
 
+  // ── Project save / load ────────────────────────────────────────────
+
   saveProject() {
     return {
       version:        1,
@@ -173,7 +188,7 @@ export class AppState extends EventTarget {
       notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
-      curveGroups:    this.curveGroups.map(g => ({ id: g.id, members: g.members.slice() })),
+      groups:         this.groups.map(g => ({ id: g.id, members: g.members.slice() })),
       bookmarks:      this.bookmarks.slice(),
     };
   }
@@ -188,7 +203,7 @@ export class AppState extends EventTarget {
     this.totalTicks     = data.totalTicks ?? (this.notes.length ? Math.max(...this.notes.map(n => n.endTick)) : 0);
     this.pedalPoints    = (data.pedalPoints ?? []).map(p => ({ ...p }));
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
-    this._loadCurveGroups(data.curveGroups ?? []);
+    this._loadGroups(data.groups ?? []);
     this.bookmarks      = (data.bookmarks  ?? []).map(Number).sort((a, b) => a - b);
     this.pieceId        = data.pieceId ?? crypto.randomUUID();
     this._finishLoad();
@@ -215,7 +230,7 @@ export class AppState extends EventTarget {
 
   // tick→time using only the step-wise tempoMap (ignores the tempo envelope).
   baseTickToTime(tick) {
-    let t = 0, lastTick = 0, lastBpm = 120;
+    let t = 0, lastTick = 0, lastBpm = DEFAULT_BPM;
     for (const seg of this.tempoMap) {
       if (seg.tick >= tick) break;
       t += (seg.tick - lastTick) / this.ticksPerBeat * (60 / lastBpm);
@@ -227,7 +242,7 @@ export class AppState extends EventTarget {
   }
 
   _baseTimeToTick(time) {
-    let t = 0, lastTick = 0, lastBpm = 120;
+    let t = 0, lastTick = 0, lastBpm = DEFAULT_BPM;
     for (const seg of this.tempoMap) {
       const segTime = this.baseTickToTime(seg.tick);
       if (segTime >= time) break;
@@ -241,7 +256,7 @@ export class AppState extends EventTarget {
 
   // BPM from tempoMap at a given tick (step-wise, no interpolation).
   _baseBpmAtTick(tick) {
-    let bpm = 120;
+    let bpm = DEFAULT_BPM;
     for (const seg of this.tempoMap) {
       if (seg.tick > tick) break;
       bpm = seg.bpm;
@@ -348,12 +363,22 @@ export class AppState extends EventTarget {
   // members (a one-note group is meaningless), then rebuilds the lookup index.
   _pruneGroups(removedIds) {
     let changed = false;
-    for (const g of this.curveGroups) {
+    for (const g of this.groups) {
       const kept = g.members.filter(id => !removedIds.has(id));
       if (kept.length !== g.members.length) { g.members = kept; changed = true; }
     }
-    this.curveGroups = this.curveGroups.filter(g => g.members.length >= 2);
+    this.groups = this.groups.filter(g => g.members.length >= 2);
     if (changed) this._rebuildGroupIndex();
+  }
+
+  // Re-sorts notes by startTick and re-derives the selection indices for the given
+  // note objects, whose array positions shift after the reorder. Call after any edit
+  // that changes start ticks.
+  _reselectByNotes(movedSet) {
+    this.notes.sort((a, b) => a.startTick - b.startTick);
+    this.selectedNoteIndices = new Set(
+      this.notes.flatMap((n, i) => movedSet.has(n) ? [i] : [])
+    );
   }
 
   // deltaPitch and deltaTick may each be 0.
@@ -361,20 +386,14 @@ export class AppState extends EventTarget {
     this._pushUndo();
     const moved = indices.map(i => this.notes[i]).filter(Boolean);
     for (const n of moved) {
-      if (deltaPitch) n.pitch = Math.max(21, Math.min(108, n.pitch + deltaPitch));
+      if (deltaPitch) n.pitch = Math.max(PITCH_LO, Math.min(PITCH_HI, n.pitch + deltaPitch));
       if (deltaTick) {
         const dur = n.endTick - n.startTick;
         n.startTick = Math.max(0, n.startTick + deltaTick);
         n.endTick   = n.startTick + dur;
       }
     }
-    if (deltaTick) {
-      this.notes.sort((a, b) => a.startTick - b.startTick);
-      const movedSet = new Set(moved);
-      this.selectedNoteIndices = new Set(
-        this.notes.flatMap((n, i) => movedSet.has(n) ? [i] : [])
-      );
-    }
+    if (deltaTick) this._reselectByNotes(new Set(moved));
     this.dispatch('selectionchanged');
   }
 
@@ -441,13 +460,9 @@ export class AppState extends EventTarget {
       note.startTick = Math.max(0, startTick);
       const dur = endTick - startTick;
       note.endTick = note.startTick + dur;
-      note.pitch = Math.max(21, Math.min(108, pitch));
+      note.pitch = Math.max(PITCH_LO, Math.min(PITCH_HI, pitch));
     }
-    const movedSet = new Set(moves.map(m => m.note));
-    this.notes.sort((a, b) => a.startTick - b.startTick);
-    this.selectedNoteIndices = new Set(
-      this.notes.flatMap((n, i) => movedSet.has(n) ? [i] : [])
-    );
+    this._reselectByNotes(new Set(moves.map(m => m.note)));
     this.dispatch('selectionchanged');
   }
 
@@ -460,7 +475,7 @@ export class AppState extends EventTarget {
 
   _rebuildGroupIndex() {
     this._groupByNoteId = new Map();
-    for (const g of this.curveGroups) {
+    for (const g of this.groups) {
       for (const id of g.members) this._groupByNoteId.set(id, g);
     }
   }
@@ -473,6 +488,14 @@ export class AppState extends EventTarget {
     return this.notes.flatMap((n, i) => ids.has(n.id) ? [i] : []);
   }
 
+  // Drops the given note ids from every group and discards groups left with <2
+  // members. Leaves the lookup index stale — the caller rebuilds once it's done
+  // mutating groups.
+  _detachIds(ids) {
+    for (const g of this.groups) g.members = g.members.filter(id => !ids.has(id));
+    this.groups = this.groups.filter(g => g.members.length >= 2);
+  }
+
   // Records the selected notes as a selection group. Needs ≥2 notes. Any member
   // already in another group is detached from it first (a note belongs to one
   // group at most); groups left with <2 members are discarded.
@@ -481,9 +504,8 @@ export class AppState extends EventTarget {
     if (members.length < 2) return;
     this._pushUndo();
     const ids = new Set(members.map(n => n.id));
-    for (const g of this.curveGroups) g.members = g.members.filter(id => !ids.has(id));
-    this.curveGroups = this.curveGroups.filter(g => g.members.length >= 2);
-    this.curveGroups.push({ id: this._nextGroupId++, members: [...ids] });
+    this._detachIds(ids);
+    this.groups.push({ id: this._nextGroupId++, members: [...ids] });
     this._rebuildGroupIndex();
     this.dispatch('groupschanged');
   }
@@ -494,10 +516,9 @@ export class AppState extends EventTarget {
   removeFromGroup(indices) {
     const ids = new Set();
     for (const i of indices) { const note = this.notes[i]; if (note) ids.add(note.id); }
-    if (!this.curveGroups.some(g => g.members.some(id => ids.has(id)))) return;
+    if (!this.groups.some(g => g.members.some(id => ids.has(id)))) return;
     this._pushUndo();
-    for (const g of this.curveGroups) g.members = g.members.filter(id => !ids.has(id));
-    this.curveGroups = this.curveGroups.filter(g => g.members.length >= 2);
+    this._detachIds(ids);
     this._rebuildGroupIndex();
     this.dispatch('groupschanged');
   }
@@ -523,9 +544,8 @@ export class AppState extends EventTarget {
 
   // Rebuilds groups from saved data: drops member ids that no longer exist,
   // discards groups left with <2 members, and seeds the id counter past any
-  // stored group id. Legacy fields (from/to/shape from the old locked curve
-  // groups) are ignored — members migrate to plain selection groups.
-  _loadCurveGroups(raw) {
+  // stored group id.
+  _loadGroups(raw) {
     const noteIds = new Set(this.notes.map(n => n.id));
     let maxId = -1;
     const groups = [];
@@ -538,7 +558,7 @@ export class AppState extends EventTarget {
     }
     this._nextGroupId = maxId + 1;
     for (const g of groups) if (g.id === null) g.id = this._nextGroupId++;
-    this.curveGroups = groups;
+    this.groups = groups;
     this._rebuildGroupIndex();
   }
 
@@ -606,7 +626,7 @@ export class AppState extends EventTarget {
       notes:       this.notes.map(n => ({ ...n })),
       pedalPoints: this.pedalPoints.map(p => ({ ...p })),
       tempoPoints: this.tempoPoints.map(p => ({ ...p })),
-      curveGroups: this.curveGroups.map(g => ({ ...g, members: g.members.slice() })),
+      groups:      this.groups.map(g => ({ ...g, members: g.members.slice() })),
       selection:   [...this.selectedNoteIndices],
     };
   }
@@ -615,7 +635,7 @@ export class AppState extends EventTarget {
     this.notes               = snap.notes.map(n => ({ ...n }));
     this.pedalPoints         = snap.pedalPoints.map(p => ({ ...p }));
     this.tempoPoints         = snap.tempoPoints.map(p => ({ ...p }));
-    this.curveGroups         = (snap.curveGroups ?? []).map(g => ({ ...g, members: g.members.slice() }));
+    this.groups              = (snap.groups ?? []).map(g => ({ ...g, members: g.members.slice() }));
     this.selectedNoteIndices = new Set(snap.selection ?? []);
     this._rebuildGroupIndex();
     this.totalTime           = this.tickToTime(this.totalTicks);
@@ -623,15 +643,17 @@ export class AppState extends EventTarget {
 
   _pushUndo() {
     this._undoStack.push(this._snapshot());
-    if (this._undoStack.length > 100) this._undoStack.shift();
+    if (this._undoStack.length > UNDO_STACK_LIMIT) this._undoStack.shift();
     this._redoStack = [];
     this.dispatch('undochanged');
   }
 
-  undo() {
-    if (!this._undoStack.length) return;
-    this._redoStack.push(this._snapshot());
-    this._restore(this._undoStack.pop());
+  // Pops one snapshot off `from`, banks the current state onto `to`, restores it, and
+  // fires every event a restore can affect. undo/redo differ only in stack direction.
+  _applyHistory(from, to) {
+    if (!from.length) return;
+    to.push(this._snapshot());
+    this._restore(from.pop());
     this.dispatch('undochanged');
     this.dispatch('selectionchanged');
     this.dispatch('pedalchanged');
@@ -639,16 +661,8 @@ export class AppState extends EventTarget {
     this.dispatch('groupschanged');
   }
 
-  redo() {
-    if (!this._redoStack.length) return;
-    this._undoStack.push(this._snapshot());
-    this._restore(this._redoStack.pop());
-    this.dispatch('undochanged');
-    this.dispatch('selectionchanged');
-    this.dispatch('pedalchanged');
-    this.dispatch('tempochanged');
-    this.dispatch('groupschanged');
-  }
+  undo() { this._applyHistory(this._undoStack, this._redoStack); }
+  redo() { this._applyHistory(this._redoStack, this._undoStack); }
 
   // ── Bar boundaries ─────────────────────────────────────────────────
 
@@ -727,7 +741,7 @@ function clampVelocity(v) {
   return Math.max(1, Math.min(127, Math.round(v)));
 }
 
-// Velocity-ramp shapes for the curve-group tool. Each maps a normalized
+// Velocity-ramp shapes for the curve tool. Each maps a normalized
 // onset position t∈[0,1] → eased fraction of the start→end velocity span. A
 // linear MIDI-velocity ramp is not a linear perceived-loudness ramp, so the
 // eased shapes let the musician pick a crescendo/decrescendo contour deliberately.

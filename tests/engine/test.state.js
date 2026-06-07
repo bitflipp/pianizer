@@ -409,7 +409,7 @@ describe('applyVelocityCurve', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.applyVelocityCurve([0, 1, 2], 40, 100, 'Linear');
     expect(s.notes.map(x => x.velocity)).toEqual([40, 70, 100]);
-    expect(s.curveGroups).toHaveLength(0);
+    expect(s.groups).toHaveLength(0);
   });
 
   test('chord notes (shared onset) get one value', () => {
@@ -433,23 +433,23 @@ describe('createGroup', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     const before = s.notes.map(x => x.velocity);
     s.createGroup([0, 1, 2]);
-    expect(s.curveGroups).toHaveLength(1);
-    expect(s.curveGroups[0]).toEqual({ id: 0, members: s.notes.map(x => x.id) });
+    expect(s.groups).toHaveLength(1);
+    expect(s.groups[0]).toEqual({ id: 0, members: s.notes.map(x => x.id) });
     expect(s.notes.map(x => x.velocity)).toEqual(before);
   });
 
   test('needs ≥2 notes', () => {
     const s = mkGroupState([n(0, 480)]);
     s.createGroup([0]);
-    expect(s.curveGroups).toHaveLength(0);
+    expect(s.groups).toHaveLength(0);
   });
 
   test('re-grouping detaches members from their old group', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1]);
     s.createGroup([1, 2]); // note 1 moves out of the first group, which then drops <2
-    expect(s.curveGroups).toHaveLength(1);
-    expect(s.curveGroups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
+    expect(s.groups).toHaveLength(1);
+    expect(s.groups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
     expect(s.groupOfNote(s.notes[0])).toBe(null);
   });
 });
@@ -459,8 +459,8 @@ describe('removeFromGroup', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1, 2]);
     s.removeFromGroup([0]);                       // pull note 0 out; 1 and 2 stay grouped
-    expect(s.curveGroups).toHaveLength(1);
-    expect(s.curveGroups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
+    expect(s.groups).toHaveLength(1);
+    expect(s.groups[0].members).toEqual([s.notes[1].id, s.notes[2].id]);
     expect(s.groupOfNote(s.notes[0])).toBe(null);
   });
 
@@ -469,14 +469,14 @@ describe('removeFromGroup', () => {
     s.createGroup([0, 1]);
     const baked = s.notes.map(x => x.velocity);
     s.removeFromGroup([0]);                       // group falls to 1 member → discarded
-    expect(s.curveGroups).toHaveLength(0);
+    expect(s.groups).toHaveLength(0);
     expect(s.notes.map(x => x.velocity)).toEqual(baked); // velocities untouched
   });
 
   test('ignores ungrouped notes and records no undo when nothing changes', () => {
     const s = mkGroupState([n(0, 480), n(480, 960)]);
     s.removeFromGroup([0, 1]);                    // neither note is grouped
-    expect(s.curveGroups).toHaveLength(0);
+    expect(s.groups).toHaveLength(0);
     expect(s._undoStack).toHaveLength(0);
   });
 });
@@ -486,7 +486,7 @@ describe('deleteNotes prunes groups', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1]);
     s.deleteNotes([1]);             // group 0 falls to 1 member → discarded
-    expect(s.curveGroups).toHaveLength(0);
+    expect(s.groups).toHaveLength(0);
     expect(s.notes).toHaveLength(2);
   });
 
@@ -494,45 +494,35 @@ describe('deleteNotes prunes groups', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1, 2]);
     s.deleteNotes([2]);
-    expect(s.curveGroups).toHaveLength(1);
-    expect(s.curveGroups[0].members).toHaveLength(2);
+    expect(s.groups).toHaveLength(1);
+    expect(s.groups[0].members).toHaveLength(2);
   });
 });
 
-describe('selection group persistence + undo + migration', () => {
+describe('selection group persistence + undo', () => {
   test('survives save/load by note id', () => {
     const s = mkGroupState([n(0, 480), n(480, 960)]);
     s.createGroup([0, 1]);
-    const memberIds = s.curveGroups[0].members.slice();
+    const memberIds = s.groups[0].members.slice();
     s.loadProject(s.saveProject());
-    expect(s.curveGroups).toHaveLength(1);
-    expect(s.curveGroups[0].members).toEqual(memberIds);
+    expect(s.groups).toHaveLength(1);
+    expect(s.groups[0].members).toEqual(memberIds);
   });
 
   test('undo removes a freshly created group', () => {
     const s = mkGroupState([n(0, 480), n(480, 960)]);
     s.createGroup([0, 1]);
     s.undo();
-    expect(s.curveGroups).toHaveLength(0);
+    expect(s.groups).toHaveLength(0);
   });
 
   test('load drops group members whose notes are gone', () => {
     const s = mkGroupState([n(0, 480), n(480, 960), n(960, 1440)]);
     s.createGroup([0, 1, 2]);
     const data = s.saveProject();
-    data.curveGroups[0].members.push(9999); // nonexistent note id
+    data.groups[0].members.push(9999); // nonexistent note id
     s.loadProject(data);
-    expect(s.curveGroups[0].members).not.toContain(9999);
-    expect(s.curveGroups[0].members).toHaveLength(3);
-  });
-
-  test('migrates legacy locked curve groups (from/to/shape ignored)', () => {
-    const s = mkGroupState([n(0, 480), n(480, 960)]);
-    const data = s.saveProject();
-    // Simulate an old project: a group carrying the dropped ramp fields.
-    data.curveGroups = [{ id: 7, members: s.notes.map(x => x.id), from: 40, to: 80, shape: 'Linear' }];
-    s.loadProject(data);
-    expect(s.curveGroups).toHaveLength(1);
-    expect(s.curveGroups[0]).toEqual({ id: 7, members: s.notes.map(x => x.id) });
+    expect(s.groups[0].members).not.toContain(9999);
+    expect(s.groups[0].members).toHaveLength(3);
   });
 });

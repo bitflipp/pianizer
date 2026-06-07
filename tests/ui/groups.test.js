@@ -10,7 +10,7 @@ test('Group tool [1] groups the selection; a member selects alone, a double-clic
 
   const info = await page.evaluate(() => {
     const s = window._state;
-    return { groups: s.curveGroups.length, members: s.curveGroups[0]?.members.length };
+    return { groups: s.groups.length, members: s.groups[0]?.members.length };
   });
   expect(info).toMatchObject({ groups: 1, members: 3 });
 
@@ -39,7 +39,7 @@ test('Group tool [1] ungroups a selected group', async ({ page }) => {
   await page.keyboard.press('1');
   await page.locator('.tool-window-body button', { hasText: /^Ungroup$/ }).click();
 
-  const groups = await page.evaluate(() => window._state.curveGroups.length);
+  const groups = await page.evaluate(() => window._state.groups.length);
   expect(groups).toBe(0);
 });
 
@@ -56,7 +56,7 @@ test('Curve tool [2] bakes a ramp without creating a group or locking', async ({
   const info = await page.evaluate(() => {
     const s = window._state;
     return {
-      groups: s.curveGroups.length,
+      groups: s.groups.length,
       firstVel: s.notes[0].velocity,
       lastVel: s.notes[s.notes.length - 1].velocity,
     };
@@ -111,6 +111,6 @@ test('grouped notes are deletable', async ({ page }) => {
     s.setSelection(s.notes.map((_, i) => i));
   });
   await page.keyboard.press('Delete');
-  const after = await page.evaluate(() => ({ notes: window._state.notes.length, groups: window._state.curveGroups.length }));
+  const after = await page.evaluate(() => ({ notes: window._state.notes.length, groups: window._state.groups.length }));
   expect(after).toEqual({ notes: 0, groups: 0 });
 });

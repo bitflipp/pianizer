@@ -39,7 +39,7 @@ that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `scaleNoteDurati
 remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resizeNotesLeft`.) Curve drag begins call
 `beginCurvePointMove()` to push undo once at drag start.
 
-**Selection groups** (`state.curveGroups`): `[{id, members:[noteId]}]`. A pure selection
+**Selection groups** (`state.groups`): `[{id, members:[noteId]}]`. A pure selection
 convenience created by the Group tool [1] (`createGroup(indices)`, needs ≥2 notes):
 **double-clicking** a member selects the whole group and members highlight together, but each
 member stays **fully editable** and selectable **individually** (a single click or rubber-band
@@ -49,16 +49,14 @@ extracts the given notes from whatever group each is in (the Ungroup button), di
 once it drops below 2 members; `deleteNotes` prunes deleted ids the same way (`_pruneGroups`).
 API: `createGroup` / `removeFromGroup` (both push undo, dispatch `groupschanged`);
 `groupOfNote(note)` / `groupMembers(g)` / `groupMemberIndices(g)` read a `noteId→group` index
-rebuilt on every group change. (The JSON/field name stays `curveGroups` for back-compat with
-existing projects.)
+rebuilt on every group change. (Saved under the JSON key `groups`.)
 
 **Curve tool** (`applyVelocityCurve(indices, from, to, shape)`): a **one-shot** velocity
 shaper invoked by tool [2]. Bakes a start→end ramp (eased by `shape`, one of `SCALE_EASINGS`,
 defined and exported here in `state.js`) across the selection by onset time so a chord gets one
 value, then stops — it sets velocities directly, forms **no group**, and locks nothing. Pushes
 undo, dispatches `selectionchanged`. (Replaces the old locked curve-group concept: the lock,
-the stored `from/to/shape` ramp, and the roll's endpoint-handle menu are gone. Legacy projects
-that stored locked curve groups load as plain selection groups — see Project Save/Load.)
+the stored `from/to/shape` ramp, and the roll's endpoint-handle menu are gone.)
 
 **State fields of note:**
 - `state.loaded` — boolean, true once a MusicXML or project file has been loaded
@@ -67,7 +65,7 @@ that stored locked curve groups load as plain selection groups — see Project S
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
-- `state.curveGroups` — `[{id, members:[noteId]}]`; selection groups (see above)
+- `state.groups` — `[{id, members:[noteId]}]`; selection groups (see above)
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
 - `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
@@ -86,7 +84,7 @@ accumulating 1-based bar numbers across changes. Used by `_drawGrid` and `_drawR
 
 ## Undo / Redo
 
-Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, `curveGroups`, plus the selection.
+Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, `groups`, plus the selection.
 100-entry stack. Drag interactions (note resize, note move, curve-point move) push undo
 **once** at drag start via `resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove`;
 per-frame updates mutate live without pushing. Bookmarks and the velocity curve are NOT
@@ -236,13 +234,11 @@ pauses (rather than stops) so the anchor survives.
 
 `state.saveProject()` / `state.loadProject(data)` — versioned JSON (version: 1).
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
-totalTime, notes (with `id`), pedalPoints, tempoPoints, curveGroups, bookmarks. On
+totalTime, notes (with `id`), pedalPoints, tempoPoints, groups, bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
-resets and re-renders. Selection groups (`curveGroups`) load after notes: members
+resets and re-renders. Selection groups (`groups`) load after notes: members
 referencing missing note ids are dropped, groups left with <2 members discarded, and the
-group-id counter reseeded. Legacy locked curve-groups migrate automatically — any stored
-`from/to/shape` ramp fields are ignored, the members carry over as a plain selection group,
-and the already-baked velocities stay on the (now editable) notes. `totalTime` is written for
+group-id counter reseeded. `totalTime` is written for
 forward compatibility but always recomputed from the tempo curve on load (the stored value is ignored).
 
 ---

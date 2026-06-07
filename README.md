@@ -20,15 +20,15 @@ auto-humanization — the tool is an instrument.
 - **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
   Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10; per-key
   velocity curve for device calibration
-- **Velocity curve groups** — a ramped selection becomes a locked group whose endpoint
-  values stay labeled on the first/last notes; click any member to re-pick the ramp shape
-  and start/end velocities or dissolve the group. The notes stay frozen until you dissolve it
+- **Selection groups** — bind a set of notes into a reusable selection: double-click any
+  member to select the whole group at once, while members stay individually selectable and
+  fully editable. Groups are color-coded on the roll
 - **Duration delta** — scale selected notes' durations by −50/−25/−10/+10/+25/+50%
   without mutating the underlying score
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
   interpolated value is seeded correctly on mid-piece playback start
-- **Tempo lane** — draw a tempo ratio curve (×0.8–×1.2); rubato balance labels
-  show the ms offset accumulated within a gesture so you can balance stolen time
+- **Tempo lane** — draw a tempo ratio curve (×0.8–×1.2) as a monotone-cubic spline
+  that shapes playback timing and overall piece duration
 - **Minimap** — full-piece overview with viewport indicator; click or drag to pan
 - **Bookmarks** — ruler markers added with Ctrl+click; `←`/`→` seek between them
 - **Web MIDI output** — lookahead scheduler (30 ms tick / 150 ms window) sends
@@ -72,7 +72,8 @@ to pick a MIDI output port, then load a MusicXML file.
 
 | Key / gesture | Action |
 |---|---|
-| Click note | Add note to selection |
+| Click note | Add note to selection (grouped notes select individually) |
+| Double-click note | Add its whole group to selection |
 | Drag | Rectangle select (adds; works anywhere, even over notes) |
 | Ctrl+drag | Red rectangle: removes covered notes from selection |
 | Ctrl+click note | Remove that note from selection |
@@ -84,12 +85,11 @@ to pick a MIDI output port, then load a MusicXML file.
 
 | Key / gesture | Action |
 |---|---|
-| 1 | Curve group tool (locks selection as a curve group) |
-| 2 | Velocity tool |
-| 3 | Duration delta tool |
-| 4 | Velocity delta tool |
-| Click curve-group note | Curve-group menu: re-pick ramp (same as [1]) / dissolve |
-| Glyph on curve start box | Curve shape — "-" linear, "/" ease in, "\" ease out, "~" S-curve |
+| 1 | Group tool (group / ungroup the selection) |
+| 2 | Curve tool (bake an eased velocity ramp over the selection) |
+| 3 | Velocity tool |
+| 4 | Duration delta tool |
+| 5 | Velocity delta tool |
 | Alt+click empty | Insert note at cursor |
 | Shift+drag note body | Move selection (axis-locked: timing or pitch) |
 | Shift+drag left / right edge | Resize note start / end (handles show while Shift held) |
