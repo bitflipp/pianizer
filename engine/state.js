@@ -8,8 +8,6 @@ const PITCH_HI = 108;
 const DEFAULT_BPM         = 120;  // assumed tempo before the first tempoMap entry
 const UNDO_STACK_LIMIT    = 100;  // oldest snapshots drop once the stack passes this
 const RESTRIKE_GAP_MAX_MS = 200;  // upper clamp for setRestrikeGap
-const MAX_GROUPS_PER_NOTE = 2;    // a note can end one phrase and begin another, no more
-const NO_GROUPS = [];             // shared empty result for groupsOfNote — never mutated
 
 export class AppState extends EventTarget {
   constructor() {
@@ -42,14 +40,6 @@ export class AppState extends EventTarget {
     // Tempo envelope — [{tick, value}] sorted by tick, value 0.8–1.2
     this.tempoPoints = [];
 
-    // Selection groups — each {id, members:[noteId]}. A pure selection convenience:
-    // clicking one member selects the whole group and they highlight together, but
-    // members stay fully editable (move/resize/delete/velocity). No velocity ramp is
-    // stored — the curve tool bakes velocities one-shot, see applyVelocityCurve.
-    this.groups = [];                // [{id, members:[noteId]}]
-    this._nextGroupId = 0;
-    this._groupsByNoteId = new Map(); // noteId → group[] (≤ MAX_GROUPS_PER_NOTE), rebuilt on any group change
-
     this.pieceId = null;
 
     // Undo / redo stacks — each entry is {notes, pedalPoints, tempoPoints}
@@ -76,9 +66,6 @@ export class AppState extends EventTarget {
   loadScore(notes, tempoMap, timeSigs, tpb) {
     this.notes          = notes.slice().sort((a, b) => a.startTick - b.startTick);
     this._assignIds(this.notes);
-    this.groups         = [];
-    this._nextGroupId   = 0;
-    this._rebuildGroupIndex();
     this.tempoMap       = tempoMap;
     this.timeSignatures = timeSigs;
     this.ticksPerBeat   = tpb;
@@ -190,7 +177,6 @@ export class AppState extends EventTarget {
       notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
-      groups:         this.groups.map(g => ({ id: g.id, members: g.members.slice() })),
       bookmarks:      this.bookmarks.slice(),
     };
   }
@@ -205,7 +191,6 @@ export class AppState extends EventTarget {
     this.totalTicks     = data.totalTicks ?? (this.notes.length ? Math.max(...this.notes.map(n => n.endTick)) : 0);
     this.pedalPoints    = (data.pedalPoints ?? []).map(p => ({ ...p }));
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
-    this._loadGroups(data.groups ?? []);
     this.bookmarks      = (data.bookmarks  ?? []).map(Number).sort((a, b) => a - b);
     this.pieceId        = data.pieceId ?? crypto.randomUUID();
     this._finishLoad();
@@ -353,24 +338,9 @@ export class AppState extends EventTarget {
   deleteNotes(indices) {
     this._pushUndo();
     const toDelete = new Set(indices);
-    const deletedIds = new Set();
-    for (const i of toDelete) if (this.notes[i]) deletedIds.add(this.notes[i].id);
     this.notes = this.notes.filter((_, i) => !toDelete.has(i));
-    this._pruneGroups(deletedIds);
     this.selectedNoteIndices = new Set();
     this.dispatch('selectionchanged');
-  }
-
-  // Drops the given note ids from every group and discards groups left with <2
-  // members (a one-note group is meaningless), then rebuilds the lookup index.
-  _pruneGroups(removedIds) {
-    let changed = false;
-    for (const g of this.groups) {
-      const kept = g.members.filter(id => !removedIds.has(id));
-      if (kept.length !== g.members.length) { g.members = kept; changed = true; }
-    }
-    this.groups = this.groups.filter(g => g.members.length >= 2);
-    if (changed) this._rebuildGroupIndex();
   }
 
   // Re-sorts notes by startTick and re-derives the selection indices for the given
@@ -468,89 +438,11 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
-  // ── Selection groups ───────────────────────────────────────────────
-
-  _notesByIds(ids) {
-    const set = new Set(ids);
-    return this.notes.filter(n => set.has(n.id));
-  }
-
-  _rebuildGroupIndex() {
-    this._groupsByNoteId = new Map();
-    for (const g of this.groups) {
-      for (const id of g.members) {
-        const list = this._groupsByNoteId.get(id);
-        if (list) list.push(g); else this._groupsByNoteId.set(id, [g]);
-      }
-    }
-  }
-
-  // The groups a note belongs to (0, 1, or up to MAX_GROUPS_PER_NOTE), in `groups` order.
-  // Returns a shared empty array when ungrouped — callers must not mutate the result.
-  groupsOfNote(note)     { return note ? (this._groupsByNoteId.get(note.id) ?? NO_GROUPS) : NO_GROUPS; }
-  groupMembers(g)        { return this._notesByIds(g.members); }
-  // Member ids → current selection indices, for selecting a group as a unit.
-  groupMemberIndices(g) {
-    const ids = new Set(g.members);
-    return this.notes.flatMap((n, i) => ids.has(n.id) ? [i] : []);
-  }
-
-  // Drops the given note ids from every group and discards groups left with <2
-  // members. Leaves the lookup index stale — the caller rebuilds once it's done
-  // mutating groups.
-  _detachIds(ids) {
-    for (const g of this.groups) g.members = g.members.filter(id => !ids.has(id));
-    this.groups = this.groups.filter(g => g.members.length >= 2);
-  }
-
-  // Frees a group slot for each given note id already at the MAX_GROUPS_PER_NOTE cap by
-  // dropping it from its oldest group (its first entry in `groups`); groups left with <2
-  // members are discarded. Notes below the cap are untouched. Reads the current lookup
-  // index (so call before pushing the new group) and leaves it stale for the caller to
-  // rebuild.
-  _evictToMakeRoom(ids) {
-    let changed = false;
-    for (const id of ids) {
-      const gs = this._groupsByNoteId.get(id);
-      if (gs && gs.length >= MAX_GROUPS_PER_NOTE) {
-        gs[0].members = gs[0].members.filter(m => m !== id);
-        changed = true;
-      }
-    }
-    if (changed) this.groups = this.groups.filter(g => g.members.length >= 2);
-  }
-
-  // Records the selected notes as a selection group. Needs ≥2 notes. A note may belong to
-  // up to MAX_GROUPS_PER_NOTE groups at once (so one note can end a phrase and begin the
-  // next); a member already at that cap is evicted from its oldest group to make room.
-  // Groups left with <2 members are discarded.
-  createGroup(indices) {
-    const members = indices.map(i => this.notes[i]).filter(Boolean);
-    if (members.length < 2) return;
-    this._pushUndo();
-    const ids = new Set(members.map(n => n.id));
-    this._evictToMakeRoom(ids);
-    this.groups.push({ id: this._nextGroupId++, members: [...ids] });
-    this._rebuildGroupIndex();
-    this.dispatch('groupschanged');
-  }
-
-  // Extracts the given notes from whichever group each belongs to (a note is in one
-  // group at most), then discards any group left with <2 members. Ungrouped notes are
-  // ignored; a no-op (no undo entry) when none of them are grouped.
-  removeFromGroup(indices) {
-    const ids = new Set();
-    for (const i of indices) { const note = this.notes[i]; if (note) ids.add(note.id); }
-    if (!this.groups.some(g => g.members.some(id => ids.has(id)))) return;
-    this._pushUndo();
-    this._detachIds(ids);
-    this._rebuildGroupIndex();
-    this.dispatch('groupschanged');
-  }
+  // ── Velocity curve (one-shot shaper) ───────────────────────────────
 
   // One-shot velocity shaper: bakes a start→end ramp (eased by `shape`) across the
   // selected notes by onset time — notes sharing a startTick (a chord) get one
-  // value. Sets velocities directly; forms no group and locks nothing.
+  // value. Sets velocities directly — a one-shot edit, nothing persisted.
   applyVelocityCurve(indices, from, to, shape) {
     const members = indices.map(i => this.notes[i]).filter(Boolean);
     if (!members.length) return;
@@ -565,26 +457,6 @@ export class AppState extends EventTarget {
       n.velocity = clampVelocity(from + (to - from) * ease(t));
     }
     this.dispatch('selectionchanged');
-  }
-
-  // Rebuilds groups from saved data: drops member ids that no longer exist,
-  // discards groups left with <2 members, and seeds the id counter past any
-  // stored group id.
-  _loadGroups(raw) {
-    const noteIds = new Set(this.notes.map(n => n.id));
-    let maxId = -1;
-    const groups = [];
-    for (const g of raw) {
-      const members = (g.members ?? []).filter(id => noteIds.has(id));
-      if (members.length < 2) continue;
-      const id = typeof g.id === 'number' ? g.id : null;
-      if (id !== null && id > maxId) maxId = id;
-      groups.push({ id, members });
-    }
-    this._nextGroupId = maxId + 1;
-    for (const g of groups) if (g.id === null) g.id = this._nextGroupId++;
-    this.groups = groups;
-    this._rebuildGroupIndex();
   }
 
   // ── Pedal curve ────────────────────────────────────────────────────
@@ -651,7 +523,6 @@ export class AppState extends EventTarget {
       notes:       this.notes.map(n => ({ ...n })),
       pedalPoints: this.pedalPoints.map(p => ({ ...p })),
       tempoPoints: this.tempoPoints.map(p => ({ ...p })),
-      groups:      this.groups.map(g => ({ ...g, members: g.members.slice() })),
       selection:   [...this.selectedNoteIndices],
     };
   }
@@ -660,9 +531,7 @@ export class AppState extends EventTarget {
     this.notes               = snap.notes.map(n => ({ ...n }));
     this.pedalPoints         = snap.pedalPoints.map(p => ({ ...p }));
     this.tempoPoints         = snap.tempoPoints.map(p => ({ ...p }));
-    this.groups              = (snap.groups ?? []).map(g => ({ ...g, members: g.members.slice() }));
     this.selectedNoteIndices = new Set(snap.selection ?? []);
-    this._rebuildGroupIndex();
     this.totalTime           = this.tickToTime(this.totalTicks);
   }
 
@@ -683,7 +552,6 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
     this.dispatch('pedalchanged');
     this.dispatch('tempochanged');
-    this.dispatch('groupschanged');
   }
 
   undo() { this._applyHistory(this._undoStack, this._redoStack); }

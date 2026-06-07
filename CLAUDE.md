@@ -40,7 +40,7 @@ pianizer/
     musicxml.js              ← MusicXML score-partwise parser
     midi-out.js              ← Web MIDI output: MidiOut class, lookahead scheduler
   ui/
-    roll.js                  ← PianoRoll canvas: render, rect selection, hover, pan, note editing, selection groups
+    roll.js                  ← PianoRoll canvas: render, rect selection, hover, pan, note editing
     curve-lane.js            ← CurveLane base class: shared pedal/tempo lane logic
     pedal-lane.js            ← PedalLane extends CurveLane (sustain pedal, value 0–1)
     tempo-lane.js            ← TempoLane extends CurveLane (tempo ratio 0.8–1.2)

@@ -43,15 +43,11 @@ out from under the drag). To take notes back out: Ctrl+drag a deselect rect, Ctr
 note, **undo** (`setSelection` snapshots the selection onto the undo stack), or clear with
 empty-click/Escape.
 
-- **Left click note** — add that note to the selection (no-op if already selected). A **grouped**
-  note is no different here — members select **individually**; the whole group is reached by
-  **double-click** (see Selection Groups)
-- **Double-click note** — add the clicked note's whole group to the selection (no-op for an
-  ungrouped note); `_onDblClick`
-- **Ctrl+left click note** — remove that note from the selection (grouped or not, just that note)
+- **Left click note** — add that note to the selection (no-op if already selected)
+- **Ctrl+left click note** — remove that note from the selection
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
   (**Ctrl+click empty is a no-op** — Ctrl means "remove", so it must not wipe everything)
-- **Left drag** — draws a **teal** rubber-band rectangle; overlapping notes are **added** to the current selection on release (grouped notes included — they select like any other note)
+- **Left drag** — draws a **teal** rubber-band rectangle; overlapping notes are **added** to the current selection on release
 - **Ctrl+left drag** — draws a **red** rectangle; overlapping notes are **removed** from the current selection on release
 - **Alt+ / Shift+left drag (on empty)** — **no rubber-band at all** (`inert`): these modifiers belong to other gestures (Alt = insert, Shift = move/resize) and are easy to leave held by accident, so dragging with them held leaves the selection untouched. (Shift+drag *on a note* is a move/resize, handled before the rect logic.)
 - **Escape** — clears the selection (also cancels an in-progress rect drag)
@@ -65,8 +61,7 @@ accidental Alt-drag would fall through to the `click` handler and insert a note.
 `click` is already a no-op, but `inert` still keeps an accidental Shift-drag from drawing a
 misleading band.) A bare *click* (no drag) still passes through: Alt+click inserts a note,
 plain click on empty clears, and a bare **Shift+click is a no-op** (Shift means move/resize). During a rect drag, `_rectHitSet` is updated each frame (via
-`_notesInRect`, which includes **all** overlapping notes, grouped or not — members select like
-any other note; a group is selected as a unit by double-clicking a member). `_effectiveSelection()` previews the
+`_notesInRect`, which includes **all** overlapping notes). `_effectiveSelection()` previews the
 pending result live: in **add** mode the effective set is `committed ∪ hits` and incoming notes
 brighten (`willAdd`); in **remove** mode it is `committed ∖ hits` and departing notes dim
 (`willRemove`, dimmed independently of `hasSel` so removing the whole selection still reads as
@@ -114,10 +109,7 @@ actual fill — so low/mid-velocity blue notes read white, bright ones flip to b
 choice tracks hover/dim brightening. Each note has a 1 px top gap (`y+1`, `h = noteHeight−1`),
 visually separating adjacent pitches.
 
-Each note box shows its velocity number (top-left), clipped to the note interior — **every**
-note, grouped or not. Notes in a selection group keep their velocity-blue fill — group
-membership is shown by a **constellation thread** drawn over the notes, not by recoloring them
-(so velocity stays legible); see Selection Groups below.
+Each note box shows its velocity number (top-left), clipped to the note interior.
 
 Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
 longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
@@ -131,71 +123,19 @@ to front so the topmost note wins.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Group** — `state.createGroup` / `state.removeFromGroup`. Offers a **Group**
-  button (when ≥2 selected notes would form/merge a group — a selected note already in another
-  group can join a second) and an **Ungroup** button (when the selection touches existing groups;
-  extracts the selected members from **all** their groups, dissolving a group once it drops below
-  2). See Selection Groups.
-- **[2] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
+- **[1] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
   `SCALE_EASINGS` in engine/state.js, default S-curve; the selector row is built by the
   shared `buildShapeRow` helper, the picker by `buildRampPicker`), then two-click: first click
   sets start velocity, second sets end. The eased ramp is baked across the selection by onset
-  time — **a one-shot velocity edit, no group formed** (`state.applyVelocityCurve`).
-- **[3] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
-- **[4] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
+  time — **a one-shot velocity edit, nothing persisted** (`state.applyVelocityCurve`).
+- **[2] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
+- **[3] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
   by the given factor (minimum 1 tick)
-- **[5] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
+- **[4] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
 
-Tools [2]–[5] require a non-empty selection (`requireSelection`); otherwise they act on
-whatever is selected, grouped or not — there are no locked notes.
-
----
-
-## Selection Groups
-
-The Group tool [1] records a selection group (`state.groups`, shape `{id, members}`, see
-engine/CLAUDE.md). A group is **purely a selection convenience** — members stay fully editable.
-On the roll:
-
-- **Member notes keep their velocity-blue fill** — group membership is drawn as a
-  **constellation thread** (`_drawGroupThreads`, called *before* `_drawNotes` so it sits **behind
-  the boxes**, over the grid), not by recoloring the notes, so velocity stays legible. Each
-  group's members are bucketed by **onset tick** into clusters; a cluster spanning more than one
-  pitch draws a vertical **spine** across its pitch range, and a **thread** links consecutive
-  clusters (in tick order) through each cluster's **centroid waypoint** (mean of its members' note-
-  box centers) — so a chord reads as a lone spine, a run as a contour line, and a chordal phrase
-  as spines strung along a thread. Anchored to the box centroids and drawn behind the boxes, the
-  thread **weaves through the notes**: it's occluded where it crosses a box and shows in the gaps
-  (between consecutive run notes, between a chord's pitches). Single colored stroke
-  (`threadHSL(GROUP_COLORS[id % …], hot)`); off-screen groups are culled and the thread is clipped
-  to the roll. **Hovering any member lights up the whole group** as a unit — the hovered group's
-  thread brightens (`hot`, via the `_hoverGroupIds` set), and every member note also forces
-  `'hovered'` velocity-blue, since members ignore the per-note hover state. (Thread hover emphasis
-  is suppressed mid rect-drag.)
-- **A note may belong to two groups** (a boundary note that ends one phrase and begins the next;
-  the cap is `MAX_GROUPS_PER_NOTE` in engine/state.js). For such a note the two threads **do not**
-  both pass through the box centroid — `_noteAnchor(n, g)` splits the box width into two padded
-  slots (`THREAD_NODE_PAD` per side, lower group id on the left) so the threads sit **side by side**
-  through the box instead of overlapping. A note in a single group still anchors at its centroid.
-  Hovering a boundary note lights up **both** its groups.
-- **Members select individually; a double-click selects the group.** `_onClick` treats a
-  grouped note exactly like any other — a single click adds (or Ctrl-removes) just that note, and
-  the rubber-band picks members up too (`_notesInRect` no longer excludes them). `_onDblClick`
-  is the one gesture that selects a group as a unit: double-clicking a member adds **every** group
-  it belongs to (`state.groupsOfNote` → `state.groupMemberIndices`) to the selection. This lets you
-  pull a note **out** of a group's worth of selection without dissolving the group — select the
-  group, then Ctrl+click the strays.
-- **Extracting members**: the Group tool's **Ungroup** button calls `state.removeFromGroup` on
-  the current selection — the selected notes leave **every** group they're in (both, for a
-  boundary note), and a group dissolves once it falls below 2 members. (There's no whole-group
-  dissolve primitive: double-click the group, then Ungroup.)
-- **Members stay editable**: they move (Shift+drag), resize, and delete like any note. A Shift+drag
-  carries whatever is selected (`_activateNoteDrag` follows `selectedNoteIndices`), so dragging a
-  lone-selected member moves just that note, while dragging once the group is selected carries it
-  all.
-- **Deleting** a member prunes it from the group (`state._pruneGroups`); a group left with <2
-  members is discarded.
+Tools [1]–[4] require a non-empty selection (`requireSelection`); otherwise they act on
+whatever is selected.
 
 ---
 

@@ -246,29 +246,29 @@ test('bare drag over a note rubber-band selects instead of moving it', async ({ 
 
 // ── tool windows ─────────────────────────────────────────────────────────────
 
-test('[3] velocity tool sets velocity', async ({ page }) => {
+test('[2] velocity tool sets velocity', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
-  await page.keyboard.press('3');
+  await page.keyboard.press('2');
   await expect(page.locator('.tool-window')).toBeVisible();
   await page.locator('.velocity-grid button', { hasText: '80' }).click();
   const vel = await page.evaluate(() => window._state.notes[0].velocity);
   expect(vel).toBe(80);
 });
 
-test('[3] velocity tool does not open with no selection', async ({ page }) => {
-  await page.keyboard.press('3');
+test('[2] velocity tool does not open with no selection', async ({ page }) => {
+  await page.keyboard.press('2');
   await expect(page.locator('.tool-window')).not.toBeVisible();
 });
 
-test('[4] duration delta tool scales note duration', async ({ page }) => {
+test('[3] duration delta tool scales note duration', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
   const before = await page.evaluate(() => {
     const n = window._state.notes[0];
     return n.endTick - n.startTick;
   });
-  await page.keyboard.press('4');
+  await page.keyboard.press('3');
   await expect(page.locator('.tool-window')).toBeVisible();
   await page.locator('.delta-btn', { hasText: '-50%' }).click();
   const after = await page.evaluate(() => {
