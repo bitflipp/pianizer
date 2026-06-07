@@ -18,10 +18,10 @@ const COL_BOOKMARK_HOT = '#ffb060';
 
 // Selection-group accents — cycled by group id so side-by-side groups (e.g. a
 // melody line and its accompaniment) read as distinct. Hues are spread around the wheel,
-// skipping the ~205–250 band so they stay distinct from the velocity-blue notes
-// (hue 213). Stored as HSL with a deliberately moderate base lightness so a hover
-// can brighten the whole group by bumping lightness (see groupHSL / _hoverGroupId,
-// mirroring noteHSL's hovered state) with clearly visible headroom.
+// skipping the ~205–250 band so the constellation threads stay distinct from the
+// velocity-blue notes (hue 213). A group is drawn as a thread linking its members
+// (see _drawGroupThreads) rather than as a note fill, so notes keep their
+// velocity-blue and a group reads as the shape connecting its notes.
 const GROUP_COLORS  = [
   { h:  20, s: 80, l: 52 },  // orange
   { h:  50, s: 78, l: 50 },  // gold
@@ -35,15 +35,17 @@ const GROUP_COLORS  = [
   { h: 345, s: 72, l: 56 },  // pink
 ];
 
-// Accent fill for a group member. `displayState` mirrors noteHSL's vocabulary so a
-// group member reflects the same selection feedback as a plain note: 'hovered'
-// brightens (lightness +18, capped), 'dimmed' darkens (×0.55), 'normal' is the base.
-function groupHSL(c, displayState) {
-  let l = c.l;
-  if (displayState === 'dimmed')  l *= 0.55;
-  if (displayState === 'hovered') l  = Math.min(82, c.l + 18);
-  return `hsl(${c.h},${c.s}%,${Math.round(l)}%)`;
+// Constellation-thread stroke for a group. `hot` (the group under the cursor)
+// brightens the whole thread so it reads as one unit, mirroring the note hover.
+// Bumped saturation/lightness off the base tuple so the thin line stays vivid
+// over both dark gaps and bright notes.
+function threadHSL(c, hot) {
+  const s = Math.min(95, c.s + 10);
+  const l = hot ? Math.min(80, c.l + 20) : c.l + 8;
+  return `hsl(${c.h},${Math.round(s)}%,${Math.round(l)}%)`;
 }
+const THREAD_WIDTH      = 1.5;                 // thread / spine stroke
+const THREAD_WIDTH_HOT  = 2.5;                 // …of the hovered group
 // Relative luminance (WCAG) of an `hsl(h,s%,l%)` string, 0 (black) … 1 (white).
 // HSL lightness alone isn't perceptual — gold and blue at the same `l` differ
 // wildly in brightness — so we convert through sRGB and weight the channels.
@@ -237,6 +239,7 @@ export class PianoRoll {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBackground();
     this._drawGrid();
+    this._drawGroupThreads();
     this._drawNotes();
     this._drawRectSelection();
     this._drawOffscreenSelection();
@@ -424,8 +427,6 @@ export class PianoRoll {
     this._drawOrderDirty = false;
   }
 
-  _groupColor(g, displayState) { return groupHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], displayState); }
-
   // Draws a clipped, top-left label inside a note box. `y` is the box top
   // (pitchToY + 1). Used for the per-note velocity number.
   _drawNoteLabel(x, y, w, text, color) {
@@ -489,17 +490,13 @@ export class PianoRoll {
     else if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
     else if (hovered || willAdd) colorState = 'hovered';
 
-    // Group members read as a unit in the group's accent color, overriding the per-note
-    // velocity-blue fill so a group is recognisable at a glance — but otherwise follow
-    // the same selection feedback as plain notes (willAdd brightens during a rect drag,
-    // willRemove/unselected-with-a-selection dims). Hovering any member additionally
-    // lights up the *whole* group as a unit, since members ignore the per-note hover.
+    // Group membership is drawn as a constellation thread (see _drawGroupThreads), not
+    // as a fill — every note keeps its velocity-blue. Hovering any member still lights up
+    // the *whole* group as a unit: members ignore the per-note hover, so the hovered
+    // group forces 'hovered' across all of them.
     const grp = state.groupOfNote(n);
-    let groupState = colorState;
-    if (!effective.inDrag && grp && grp.id === this._hoverGroupId) groupState = 'hovered';
-    const fill = grp
-      ? this._groupColor(grp, groupState)
-      : noteHSL(n.velocity, colorState);
+    if (!effective.inDrag && grp && grp.id === this._hoverGroupId) colorState = 'hovered';
+    const fill = noteHSL(n.velocity, colorState);
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
 
@@ -527,6 +524,75 @@ export class PianoRoll {
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.fillRect(x, y, hw, h);
     ctx.fillRect(x + w - hw, y, hw, h);
+  }
+
+  // Selection groups drawn as constellation threads (see ui/CLAUDE.md). Each group's
+  // members are bucketed by onset tick into clusters; a cluster spanning >1 pitch draws
+  // a vertical spine across its pitch range, and a thread links consecutive clusters
+  // (in tick order) through each cluster's centroid waypoint — so a chord reads as a
+  // lone spine, a run as a contour line, and a chordal phrase as spines strung along a
+  // thread. Drawn *behind* the notes (over the grid), anchored to the note-box centroids,
+  // so the thread weaves through the boxes and shows in the gaps; the group under the
+  // cursor brightens as a unit.
+  _drawGroupThreads() {
+    if (!state.groups.length) return;
+    const { ctx } = this;
+    const tickStart = this.scrollX;
+    const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
+    const halfH     = this.noteHeight / 2;
+    // A rect drag is previewing a selection change — suppress the hover emphasis then.
+    const dragging  = this._rectSelActive && this._rectDidDrag;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(KEY_WIDTH, HEADER_HEIGHT, this.rollWidth, this.rollHeight);
+    ctx.clip();
+    ctx.lineJoin = 'round';
+    ctx.lineCap  = 'round';
+
+    for (const g of state.groups) {
+      const members = state.groupMembers(g);
+      if (members.length < 2) continue;
+
+      // Bucket members by onset tick → clusters. Each accumulates its members' box
+      // centroids (xSum/ySum) for the waypoint, and the screen-y pitch span (yTop/yBot,
+      // y is inverted so yTop is the highest pitch) for the spine.
+      const byTick = new Map();
+      for (const n of members) {
+        let c = byTick.get(n.startTick);
+        if (!c) { c = { tick: n.startTick, xSum: 0, ySum: 0, count: 0, yTop: Infinity, yBot: -Infinity }; byTick.set(n.startTick, c); }
+        const cx = this.tickToX(n.startTick) + this._noteWidthPx(n) / 2;
+        const cy = this.pitchToY(n.pitch) + halfH;
+        c.xSum += cx; c.ySum += cy; c.count++;
+        if (cy < c.yTop) c.yTop = cy;
+        if (cy > c.yBot) c.yBot = cy;
+      }
+      const clusters = [...byTick.values()].sort((a, b) => a.tick - b.tick);
+      // Whole-group cull: sorted, so all clusters off one side means the thread can't cross.
+      if (clusters[clusters.length - 1].tick < tickStart || clusters[0].tick > tickEnd) continue;
+
+      const hot   = !dragging && g.id === this._hoverGroupId;
+      ctx.strokeStyle = threadHSL(GROUP_COLORS[g.id % GROUP_COLORS.length], hot);
+      ctx.lineWidth   = hot ? THREAD_WIDTH_HOT : THREAD_WIDTH;
+      const pts = clusters.map(c => ({ x: c.xSum / c.count, y: c.ySum / c.count, yTop: c.yTop, yBot: c.yBot }));
+
+      // Thread linking consecutive cluster centroids.
+      if (pts.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
+        ctx.stroke();
+      }
+      // Spines: a vertical bar across each multi-pitch cluster's pitch span.
+      ctx.beginPath();
+      for (const p of pts) {
+        if (p.yBot - p.yTop < 1) continue;  // single-pitch cluster — no spine
+        ctx.moveTo(p.x, p.yTop);
+        ctx.lineTo(p.x, p.yBot);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   _drawLaneReticles() {
