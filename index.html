@@ -707,14 +707,14 @@
       if (canGroup) {
         const btn = document.createElement('button');
         btn.className = 'delta-btn';
-        btn.textContent = 'Group selection';
+        btn.textContent = 'Group';
         btn.addEventListener('click', ev => { ev.stopPropagation(); state.createGroup(indices); close(); });
         body.appendChild(btn);
       }
       if (canUngroup) {
         const btn = document.createElement('button');
         btn.className = 'delta-btn';
-        if (canGroup) btn.style.marginTop = '5px';
+        if (canGroup) btn.style.marginLeft = '5px';
         btn.textContent = 'Ungroup';
         btn.addEventListener('click', ev => {
           ev.stopPropagation();
