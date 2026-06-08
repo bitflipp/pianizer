@@ -42,19 +42,23 @@ function relativeLuminance(hsl) {
 // adapting to the actual rendered fill, so it tracks velocity and the hover
 // brightening alike (a near-threshold fill flips on hover, by design: the label
 // always follows the most legible choice for the current fill).
-function labelColorFor(fill) {
+export function labelColorFor(fill) {
   return relativeLuminance(fill) > 0.179 ? '#000' : '#fff';
 }
 const NOTE_LABEL_FONT = '9px monospace'; // per-note velocity number
 
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
+// Viridis-style blue→green→yellow gradient (low → high velocity). Colorblind-safe:
+// it avoids the red↔green pair, and lightness ramps up with velocity so brightness
+// redundantly encodes the signal even when hue is ambiguous.
 export function noteHSL(velocity, displayState) {
   const t = velocity / 127;
-  const s = 65 + t * 15;   // 65–80% saturation
-  let   l = 8  + t * 54;   // 8–62% lightness
+  const h = 250 - t * 200; // 250° indigo (low) → 50° yellow (high), via blue/teal/green
+  const s = 60 + t * 30;   // 60–90% saturation (calmer low end, vivid high end)
+  let   l = 32 + t * 33;   // 32–65% lightness ramps with velocity (redundant cue)
   if (displayState === 'dimmed')  l *= 0.55;
-  if (displayState === 'hovered') l  = Math.min(78, l + 16);
-  return `hsl(213,${Math.round(s)}%,${Math.round(l)}%)`;
+  if (displayState === 'hovered') l  = Math.min(80, l + 16);
+  return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
 }
 
 // Rectangle-selection rubber band (teal = add, red = remove)
