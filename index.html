@@ -202,7 +202,7 @@
   import { PedalLane }               from './ui/pedal-lane.js';
   import { TempoLane }               from './ui/tempo-lane.js';
   import { MiniMap }                 from './ui/minimap.js';
-  import { canvasPos, isFormFocused } from './ui/dom-utils.js';
+  import { canvasPos, isFormFocused, PITCH_MAX } from './ui/dom-utils.js';
   import './ui/toolbar.js';
 
   // Best-effort localStorage write — swallows quota / private-mode errors.
@@ -243,15 +243,16 @@
 
   // ── Status bar ────────────────────────────────────────────────────
   const statusEl = document.getElementById('status');
+  const HELP_HINT = ' · Press [?] for help';
 
   function updateStatus() {
     if (!state.loaded) {
-      statusEl.textContent = 'Load MusicXML or a project file to begin · Press [?] for help';
+      statusEl.textContent = 'Load MusicXML or a project file to begin' + HELP_HINT;
       return;
     }
     const sel = state.selectedNoteIndices.size;
     const tail = sel > 0 ? ` · ${sel} selected` : '';
-    statusEl.textContent = `${state.notes.length} notes${tail} · Press [?] for help`;
+    statusEl.textContent = `${state.notes.length} notes${tail}${HELP_HINT}`;
   }
 
   state.addEventListener('loaded',           updateStatus);
@@ -651,6 +652,11 @@
     btn.style.boxShadow  = mode === 'selected' ? 'inset 0 0 0 1px #fff' : 'none';
   }
 
+  // Velocity preset palette shared by the [2] velocity tool and the [1] ramp picker.
+  const VEL_PRESET_MIN  = 5;
+  const VEL_PRESET_MAX  = 120;
+  const VEL_PRESET_STEP = 5;
+
   function makeVelBtn(v) {
     const btn = document.createElement('button');
     btn.textContent = String(v);
@@ -666,7 +672,7 @@
     openToolWindow('Note velocity', (body, close) => {
       const grid = document.createElement('div');
       grid.className = 'velocity-grid';
-      for (let v = 5; v <= 120; v += 5) {
+      for (let v = VEL_PRESET_MIN; v <= VEL_PRESET_MAX; v += VEL_PRESET_STEP) {
         const btn = makeVelBtn(v);
         btn.addEventListener('click', ev => {
           ev.stopPropagation();
@@ -717,7 +723,7 @@
 
     const grid = document.createElement('div');
     grid.className = 'velocity-grid';
-    for (let v = 5; v <= 120; v += 5) {
+    for (let v = VEL_PRESET_MIN; v <= VEL_PRESET_MAX; v += VEL_PRESET_STEP) {
       const btn = makeVelBtn(v);
       btn.addEventListener('click', ev => {
         ev.stopPropagation();
@@ -849,8 +855,9 @@
     roll.scrollX = 0;
 
     if (state.notes.length > 0) {
+      const HEADROOM_SEMITONES = 2;   // blank space above the highest note
       const maxP = Math.max(...state.notes.map(n => n.pitch));
-      roll.scrollY = Math.max(0, (108 - maxP - 2) * roll.noteHeight);
+      roll.scrollY = Math.max(0, (PITCH_MAX - maxP - HEADROOM_SEMITONES) * roll.noteHeight);
     }
   }
 
@@ -1028,7 +1035,7 @@
     if (vc) {
       const arr = JSON.parse(vc);
       if (Array.isArray(arr) && arr.length === VCL_COLS)
-        state.velocityCurve = arr.map(v => Math.max(-22, Math.min(22, Math.round(v))));
+        state.velocityCurve = arr.map(v => Math.max(-VCL_ZERO_ROW, Math.min(VCL_ZERO_ROW, Math.round(v))));
     }
   } catch (_) {}
 
@@ -1046,7 +1053,7 @@
       fitView();
       restoreView();
       const n = state.notes.length;
-      statusEl.textContent = `Restored from autosave · ${n} note${n !== 1 ? 's' : ''} · Press [?] for help`;
+      statusEl.textContent = `Restored from autosave · ${n} note${n !== 1 ? 's' : ''}${HELP_HINT}`;
       setTimeout(updateStatus, 3000);
     }
   } catch (_) {}
