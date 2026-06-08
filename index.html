@@ -108,7 +108,7 @@
     }
     .velocity-grid button {
       border: 1px solid;
-      color: #fff;
+      /* text color is set inline per-button (luminance-adaptive); see styleVelBtn */
       font: 12px monospace;
       padding: 4px 4px 4px 0;
       cursor: pointer;
@@ -198,7 +198,7 @@
   import { state, SNAP_GRIDS, SCALE_EASINGS } from './engine/state.js';
   import { loadMusicXmlBuffer }      from './engine/musicxml.js';
   import { midiOut }                 from './engine/midi-out.js';
-  import { PianoRoll, noteHSL }      from './ui/roll.js';
+  import { PianoRoll, noteHSL, labelColorFor } from './ui/roll.js';
   import { PedalLane }               from './ui/pedal-lane.js';
   import { TempoLane }               from './ui/tempo-lane.js';
   import { MiniMap }                 from './ui/minimap.js';
@@ -640,7 +640,11 @@
   // Applies velocity-based background/border to a velocity grid button.
   // `mode`: 'normal' | 'hover' | 'selected'
   function styleVelBtn(btn, v, mode) {
-    btn.style.background  = noteHSL(v, mode === 'normal' ? 'normal' : 'hovered');
+    const fill = noteHSL(v, mode === 'normal' ? 'normal' : 'hovered');
+    btn.style.background  = fill;
+    // Label color tracks the fill's luminance (same rule as the roll's per-note
+    // numbers) so bright high-velocity buttons stay legible — white on yellow doesn't.
+    btn.style.color       = labelColorFor(fill);
     btn.style.borderColor = mode === 'selected' ? '#fff' : mode === 'hover' ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)';
     // Draw the selected emphasis with an inset shadow rather than a thicker
     // border so the button's box size stays fixed and the grid never reflows.

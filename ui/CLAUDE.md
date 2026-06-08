@@ -95,8 +95,11 @@ after notes/rect-band and before the ruler/keys, so those strips paint over any 
 
 ## Note Coloring
 
-Fill color is velocity-mapped (`noteHSL` in `roll.js`): hue fixed at 213° (blue),
-saturation 65–80%, lightness 8–62%, both scaled linearly with velocity. Three display
+Fill color is velocity-mapped (`noteHSL` in `roll.js`): a viridis-style blue→green→yellow
+gradient (250° indigo at low velocity → 50° yellow at high, via blue/teal/green), with
+saturation 60–90% and lightness 32–65% both ramping with velocity. The palette is
+**colorblind-safe** — it avoids the red↔green pair, and the lightness ramp redundantly
+encodes velocity as brightness, so don't flatten lightness to a constant. Three display
 states adjust the base lightness:
 - **Normal**: notes in the current selection, or all notes when nothing is selected
 - **Dimmed**: unselected notes when a selection exists (lightness × 0.55)
@@ -105,7 +108,7 @@ states adjust the base lightness:
 Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi-transparent
 white for others. Label text color is **luminance-adaptive** (`labelColorFor` in `roll.js`):
 black or white per the WCAG max-contrast crossover (relative luminance ≈ 0.179) of the note's
-actual fill — so low/mid-velocity blue notes read white, bright ones flip to black, and the
+actual fill — so darker low-velocity blues read white, bright high-velocity yellows flip to black, and the
 choice tracks hover/dim brightening. Each note has a 1 px top gap (`y+1`, `h = noteHeight−1`),
 visually separating adjacent pitches.
 
