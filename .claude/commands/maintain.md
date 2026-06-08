@@ -51,11 +51,12 @@ no internal implementation details.
 
 ## Process
 
-1. Read the scope. List all candidate findings in two groups — **Code** and
-   **CLAUDE.md sync** — citing file:line for each. Do NOT edit yet.
-2. Wait for confirmation (I may trim or add).
-3. Apply all changes in one pass — source files first, then CLAUDE.md.
-4. Summarize what changed in one or two sentences. Don't commit unless asked.
+1. Read the scope. Identify findings in two groups — **Code** and **CLAUDE.md sync**.
+2. Apply all changes directly, in one pass — source files first, then CLAUDE.md.
+   Do not wait for approval.
+3. Summarize what changed, grouped Code / CLAUDE.md sync, citing file:line for each
+   change so I can spot-check and revert anything I disagree with. The pass never
+   commits, so a `git restore` undoes any single change. Don't commit unless asked.
 
 ## Notes
 
