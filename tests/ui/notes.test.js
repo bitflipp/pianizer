@@ -90,14 +90,47 @@ test('Shift+drag rectangle extends the selection', async ({ page }) => {
   expect(sel).toEqual([0, 1, 2]);
 });
 
-test('Alt+drag does not start a selection rectangle', async ({ page }) => {
+test('Alt+drag inserts a note whose duration follows the drag (no rectangle)', async ({ page }) => {
   await page.evaluate(() => window._state.setSelection([0, 1, 2]));
   await rectOverNote0(page, 'Alt');
-  // The selection is untouched and no rect drag is left active.
-  const sel    = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  // No rubber-band: instead a 4th note is inserted, spanning the dragged width and
+  // selected on its own. The Alt-drag never starts a rect.
+  const count  = await page.evaluate(() => window._state.notes.length);
   const active = await page.evaluate(() => window._roll._rectSelActive);
-  expect(sel).toEqual([0, 1, 2]);
+  const sel    = await page.evaluate(() => [...window._state.selectedNoteIndices]);
+  const dur    = await page.evaluate(() => {
+    const n = window._state.notes[[...window._state.selectedNoteIndices][0]];
+    return n.endTick - n.startTick;
+  });
+  expect(count).toBe(4);
   expect(active).toBe(false);
+  expect(sel.length).toBe(1);
+  expect(dur).toBeGreaterThan(0);
+});
+
+test('Alt+click inserts a note one snap-step long at the cursor', async ({ page }) => {
+  // An empty point a few rows below note 0, still inside the roll content.
+  const at = await page.evaluate(() => {
+    const roll = window._roll, s = window._state;
+    const r = document.getElementById('roll').getBoundingClientRect();
+    const n = s.notes[0];
+    return {
+      x: r.left + roll.tickToX(n.startTick) + 10,
+      y: r.top  + roll.pitchToY(n.pitch - 5) + roll.noteHeight / 2,
+    };
+  });
+  await page.keyboard.down('Alt');
+  await page.mouse.click(at.x, at.y);
+  await page.keyboard.up('Alt');
+  const count = await page.evaluate(() => window._state.notes.length);
+  const dur   = await page.evaluate(() => {
+    const n = window._state.notes[[...window._state.selectedNoteIndices][0]];
+    return n.endTick - n.startTick;
+  });
+  // Default duration is one snap step at the current grid (not a whole beat).
+  const grid = await page.evaluate(() => window._snapGridTicks(window._state.snapGrid, window._state.ticksPerBeat));
+  expect(count).toBe(4);
+  expect(dur).toBe(grid);
 });
 
 test('click empty space clears selection', async ({ page }) => {
