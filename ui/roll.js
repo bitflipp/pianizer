@@ -61,11 +61,9 @@ export function noteHSL(velocity, displayState) {
   return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
 }
 
-// Rectangle-selection rubber band (teal = add, red = remove)
+// Rectangle-selection rubber band (teal)
 const COL_RECT_FILL   = 'rgba(92,200,200,0.1)';
 const COL_RECT_STROKE = 'rgba(92,200,200,0.55)';
-const COL_RECT_RM_FILL   = 'rgba(220,70,70,0.12)';
-const COL_RECT_RM_STROKE = 'rgba(220,70,70,0.6)';
 
 // Off-screen selection indicators: outward-pointing triangles drawn at the roll's
 // content edges for selected notes that have scrolled out of view, so a selection
@@ -117,7 +115,6 @@ export class PianoRoll {
     this._hoverNoteIdx  = -1;
     this._hoverNoteRightEdge = -1;  // index of note whose right edge is under the cursor
     this._lastMousePos  = null;
-    this._shiftHeld     = false;  // Shift = the move/resize edit modifier; tracked for handle drawing
 
     // Rectangle selection drag
     this._rectSelActive      = false;
@@ -126,7 +123,7 @@ export class PianoRoll {
     this._rectSelCurrent     = null;
     this._rectDidDrag        = false;
     this._rectHitSet         = null;
-    this._rectSelMode        = 'add';   // 'add' (bare) | 'remove' (Ctrl) | 'inert' (Alt/Shift)
+    this._rectSelMode        = 'replace';  // 'replace' (bare) | 'extend' (Shift) | 'inert' (Alt)
     this._didRectSel         = false;   // suppress the click event that follows mouseup
 
     // Auto-pan during rect selection
@@ -144,6 +141,7 @@ export class PianoRoll {
     // Shared resize state: note refs and original ticks captured at drag start
     this._resizeNoteRefs = [];
     this._resizeOrigins  = [];
+    this._didResize      = false;  // suppress the click event that follows a resize mouseup
 
     // Note drag (note body)
     this._draggingNotes     = false;
@@ -363,23 +361,20 @@ export class PianoRoll {
       this._drawNote(i, n, effective, hasSel);
     }
 
-    // Shift (edit modifier) held: draw resize handles on the note under the cursor so
-    // its grippable edges are explicit.
-    if (this._shiftHeld) {
-      const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
-               : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
-               : this._hoverNoteLeftEdge;
-      // A resize on a selected note carries the whole selection by the same tick
-      // delta (see _beginEdgeResize), so show grips on every selected note — not
-      // just the one under the cursor.
-      if (hi >= 0 && state.selectedNoteIndices.has(hi)) {
-        for (const i of state.selectedNoteIndices) {
-          const n = state.notes[i];
-          if (n) this._drawResizeHandles(n);
-        }
-      } else if (hi >= 0) {
-        this._drawResizeHandles(state.notes[hi]);
+    // Draw resize handles on the note under the cursor so its grippable edges are
+    // explicit. A resize on a selected note carries the whole selection by the same
+    // tick delta (see _beginEdgeResize), so show grips on every selected note — not
+    // just the one under the cursor.
+    const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
+             : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
+             : this._hoverNoteLeftEdge;
+    if (hi >= 0 && state.selectedNoteIndices.has(hi)) {
+      for (const i of state.selectedNoteIndices) {
+        const n = state.notes[i];
+        if (n) this._drawResizeHandles(n);
       }
+    } else if (hi >= 0) {
+      this._drawResizeHandles(state.notes[hi]);
     }
 
     ctx.restore();
@@ -415,21 +410,25 @@ export class PianoRoll {
     ctx.restore();
   }
 
-  // Returns the visible selection set, accounting for an in-progress rect drag:
-  // during a teal (add) drag the rect hits preview as additions to the committed
-  // selection; during a red (remove) drag they preview as subtractions. `addingHits`
-  // / `removingHits` are the subsets that would change on commit (only one is set).
+  // Returns the visible selection set, accounting for an in-progress rect drag.
+  // A bare (replace) drag previews the hits as the entire new selection — notes
+  // entering brighten, previously-committed notes leaving dim. A Shift (extend)
+  // drag previews the hits as additions to the committed selection. `addingHits`
+  // / `removingHits` are the subsets that would change on commit.
   _effectiveSelection() {
     const committed = state.selectedNoteIndices;
     const inDrag    = this._rectSelActive && this._rectDidDrag && this._rectHitSet !== null;
     if (!inDrag) return { set: committed, addingHits: null, removingHits: null, inDrag: false };
 
-    if (this._rectSelMode === 'remove') {
-      const set = new Set([...committed].filter(i => !this._rectHitSet.has(i)));
-      return { set, addingHits: null, removingHits: this._rectHitSet, inDrag: true };
+    if (this._rectSelMode === 'extend') {
+      const set = new Set([...committed, ...this._rectHitSet]);
+      return { set, addingHits: this._rectHitSet, removingHits: null, inDrag: true };
     }
-    const set = new Set([...committed, ...this._rectHitSet]);
-    return { set, addingHits: this._rectHitSet, removingHits: null, inDrag: true };
+    // 'replace': the rect hits become the whole selection; anything committed but
+    // not hit is on its way out and dims as a removal preview.
+    const set      = new Set(this._rectHitSet);
+    const removing = new Set([...committed].filter(i => !this._rectHitSet.has(i)));
+    return { set, addingHits: this._rectHitSet, removingHits: removing, inDrag: true };
   }
 
   _drawNote(i, n, effective, hasSel) {
@@ -477,7 +476,7 @@ export class PianoRoll {
     this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill));
   }
 
-  // Left/right grip bars on a note, shown while Shift is held over it. Drawn within
+  // Left/right grip bars on a note, shown while it's hovered. Drawn within
   // _drawNotes' roll clip. Width caps at half the note so short notes still show two grips.
   _drawResizeHandles(n) {
     const { ctx } = this;
@@ -618,7 +617,6 @@ export class PianoRoll {
     c.addEventListener('mouseleave', () => this._onMouseLeave());
     window.addEventListener('keyup', e => {
       if (e.key === 'Alt' && !this._panning) this._refreshCursor();
-      if (e.key === 'Shift') { this._shiftHeld = false; this._refreshShiftAffordances(); }
     });
     // move/up on window so dragging off-canvas still registers (critical for ruler seek)
     window.addEventListener('mousemove', e => this._onMouseMove(e));
@@ -628,14 +626,13 @@ export class PianoRoll {
   }
 
   _onKeyDown(e) {
-    // Show the insert (cell) cursor when Alt is held over the roll content
+    // Show the insert (cell) cursor when Alt is held over the roll content. Alt is
+    // the insert modifier and overrides move/resize, so it wins even over a note.
     if (e.key === 'Alt' && this._lastMousePos
         && !this._panning && !this._draggingNotes && !this._rectSelActive
-        && this._hoverNoteRightEdge < 0 && this._hoverNoteLeftEdge < 0 && this._hoverNoteHandle < 0
         && this._inRoll(this._lastMousePos)) {
       this.canvas.style.cursor = 'cell';
     }
-    if (e.key === 'Shift' && !this._shiftHeld) { this._shiftHeld = true; this._refreshShiftAffordances(); }
     if (e.key === 'Escape' && state.loaded) {
       if (this._rectSelActive || state.selectedNoteIndices.size > 0) {
         e.preventDefault();
@@ -707,20 +704,6 @@ export class PianoRoll {
     }
   }
 
-  // Re-resolve edit-hover affordances at the last mouse position when Shift is pressed
-  // or released without the mouse moving, so the hovered note's resize handles and the
-  // grab/resize cursor appear or clear at once (mirrors the Alt 'cell' cursor handling).
-  _refreshShiftAffordances() {
-    const pos = this._lastMousePos;
-    if (!pos || !state.loaded || this._panning || this._draggingNotes
-        || this._rectSelActive || this._resizingNoteRightIdx >= 0
-        || this._resizingNoteLeftIdx >= 0) return;
-    const inRoll = this._inRoll(pos);
-    const { edgeNi, leftEdgeNi, handleNi } = this._trackEdgeHover(pos, inRoll, this._shiftHeld);
-    this._setHoverCursor(false, inRoll, edgeNi, leftEdgeNi, handleNi);
-    this.render();
-  }
-
   _canvasPos(e) { return canvasPos(this.canvas, e); }
 
   _cancelRectSel() {
@@ -731,7 +714,7 @@ export class PianoRoll {
     this._rectSelCurrent    = null;
     this._rectDidDrag       = false;
     this._rectHitSet        = null;
-    this._rectSelMode       = 'add';
+    this._rectSelMode       = 'replace';
   }
 
   // Returns {vx, vy} pixels/frame for the given canvas position.
@@ -797,7 +780,7 @@ export class PianoRoll {
   }
 
   _drawRectSelection() {
-    // 'inert' (Alt/Shift) drags are swallowed for click-suppression only — no band.
+    // 'inert' (Alt) drags are swallowed for click-suppression only — no band.
     if (!this._rectSelActive || !this._rectDidDrag || this._rectSelMode === 'inert') return;
     const { x1, y1, x2, y2 } = this._selectionRect();
     const { ctx, canvas } = this;
@@ -805,8 +788,8 @@ export class PianoRoll {
     ctx.beginPath();
     ctx.rect(KEY_WIDTH, HEADER_HEIGHT, canvas.width - KEY_WIDTH, canvas.height - HEADER_HEIGHT);
     ctx.clip();
-    ctx.fillStyle   = this._rectSelMode === 'remove' ? COL_RECT_RM_FILL   : COL_RECT_FILL;
-    ctx.strokeStyle = this._rectSelMode === 'remove' ? COL_RECT_RM_STROKE : COL_RECT_STROKE;
+    ctx.fillStyle   = COL_RECT_FILL;
+    ctx.strokeStyle = COL_RECT_STROKE;
     ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
     ctx.lineWidth = 1;
     ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1 - 1, y2 - y1 - 1);
@@ -901,7 +884,7 @@ export class PianoRoll {
     const resizeIndices = isSelected ? [...state.selectedNoteIndices] : [anchorIdx];
     const ai = resizeIndices.indexOf(anchorIdx);
     if (ai > 0) { resizeIndices.splice(ai, 1); resizeIndices.unshift(anchorIdx); }
-    state.resizeNoteStart();
+    state.resizeNoteStart(resizeIndices);
     this._resizeNoteRefs = resizeIndices.map(i => state.notes[i]).filter(Boolean);
     if (side === 'right') {
       this._resizingNoteRightIdx = anchorIdx;
@@ -948,10 +931,11 @@ export class PianoRoll {
     }
     if (pos.x < KEY_WIDTH) return;
 
-    // Move and resize are gated behind Shift (the edit modifier); without it a press on
-    // a note falls through to rubber-band selection. The hover indices are only set while
-    // Shift is held (see _trackEdgeHover), but gate on e.shiftKey too for clarity.
-    if (e.shiftKey) {
+    // Notes move and resize freely (no modifier). A press on a note's edge resizes it,
+    // on its body begins a move; a press on empty space starts a rubber-band. Alt is the
+    // insert modifier and is reserved — an Alt press falls through to the (inert) rect so
+    // Alt+click still inserts and an accidental Alt-drag selects nothing.
+    if (!e.altKey) {
       if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
       if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
       if (this._hoverNoteHandle    >= 0) {
@@ -961,25 +945,24 @@ export class PianoRoll {
       }
     }
 
-    // Modifier picks the rect mode. Alt (insert) and Shift (move/resize over a note —
-    // here it landed on empty) are reserved for other gestures and are
-    // easy to leave held by accident, so they make the rect 'inert' — it still tracks
-    // the drag (to suppress the trailing click) but draws/selects nothing. Ctrl gives the
-    // red deselect rect; a bare drag the teal add rect (now anywhere, even over a note).
+    // Empty-space press starts a rubber-band. The modifier picks the rect mode, fixed
+    // here at mousedown so releasing it mid-drag doesn't flip it: Shift extends the
+    // committed selection, a bare drag replaces it. Alt makes the rect 'inert' — it
+    // still tracks the drag (to suppress the trailing click, so Alt+click can insert)
+    // but draws/selects nothing.
     this._rectSelActive     = true;
     this._rectSelStart      = pos;
     this._rectSelStartWorld = { tick: this.xToTick(pos.x), worldY: pos.y - HEADER_HEIGHT + this.scrollY };
     this._rectSelCurrent    = pos;
     this._rectDidDrag       = false;
-    this._rectSelMode       = (e.altKey || e.shiftKey) ? 'inert'
-                            : (e.ctrlKey || e.metaKey) ? 'remove'
-                            : 'add';
+    this._rectSelMode       = e.altKey   ? 'inert'
+                            : e.shiftKey ? 'extend'
+                            : 'replace';
   }
 
   _onMouseMove(e) {
     const pos = this._canvasPos(e);
     this._lastMousePos = pos;
-    this._shiftHeld    = e.shiftKey;
 
     const newHoverPitch = (pos.y > HEADER_HEIGHT && pos.y < this.canvas.height)
       ? Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.yToPitch(pos.y))) : -1;
@@ -1058,7 +1041,7 @@ export class PianoRoll {
       return;
     }
 
-    const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll, e.shiftKey);
+    const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
 
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
@@ -1083,10 +1066,10 @@ export class PianoRoll {
 
   // Resolves right-edge / left-edge / body hover (all forced to -1 during a rect-select
   // drag) and returns the indices plus whether any of the three changed since last move.
-  _trackEdgeHover(pos, inRoll, shiftHeld) {
-    // Move/resize are Shift-gated, so edge and body hover affordances only light up while
-    // Shift is held; otherwise a drag here is a rubber-band selection.
-    const active     = shiftHeld && inRoll && !this._rectSelActive;
+  _trackEdgeHover(pos, inRoll) {
+    // Notes move/resize without a modifier, so edge and body hover affordances light up
+    // whenever the cursor is over a note (outside an in-progress rubber-band drag).
+    const active     = inRoll && !this._rectSelActive;
     let   edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
     let   leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
     let   handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
@@ -1100,12 +1083,12 @@ export class PianoRoll {
   }
 
   _setHoverCursor(altKey, inRoll, edgeNi, leftEdgeNi, handleNi) {
-    if (edgeNi >= 0 || leftEdgeNi >= 0) {
+    if (altKey && inRoll) {
+      this.canvas.style.cursor = 'cell';        // Alt = insert, overrides move/resize
+    } else if (edgeNi >= 0 || leftEdgeNi >= 0) {
       this.canvas.style.cursor = 'ew-resize';
     } else if (handleNi >= 0) {
       this.canvas.style.cursor = 'grab';
-    } else if (altKey && inRoll) {
-      this.canvas.style.cursor = 'cell';
     } else {
       this.canvas.style.cursor = '';
     }
@@ -1193,6 +1176,9 @@ export class PianoRoll {
       this._resizingNoteLeftIdx  = -1;
       this._resizeNoteRefs = [];
       this._resizeOrigins  = [];
+      // Suppress the trailing click so it can't re-run the selection matrix and
+      // collapse the selection the resize just established onto the note edge.
+      this._didResize = true;
       this._refreshCursor();
       return;
     }
@@ -1235,14 +1221,14 @@ export class PianoRoll {
 
     if (didDrag) {
       this._didRectSel = true; // suppress the click event (incl. the inert case)
-      if (mode === 'remove') {
-        state.setSelection([...state.selectedNoteIndices].filter(i => !hits.has(i)));
-        this.render();
-      } else if (mode === 'add') {
+      if (mode === 'extend') {
         state.setSelection([...new Set([...state.selectedNoteIndices, ...hits])]);
         this.render();
+      } else if (mode === 'replace') {
+        state.setSelection([...hits]);
+        this.render();
       }
-      // 'inert' (Alt/Shift): drag swallowed, selection untouched, click suppressed
+      // 'inert' (Alt): drag swallowed, selection untouched, click suppressed
     }
     // Click without drag: _onClick fires separately and handles it
   }
@@ -1251,12 +1237,10 @@ export class PianoRoll {
     if (!state.loaded) return;
     if (this._didRectSel)  { this._didRectSel  = false; return; }
     if (this._didNoteDrag) { this._didNoteDrag = false; return; }
+    if (this._didResize)   { this._didResize   = false; return; }
 
     const pos = this._canvasPos(e);
     if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
-
-    // Shift is the move/resize modifier; a bare Shift+click performs no selection.
-    if (e.shiftKey) return;
 
     if (e.altKey) {
       const tick  = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
@@ -1269,18 +1253,15 @@ export class PianoRoll {
     if (ni !== -1) {
       e.stopPropagation();
       const current = state.selectedNoteIndices;
-      // A single click acts on just the clicked note — Ctrl removes, a bare click adds.
-      if (e.ctrlKey || e.metaKey) {
-        if (current.has(ni)) state.setSelection([...current].filter(i => i !== ni));
-      } else {
+      // Classic single-click selection: Shift+click on top of an existing selection
+      // adds the hit note; otherwise the click replaces the selection with just it.
+      if (e.shiftKey && current.size > 0) {
         if (!current.has(ni)) state.setSelection([...current, ni]);
+      } else if (!(current.size === 1 && current.has(ni))) {
+        state.setSelection([ni]);
       }
       return;
     }
-
-    // Ctrl+click on empty is a no-op: Ctrl means "remove from selection", so it
-    // must not clear everything (which would undo the deselection work in progress).
-    if (e.ctrlKey || e.metaKey) return;
 
     // Click on empty space: clear the selection and seek the playhead.
     if (state.selectedNoteIndices.size > 0) state.setSelection([]);

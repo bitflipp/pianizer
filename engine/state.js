@@ -379,9 +379,15 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
-  // Call once when a resize drag begins; pushes undo before any mutation.
-  resizeNoteStart() {
+  // Call once when a resize drag begins; pushes undo before any mutation. When the
+  // resized indices are passed they become the selection, so a resized note (and its
+  // group) stays selected after the drag — mirrors moveNotesStart.
+  resizeNoteStart(indices) {
     this._pushUndo();
+    if (indices) {
+      this.selectedNoteIndices = new Set(indices);
+      this.dispatch('selectionchanged');
+    }
   }
 
   // Called each frame during a right-edge resize drag — no undo push.

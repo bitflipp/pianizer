@@ -33,53 +33,29 @@ test('re-clicking a selected note keeps it selected', async ({ page }) => {
   expect(sel).toBe(1);
 });
 
-test('click extends selection without a modifier', async ({ page }) => {
+test('clicking another note replaces the selection', async ({ page }) => {
   const p0 = await notePagePos(page, 0);
   const p1 = await notePagePos(page, 1);
   await page.mouse.click(p0.x, p0.y);
   await page.mouse.click(p1.x, p1.y);
-  const sel = await page.evaluate(() => window._state.selectedNoteIndices.size);
-  expect(sel).toBe(2);
-});
-
-test('Ctrl+click a selected note removes it from the selection', async ({ page }) => {
-  const p0 = await notePagePos(page, 0);
-  const p1 = await notePagePos(page, 1);
-  await page.mouse.click(p0.x, p0.y);
-  await page.mouse.click(p1.x, p1.y);
-  expect(await page.evaluate(() => window._state.selectedNoteIndices.size)).toBe(2);
-
-  await page.keyboard.down('Control');
-  await page.mouse.click(p0.x, p0.y);
-  await page.keyboard.up('Control');
-
   const sel = await page.evaluate(() => [...window._state.selectedNoteIndices]);
   expect(sel).toEqual([1]);
 });
 
-test('Ctrl+click empty space does not clear the selection', async ({ page }) => {
+test('Shift+click adds a note to the selection', async ({ page }) => {
   const p0 = await notePagePos(page, 0);
+  const p1 = await notePagePos(page, 1);
   await page.mouse.click(p0.x, p0.y);
-  const empty = await page.evaluate(() => {
-    const note   = window._state.notes[0];
-    const roll   = window._roll;
-    const canvas = document.getElementById('roll');
-    const rect   = canvas.getBoundingClientRect();
-    return {
-      x: rect.left + roll.tickToX(note.startTick) + 4,
-      y: rect.top  + roll.pitchToY(note.pitch - 6) + roll.noteHeight / 2,
-    };
-  });
-  await page.keyboard.down('Control');
-  await page.mouse.click(empty.x, empty.y);
-  await page.keyboard.up('Control');
-  expect(await page.evaluate(() => window._state.selectedNoteIndices.size)).toBe(1);
+  await page.keyboard.down('Shift');
+  await page.mouse.click(p1.x, p1.y);
+  await page.keyboard.up('Shift');
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  expect(sel).toEqual([0, 1]);
 });
 
-test('Ctrl+drag (red rect) removes covered notes from the selection', async ({ page }) => {
-  // Start with all three notes selected, then sweep a Ctrl rect over note 0 only.
-  await page.evaluate(() => window._state.setSelection([0, 1, 2]));
-
+// A rect anchored in the empty row just above note 0, swept down over it — starts a
+// rubber-band (not a note grab) and covers note 0.
+async function rectOverNote0(page, mod = null) {
   const box = await page.evaluate(() => {
     const roll = window._roll, s = window._state;
     const r = document.getElementById('roll').getBoundingClientRect();
@@ -87,55 +63,42 @@ test('Ctrl+drag (red rect) removes covered notes from the selection', async ({ p
     const n = s.notes[0];
     const x = roll.tickToX(n.startTick), w = roll._noteWidthPx(n);
     const y = roll.pitchToY(n.pitch);
-    // Anchor in the empty row just above note 0 so it starts a rect (not a note grab).
     return {
       start: { x: r.left + Math.max(KEY_WIDTH + 2, x - 2), y: r.top + Math.max(HEADER_HEIGHT + 2, y - 4) },
       end:   { x: r.left + x + w, y: r.top + y + roll.noteHeight },
     };
   });
-
-  await page.keyboard.down('Control');
+  if (mod) await page.keyboard.down(mod);
   await page.mouse.move(box.start.x, box.start.y);
   await page.mouse.down();
   await page.mouse.move(box.end.x, box.end.y, { steps: 10 });
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  if (mod) await page.keyboard.up(mod);
+}
 
+test('drag rectangle replaces the selection with covered notes', async ({ page }) => {
+  await page.evaluate(() => window._state.setSelection([1, 2]));
+  await rectOverNote0(page);
   const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
-  expect(sel).toEqual([1, 2]);
+  expect(sel).toEqual([0]);
 });
 
-for (const mod of ['Alt', 'Shift']) {
-  test(`${mod}+drag does not start a selection rectangle`, async ({ page }) => {
-    await page.evaluate(() => window._state.setSelection([0, 1, 2]));
+test('Shift+drag rectangle extends the selection', async ({ page }) => {
+  await page.evaluate(() => window._state.setSelection([1, 2]));
+  await rectOverNote0(page, 'Shift');
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  expect(sel).toEqual([0, 1, 2]);
+});
 
-    const box = await page.evaluate(() => {
-      const roll = window._roll, s = window._state;
-      const r = document.getElementById('roll').getBoundingClientRect();
-      const KEY_WIDTH = 36, HEADER_HEIGHT = 24;
-      const n = s.notes[0];
-      const x = roll.tickToX(n.startTick), w = roll._noteWidthPx(n);
-      const y = roll.pitchToY(n.pitch);
-      return {
-        start: { x: r.left + Math.max(KEY_WIDTH + 2, x - 2), y: r.top + Math.max(HEADER_HEIGHT + 2, y - 4) },
-        end:   { x: r.left + x + w, y: r.top + y + roll.noteHeight },
-      };
-    });
-
-    await page.keyboard.down(mod);
-    await page.mouse.move(box.start.x, box.start.y);
-    await page.mouse.down();
-    await page.mouse.move(box.end.x, box.end.y, { steps: 10 });
-    await page.mouse.up();
-    await page.keyboard.up(mod);
-
-    // The selection is untouched and no rect drag is left active.
-    const sel    = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
-    const active = await page.evaluate(() => window._roll._rectSelActive);
-    expect(sel).toEqual([0, 1, 2]);
-    expect(active).toBe(false);
-  });
-}
+test('Alt+drag does not start a selection rectangle', async ({ page }) => {
+  await page.evaluate(() => window._state.setSelection([0, 1, 2]));
+  await rectOverNote0(page, 'Alt');
+  // The selection is untouched and no rect drag is left active.
+  const sel    = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  const active = await page.evaluate(() => window._roll._rectSelActive);
+  expect(sel).toEqual([0, 1, 2]);
+  expect(active).toBe(false);
+});
 
 test('click empty space clears selection', async ({ page }) => {
   const p0 = await notePagePos(page, 0);
@@ -211,37 +174,42 @@ async function dragNote(page, { noteIndex, deltaTicks = 0, deltaRows = 0, fromEd
   if (mod) await page.keyboard.up(mod);
 }
 
-// ── editing: Shift-gated move / resize ─────────────────────────────────────────
+// ── editing: move / resize (no modifier) ──────────────────────────────────────
 
-test('Shift+drag note body moves it horizontally (timing)', async ({ page }) => {
-  await dragNote(page, { noteIndex: 0, deltaTicks: 480, mod: 'Shift' });
+test('drag note body moves it horizontally (timing)', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaTicks: 480 });
   const n = await page.evaluate(() => window._state.notes[0]);
   expect(n.startTick).toBeGreaterThan(0);
   expect(n.pitch).toBe(60);                  // axis-locked: pitch untouched
   expect(n.endTick - n.startTick).toBe(480); // duration preserved
 });
 
-test('Shift+drag note body up changes pitch (axis-locked, timing untouched)', async ({ page }) => {
-  await dragNote(page, { noteIndex: 0, deltaRows: 2, mod: 'Shift' });
+test('drag note body up changes pitch (axis-locked, timing untouched)', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaRows: 2 });
   const n = await page.evaluate(() => window._state.notes[0]);
   expect(n.pitch).toBe(62);
   expect(n.startTick).toBe(0);
 });
 
-test('Shift+drag right edge resizes the note end', async ({ page }) => {
-  await dragNote(page, { noteIndex: 0, deltaTicks: 480, fromEdge: 'right', mod: 'Shift' });
+test('drag right edge resizes the note end', async ({ page }) => {
+  await dragNote(page, { noteIndex: 0, deltaTicks: 480, fromEdge: 'right' });
   const n = await page.evaluate(() => window._state.notes[0]);
   expect(n.startTick).toBe(0);
   expect(n.endTick).toBeGreaterThan(480);
 });
 
-test('bare drag over a note rubber-band selects instead of moving it', async ({ page }) => {
-  await dragNote(page, { noteIndex: 0, deltaTicks: 200 });   // no modifier
-  const n   = await page.evaluate(() => window._state.notes[0]);
-  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices]);
-  expect(n.startTick).toBe(0);   // not moved
-  expect(n.endTick).toBe(480);
-  expect(sel).toContain(0);      // swept into the selection
+test('resizing an unselected note selects it', async ({ page }) => {
+  await page.evaluate(() => window._state.setSelection([1]));
+  await dragNote(page, { noteIndex: 0, deltaTicks: 480, fromEdge: 'right' });
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  expect(sel).toEqual([0]);
+});
+
+test('resizing keeps a multi-note selection intact', async ({ page }) => {
+  await page.evaluate(() => window._state.setSelection([0, 1, 2]));
+  await dragNote(page, { noteIndex: 0, deltaTicks: 480, fromEdge: 'right' });
+  const sel = await page.evaluate(() => [...window._state.selectedNoteIndices].sort());
+  expect(sel).toEqual([0, 1, 2]);
 });
 
 // ── tool windows ─────────────────────────────────────────────────────────────
