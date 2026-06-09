@@ -69,10 +69,10 @@ to pick a MIDI output port, then load a MusicXML file.
 
 | Key / gesture | Action |
 |---|---|
-| Click note | Add note to selection |
-| Drag | Rectangle select (adds; works anywhere, even over notes) |
-| Ctrl+drag | Red rectangle: removes covered notes from selection |
-| Ctrl+click note | Remove that note from selection |
+| Click note | Select just that note |
+| Shift+click note | Add note to the selection |
+| Drag empty | Rectangle select (replaces selection) |
+| Shift+drag empty | Rectangle select (extends selection) |
 | Click empty | Clear selection |
 | Ctrl+Z | Undo (removes the last selection change) |
 | Escape | Clear selection |
@@ -86,8 +86,8 @@ to pick a MIDI output port, then load a MusicXML file.
 | 3 | Duration delta tool |
 | 4 | Velocity delta tool |
 | Alt+click empty | Insert note at cursor |
-| Shift+drag note body | Move selection (axis-locked: timing or pitch) |
-| Shift+drag left / right edge | Resize note start / end (handles show while Shift held) |
+| Drag note body | Move selection (axis-locked: timing or pitch) |
+| Drag left / right edge | Resize note start / end (handles show on hover) |
 | Delete / Backspace | Delete selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 
