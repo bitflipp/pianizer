@@ -123,7 +123,7 @@ export class PianoRoll {
     this._rectSelCurrent     = null;
     this._rectDidDrag        = false;
     this._rectHitSet         = null;
-    this._rectSelMode        = 'replace';  // 'replace' (bare) | 'extend' (Shift) | 'inert' (Alt)
+    this._rectSelMode        = 'replace';  // 'replace' (bare) | 'extend' (Shift)
     this._didRectSel         = false;   // suppress the click event that follows mouseup
 
     // Auto-pan during rect selection
@@ -142,6 +142,14 @@ export class PianoRoll {
     this._resizeNoteRefs = [];
     this._resizeOrigins  = [];
     this._didResize      = false;  // suppress the click event that follows a resize mouseup
+
+    // Insert drag (Alt) — a press anchors a new note's onset; dragging sets its
+    // duration with a live ghost preview, a bare click inserts a default one-beat note.
+    this._insertActive    = false;
+    this._insertStartTick = 0;   // snapped onset, fixed at mousedown
+    this._insertEndTick   = 0;   // snapped tick under the cursor, updated while dragging
+    this._insertPitch     = -1;  // fixed at mousedown (the drag is horizontal only)
+    this._didInsert       = false;  // suppress the click that follows an insert mouseup
 
     // Note drag (note body)
     this._draggingNotes     = false;
@@ -211,6 +219,7 @@ export class PianoRoll {
     this._drawBackground();
     this._drawGrid();
     this._drawNotes();
+    this._drawInsertPreview();
     this._drawRectSelection();
     this._drawOffscreenSelection();
     this._drawLaneReticles();
@@ -490,6 +499,43 @@ export class PianoRoll {
     ctx.fillRect(x + w - hw, y, hw, h);
   }
 
+  // The note an in-progress insert would commit: the dragged span once it covers at
+  // least one snap step, else a default one-snap-step note (the current grid resolution)
+  // a bare click inserts. Used by both the ghost preview and the mouseup commit so what
+  // you see is what you get.
+  _insertSpan() {
+    const lo = Math.min(this._insertStartTick, this._insertEndTick);
+    const hi = Math.max(this._insertStartTick, this._insertEndTick);
+    if (hi > lo) return { startTick: lo, endTick: hi };
+    const grid = snapGridTicks(state.snapGrid, state.ticksPerBeat);
+    return { startTick: this._insertStartTick, endTick: this._insertStartTick + grid };
+  }
+
+  // Ghost of the note being drawn during an Alt insert drag — dashed white outline over
+  // a translucent fill in the note's eventual velocity colour (insert velocity is 64).
+  _drawInsertPreview() {
+    if (!this._insertActive) return;
+    const { startTick, endTick } = this._insertSpan();
+    const x = this.tickToX(startTick);
+    const w = Math.max(MIN_NOTE_PX, (endTick - startTick) * this.pixelsPerTick);
+    const y = this.pitchToY(this._insertPitch) + 1;
+    const h = this.noteHeight - 1;
+    const { ctx } = this;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(KEY_WIDTH, HEADER_HEIGHT, this.rollWidth, this.rollHeight);
+    ctx.clip();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle   = noteHSL(64, 'normal');
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth   = 1.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5);
+    ctx.restore();
+  }
+
   _drawLaneReticles() {
     for (const lane of [this.pedalLane, this.tempoLane]) this._drawLaneReticle(lane);
   }
@@ -634,7 +680,12 @@ export class PianoRoll {
       this.canvas.style.cursor = 'cell';
     }
     if (e.key === 'Escape' && state.loaded) {
-      if (this._rectSelActive || state.selectedNoteIndices.size > 0) {
+      if (this._insertActive) {
+        e.preventDefault();
+        this._insertActive = false;
+        this._didInsert    = true;  // swallow the click when the held button releases
+        this.render();
+      } else if (this._rectSelActive || state.selectedNoteIndices.size > 0) {
         e.preventDefault();
         this._cancelRectSel();
         state.setSelection([]);
@@ -780,8 +831,7 @@ export class PianoRoll {
   }
 
   _drawRectSelection() {
-    // 'inert' (Alt) drags are swallowed for click-suppression only — no band.
-    if (!this._rectSelActive || !this._rectDidDrag || this._rectSelMode === 'inert') return;
+    if (!this._rectSelActive || !this._rectDidDrag) return;
     const { x1, y1, x2, y2 } = this._selectionRect();
     const { ctx, canvas } = this;
     ctx.save();
@@ -931,33 +981,37 @@ export class PianoRoll {
     }
     if (pos.x < KEY_WIDTH) return;
 
+    // Alt is the insert modifier and overrides move/resize, so it wins even over an
+    // existing note: the press anchors the new note's onset (snapped) and pitch, and a
+    // drag sets its duration with a live ghost preview. The commit happens on mouseup.
+    if (e.altKey) {
+      this._insertActive    = true;
+      this._insertPitch     = Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.yToPitch(pos.y)));
+      this._insertStartTick = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
+      this._insertEndTick   = this._insertStartTick;
+      this.render();
+      return;
+    }
+
     // Notes move and resize freely (no modifier). A press on a note's edge resizes it,
-    // on its body begins a move; a press on empty space starts a rubber-band. Alt is the
-    // insert modifier and is reserved — an Alt press falls through to the (inert) rect so
-    // Alt+click still inserts and an accidental Alt-drag selects nothing.
-    if (!e.altKey) {
-      if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
-      if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
-      if (this._hoverNoteHandle    >= 0) {
-        this._pendingNoteHandle = this._hoverNoteHandle;
-        this._pendingDragStart  = pos;
-        return;
-      }
+    // on its body begins a move; a press on empty space starts a rubber-band.
+    if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
+    if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
+    if (this._hoverNoteHandle    >= 0) {
+      this._pendingNoteHandle = this._hoverNoteHandle;
+      this._pendingDragStart  = pos;
+      return;
     }
 
     // Empty-space press starts a rubber-band. The modifier picks the rect mode, fixed
     // here at mousedown so releasing it mid-drag doesn't flip it: Shift extends the
-    // committed selection, a bare drag replaces it. Alt makes the rect 'inert' — it
-    // still tracks the drag (to suppress the trailing click, so Alt+click can insert)
-    // but draws/selects nothing.
+    // committed selection, a bare drag replaces it.
     this._rectSelActive     = true;
     this._rectSelStart      = pos;
     this._rectSelStartWorld = { tick: this.xToTick(pos.x), worldY: pos.y - HEADER_HEIGHT + this.scrollY };
     this._rectSelCurrent    = pos;
     this._rectDidDrag       = false;
-    this._rectSelMode       = e.altKey   ? 'inert'
-                            : e.shiftKey ? 'extend'
-                            : 'replace';
+    this._rectSelMode       = e.shiftKey ? 'extend' : 'replace';
   }
 
   _onMouseMove(e) {
@@ -1021,6 +1075,14 @@ export class PianoRoll {
       return;
     }
 
+    // Insert drag — extend the ghost note's duration live (horizontal only; pitch is
+    // fixed at the press row), snapped to the grid like a resize.
+    if (this._insertActive) {
+      const tick = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
+      if (tick !== this._insertEndTick) { this._insertEndTick = tick; this.render(); }
+      return;
+    }
+
     // Bookmark hover in ruler
     const inRuler = pos.y >= 0 && pos.y < HEADER_HEIGHT && pos.x > KEY_WIDTH;
     const bkIdx = inRuler ? this._bookmarkNear(pos.x) : -1;
@@ -1050,7 +1112,7 @@ export class PianoRoll {
         const dy = pos.y - this._rectSelStart.y;
         if (Math.hypot(dx, dy) > DRAG_THRESHOLD) this._rectDidDrag = true;
       }
-      if (this._rectDidDrag && this._rectSelMode !== 'inert') {
+      if (this._rectDidDrag) {
         this._autoPanMousePos = pos;
         const { vx, vy } = this._autoPanVelocity(pos);
         if (vx !== 0 || vy !== 0) this._startAutoPan(); else this._stopAutoPan();
@@ -1202,6 +1264,14 @@ export class PianoRoll {
       return;
     }
 
+    if (this._insertActive && e.button === 0) {
+      this._insertActive = false;
+      const { startTick, endTick } = this._insertSpan();
+      state.addNote(this._insertPitch, startTick, endTick, 64);  // dispatches → render
+      this._didInsert = true;  // suppress the trailing click (incl. a bare Alt+click)
+      return;
+    }
+
     const wasDraggingPlayhead = this.draggingPlayhead;
     this.draggingPlayhead = false;
 
@@ -1216,19 +1286,17 @@ export class PianoRoll {
 
     const didDrag = this._rectDidDrag;
     const mode    = this._rectSelMode;
-    const hits    = (didDrag && mode !== 'inert') ? this._notesInRect() : new Set();
+    const hits    = didDrag ? this._notesInRect() : new Set();
     this._cancelRectSel();
 
     if (didDrag) {
-      this._didRectSel = true; // suppress the click event (incl. the inert case)
+      this._didRectSel = true; // suppress the click event
       if (mode === 'extend') {
         state.setSelection([...new Set([...state.selectedNoteIndices, ...hits])]);
-        this.render();
-      } else if (mode === 'replace') {
+      } else {
         state.setSelection([...hits]);
-        this.render();
       }
-      // 'inert' (Alt): drag swallowed, selection untouched, click suppressed
+      this.render();
     }
     // Click without drag: _onClick fires separately and handles it
   }
@@ -1238,16 +1306,10 @@ export class PianoRoll {
     if (this._didRectSel)  { this._didRectSel  = false; return; }
     if (this._didNoteDrag) { this._didNoteDrag = false; return; }
     if (this._didResize)   { this._didResize   = false; return; }
+    if (this._didInsert)   { this._didInsert   = false; return; }
 
     const pos = this._canvasPos(e);
     if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
-
-    if (e.altKey) {
-      const tick  = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
-      const pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.yToPitch(pos.y)));
-      state.addNote(pitch, tick, tick + state.ticksPerBeat, 64);
-      return;
-    }
 
     const ni = this._noteAtPos(pos);
     if (ni !== -1) {

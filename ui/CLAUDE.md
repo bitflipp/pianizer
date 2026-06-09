@@ -18,12 +18,13 @@
 - `Click ruler` / `drag ruler` — seek playhead
 - `Ctrl+click ruler` — add bookmark; `Ctrl+right-click bookmark` — remove
 - `← / →` — seek to previous / next bookmark (wraps)
-- `Alt+left click empty` — insert new note (1-beat duration, velocity 64, tick snapped, immediately selected)
+- `Alt+left click` — insert new note (default duration = one snap step at the current grid, velocity 64, tick snapped, immediately selected)
+- `Alt+left drag` — insert a new note whose **duration is set by the drag** (a live dashed ghost previews it; onset snapped at press, the moving end snapped to grid like a resize; pitch fixed at the press row). A drag spanning at least one grid step uses that span; a shorter drag or a bare click falls back to the one-snap-step default. Committed on mouseup via `_insertSpan` (the same span the ghost shows), which `addNote`s and selects it; the trailing click is suppressed (`_didInsert`). Alt overrides move/resize, so it inserts even over an existing note.
 - `Left drag empty` — teal rubber-band rectangle; covered notes **replace** the selection on release
 - `Shift+left drag empty` — teal rubber-band rectangle; covered notes **extend** (union with) the selection
 - `Left drag note body` — move selection (**no modifier**), **dominant-axis locked**: the axis with clearly more travel (timing or pitch) wins and holds, flipping only when the other clearly dominates (1.3× hysteresis) — so a careful horizontal nudge never bumps pitch
 - `Left drag note left/right edge` — resize start / end (snapped to grid, **no modifier**); if the dragged note is selected, all selected notes resize together by the same tick delta. The note under the cursor draws explicit left/right grip bars on hover — and if that note is selected, every selected note draws them (they all resize as a unit). Resizing **selects** the resized note(s) (like move) and the trailing click is suppressed (`_didResize`), so a multi-note resize keeps its selection rather than collapsing onto the edge
-- Moving and resizing need **no modifier** — a press on a note's body moves it, on an edge resizes it; a press on empty space starts a rubber-band. **Alt** is reserved (insert), so an Alt-press over a note does *not* move it.
+- Moving and resizing need **no modifier** — a press on a note's body moves it, on an edge resizes it; a press on empty space starts a rubber-band. **Alt** is reserved (insert), so an Alt-press over a note does *not* move it — it begins an insert drag.
 - `Delete` / `Backspace` — delete selected notes
 - `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) — undo / redo
 
@@ -56,18 +57,16 @@ Single-click selection follows this matrix (the empty-space row always wins):
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
 - **Left drag empty** — draws a **teal** rubber-band; overlapping notes **replace** the selection on release
 - **Shift+left drag empty** — same teal rubber-band, but overlapping notes **extend** the selection (union)
-- **Alt+left drag** — **no rubber-band at all** (`inert`): Alt is the insert modifier and is easy to leave held, so an Alt-drag leaves the selection untouched (and a bare Alt+click still inserts a note)
-- **Escape** — clears the selection (also cancels an in-progress rect drag)
+- **Alt+left drag** — **no rubber-band**: Alt is the insert modifier, so an Alt-drag inserts a note (its duration set by the drag) and never selects (see Controls). The committing mouseup suppresses the trailing click via `_didInsert`.
+- **Escape** — clears the selection (also cancels an in-progress rect drag or insert drag)
 - **Right drag** — pans the view (see Controls); does not affect selection
 
 The press target decides the gesture (resolved in `_onMouseDown` from the live hover indices):
-edge → resize, body → move, empty → rubber-band. Alt suppresses move/resize so insert still works.
-The rect mode is fixed at mousedown into `_rectSelMode` (`'replace'` bare / `'extend'` Shift /
-`'inert'` Alt), so releasing the modifier mid-drag doesn't flip it. An `inert` drag still runs the
-rect state machine (so a drag is recognised and its trailing `click` suppressed via `_didRectSel`)
-but skips `_notesInRect`, draws no band, and commits nothing — without it, an accidental Alt-drag
-would fall through to the `click` handler and insert a note. A bare *click* (no drag) still passes
-through: Alt+click inserts a note, plain click on empty clears. During a rect drag, `_rectHitSet`
+**Alt → insert** (wins outright, even over a note), else edge → resize, body → move, empty →
+rubber-band. The rect mode is fixed at mousedown into `_rectSelMode` (`'replace'` bare /
+`'extend'` Shift), so releasing the modifier mid-drag doesn't flip it. An Alt press never reaches
+the rect path — it sets up an insert drag instead, so there is no longer an `inert` rect mode.
+During a rect drag, `_rectHitSet`
 is updated each frame (via `_notesInRect`, which includes **all** overlapping notes).
 `_effectiveSelection()` previews the pending result live: in **extend** mode the effective set is
 `committed ∪ hits` and incoming notes brighten (`willAdd`); in **replace** mode it is just `hits`,

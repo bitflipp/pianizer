@@ -195,7 +195,7 @@
 </div>
 
 <script type="module">
-  import { state, SNAP_GRIDS, SCALE_EASINGS } from './engine/state.js';
+  import { state, SNAP_GRIDS, SCALE_EASINGS, snapGridTicks } from './engine/state.js';
   import { loadMusicXmlBuffer }      from './engine/musicxml.js';
   import { midiOut }                 from './engine/midi-out.js';
   import { PianoRoll, noteHSL, labelColorFor } from './ui/roll.js';
@@ -349,7 +349,8 @@
       ['2',                       'Velocity tool'],
       ['3',                       'Duration delta tool'],
       ['4',                       'Velocity delta tool'],
-      ['Alt+click empty',         'Insert note at cursor'],
+      ['Alt+click',               'Insert note at cursor (one snap-step long)'],
+      ['Alt+drag',                'Insert note, dragging sets its duration'],
       ['Drag note body',          'Move selection (axis-locked: timing or pitch)'],
       ['Drag left / right edge',  'Resize note start / end (handles show on hover)'],
       ['Delete / Backspace',      'Delete selected notes'],
@@ -1059,9 +1060,10 @@
   } catch (_) {}
 
   // Playwright test hooks — not used in normal operation
-  window._state    = state;
-  window._roll     = roll;
-  window._testLoad = data => { state.loadProject(data); fitView(); roll.render(); };
+  window._state         = state;
+  window._roll          = roll;
+  window._testLoad      = data => { state.loadProject(data); fitView(); roll.render(); };
+  window._snapGridTicks = snapGridTicks;
 </script>
 </body>
 </html>
