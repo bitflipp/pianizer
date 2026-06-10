@@ -85,7 +85,8 @@ to pick a MIDI output port, then load a MusicXML file.
 | 2 | Velocity tool |
 | 3 | Duration delta tool |
 | 4 | Velocity delta tool |
-| Alt+click empty | Insert note at cursor |
+| Alt+click | Insert note at cursor (one snap-step long) |
+| Alt+drag | Insert note, dragging sets its duration |
 | Drag note body | Move selection (axis-locked: timing or pitch) |
 | Drag left / right edge | Resize note start / end (handles show on hover) |
 | Delete / Backspace | Delete selected notes |
