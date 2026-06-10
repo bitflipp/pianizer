@@ -818,12 +818,27 @@
     input.click();
   });
 
-  document.addEventListener('save-project', () => {
+  // Project files are written gzip-compressed (.json.gz) — a >1 MB score
+  // shrinks to ~80 KB. Reads accept either gzip or plain JSON, detected by
+  // the gzip magic bytes (0x1f 0x8b), so older uncompressed files still load.
+  async function gzip(str) {
+    const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));
+    return new Blob([await new Response(stream).arrayBuffer()], { type: 'application/gzip' });
+  }
+  async function readProjectText(file) {
+    const buf   = new Uint8Array(await file.arrayBuffer());
+    const gzipped = buf[0] === 0x1f && buf[1] === 0x8b;
+    if (!gzipped) return new TextDecoder().decode(buf);
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).text();
+  }
+
+  document.addEventListener('save-project', async () => {
     if (!state.loaded) return;
     const json = JSON.stringify(state.saveProject(), null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+    const blob = await gzip(json);
     const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), { href: url, download: 'pianizer-project.json' });
+    const a    = Object.assign(document.createElement('a'), { href: url, download: 'pianizer-project.json.gz' });
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -831,12 +846,12 @@
   document.addEventListener('load-project', () => {
     const input = document.createElement('input');
     input.type   = 'file';
-    input.accept = '.json';
+    input.accept = '.json,.gz';
     input.onchange = async e => {
       const file = e.target.files[0];
       if (!file) return;
       try {
-        const data = JSON.parse(await file.text());
+        const data = JSON.parse(await readProjectText(file));
         state.loadProject(data);
         fitView();
         restoreView();
