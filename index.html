@@ -888,8 +888,8 @@
   let playStartPerfMs    = null;
   let playStartPieceTime = null;
   // Sticky "play from here" position. Set by manual seek, cleared by Stop
-  // and on load. Each Play snaps the playhead back to this so the same
-  // passage can be replayed without re-seeking.
+  // and on load. Play snaps the playhead to this and Pause snaps it back, so
+  // the same passage can be replayed without re-seeking.
   let playAnchor         = null;
 
   function getPieceTime() {
@@ -954,6 +954,9 @@
     state.setPlaying(false);
     cancelAnimationFrame(animFrame);
     midiOut.stopPlayback();
+    // Snap the playhead back to where this playback started — that's where it
+    // will resume from if left untouched, so the displayed position matches.
+    if (playAnchor !== null) state.setPlayheadTime(playAnchor);
   }
 
   function stopPlayback() {
