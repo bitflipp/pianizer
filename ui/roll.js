@@ -1385,9 +1385,11 @@ export class PianoRoll {
       e.stopPropagation();
       const current = state.selectedNoteIndices;
       // Classic single-click selection: Shift+click on top of an existing selection
-      // adds the hit note; otherwise the click replaces the selection with just it.
+      // toggles the hit note (adds if absent, removes if already in the selection);
+      // otherwise the click replaces the selection with just it.
       if (e.shiftKey && current.size > 0) {
-        if (!current.has(ni)) state.setSelection([...current, ni]);
+        if (current.has(ni)) state.setSelection([...current].filter(i => i !== ni));
+        else                 state.setSelection([...current, ni]);
       } else if (!(current.size === 1 && current.has(ni))) {
         state.setSelection([ni]);
       }
