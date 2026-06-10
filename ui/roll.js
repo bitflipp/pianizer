@@ -134,6 +134,12 @@ export class PianoRoll {
     this._panning    = false;
     this._panLastPos = null;
 
+    // One button owns a gesture at a time: while a drag with one button is live,
+    // presses/releases from the other button are ignored so left- and right-button
+    // gestures can never mix. _suppressClick eats a stray left click produced when a
+    // left press is locked out during a right-drag pan.
+    this._suppressClick = false;
+
     // Right-edge resize drag
     this._resizingNoteRightIdx = -1;
     // Left-edge resize drag
@@ -946,8 +952,30 @@ export class PianoRoll {
     this.canvas.style.cursor = 'ew-resize';
   }
 
+  // Which mouse button, if any, currently owns an in-progress gesture: 2 for a
+  // right-drag pan, 0 for any left-button gesture (rubber-band, note move/resize,
+  // insert, playhead seek), or null when idle.
+  _gestureButton() {
+    if (this._panning) return 2;
+    if (this._rectSelActive || this._draggingNotes || this._pendingNoteHandle >= 0
+      || this._resizingNoteRightIdx >= 0 || this._resizingNoteLeftIdx >= 0
+      || this._insertActive || this.draggingPlayhead) return 0;
+    return null;
+  }
+
   _onMouseDown(e) {
     if (!state.loaded) return;
+
+    // Lock out the other button while a gesture is live, so a right-press can't pan
+    // mid left-drag (and vice versa). A locked-out left press still emits a trailing
+    // click, so flag it for suppression.
+    const owner = this._gestureButton();
+    if (owner !== null && e.button !== owner) {
+      if (e.button === 0) this._suppressClick = true;
+      return;
+    }
+    this._suppressClick = false;  // a fresh, non-locked press starts clean
+
     const pos = this._canvasPos(e);
 
     // Ctrl+right-click in ruler: remove nearest bookmark
@@ -1226,6 +1254,11 @@ export class PianoRoll {
   }
 
   _onMouseUp(e) {
+    // Only the button that owns the active gesture may end it; the other button's
+    // release (e.g. left-up while right-drag panning) is ignored so the pan continues.
+    const owner = this._gestureButton();
+    if (owner !== null && e.button !== owner) return;
+
     if (this._panning) {
       this._panning = false;
       this._panLastPos = null;
@@ -1303,6 +1336,7 @@ export class PianoRoll {
 
   _onClick(e) {
     if (!state.loaded) return;
+    if (this._suppressClick) { this._suppressClick = false; return; }
     if (this._didRectSel)  { this._didRectSel  = false; return; }
     if (this._didNoteDrag) { this._didNoteDrag = false; return; }
     if (this._didResize)   { this._didResize   = false; return; }
