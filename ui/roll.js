@@ -163,8 +163,7 @@ export class PianoRoll {
     this._dragOrigins       = [];
     this._dragStartTick     = 0;
     this._dragStartPitch    = 0;
-    this._dragStartPos      = null;  // canvas px at drag activation (axis-lock origin)
-    this._dragAxis          = null;  // dominant-axis lock during a Shift-move: 'h' | 'v' | null
+    this._dragAxis          = null;  // axis lock during a note-body move: 'h' | 'v' | null (set once at activation)
     this._dragDidMove       = false;
     this._didNoteDrag       = false;
     this._pendingNoteHandle = -1;
@@ -1186,7 +1185,8 @@ export class PianoRoll {
   }
 
   _activateNoteDrag(pos) {
-    const ni = this._pendingNoteHandle;
+    const ni    = this._pendingNoteHandle;
+    const press = this._pendingDragStart;  // press point — seeds the irrevocable axis lock
     this._pendingNoteHandle = -1;
     this._pendingDragStart  = null;
 
@@ -1215,25 +1215,19 @@ export class PianoRoll {
 
     this._dragStartTick  = this.xToTick(pos.x);
     this._dragStartPitch = this.yToPitch(pos.y);
-    this._dragStartPos   = pos;
-    this._dragAxis       = null;
+    // Lock the axis once, from the press→activation vector (the >6px that triggered the
+    // drag carries the user's intent). It never flips for the rest of this gesture.
+    this._dragAxis       = Math.abs(pos.x - press.x) >= Math.abs(pos.y - press.y) ? 'h' : 'v';
     this._dragDidMove    = false;
     this._draggingNotes  = true;
     this.canvas.style.cursor = 'grabbing';
   }
 
   _updateNoteDrag(pos) {
-    // Dominant-axis lock: the first clear direction (timing vs pitch) wins and holds,
-    // flipping only once the other axis travels clearly farther (HYST margin) — so a
-    // careful horizontal nudge never bumps pitch, but a deliberate vertical drag still can.
-    const dxPx = Math.abs(pos.x - this._dragStartPos.x);
-    const dyPx = Math.abs(pos.y - this._dragStartPos.y);
-    const HYST = 1.3;
-    let axis = this._dragAxis;
-    if      (axis === null)                       axis = dxPx >= dyPx ? 'h' : 'v';
-    else if (axis === 'h' && dyPx > dxPx * HYST)  axis = 'v';
-    else if (axis === 'v' && dxPx > dyPx * HYST)  axis = 'h';
-    this._dragAxis = axis;
+    // Axis is locked irrevocably at drag activation from the press→activation direction
+    // (see _activateNoteDrag) and never flips: a move stays purely horizontal (timing)
+    // or vertical (pitch) for its whole duration, regardless of later cross-axis travel.
+    const axis = this._dragAxis;
 
     let snappedDelta = 0;
     if (axis === 'h') {
