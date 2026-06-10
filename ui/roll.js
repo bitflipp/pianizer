@@ -377,26 +377,34 @@ export class PianoRoll {
 
     this._ensureDrawOrder();
 
-    for (const i of this._drawOrder) {
-      const n = state.notes[i];
-      if (n.endTick < tickStart || n.startTick > tickEnd) continue;
-      this._drawNote(i, n, effective, hasSel);
-    }
-
-    // Draw resize handles on the note under the cursor so its grippable edges are
-    // explicit. A resize on a selected note carries the whole selection by the same
-    // tick delta (see _beginEdgeResize), so show grips on every selected note — not
-    // just the one under the cursor.
+    // Notes that will have resize handles drawn over them this frame. The left grip
+    // overlaps the top-left velocity label, so these notes shift their label right by
+    // the handle width (see _drawNote) to keep the number legible.
+    //
+    // The set of grippable notes: the note under the cursor — and, if that note is
+    // selected, every selected note (a resize on a selected note carries the whole
+    // selection by the same tick delta, see _beginEdgeResize), so all show grips.
     const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
              : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
              : this._hoverNoteLeftEdge;
+    let handleSet = null;
     if (hi >= 0 && state.selectedNoteIndices.has(hi)) {
-      for (const i of state.selectedNoteIndices) {
+      handleSet = state.selectedNoteIndices;
+    } else if (hi >= 0) {
+      handleSet = new Set([hi]);
+    }
+
+    for (const i of this._drawOrder) {
+      const n = state.notes[i];
+      if (n.endTick < tickStart || n.startTick > tickEnd) continue;
+      this._drawNote(i, n, effective, hasSel, handleSet !== null && handleSet.has(i));
+    }
+
+    if (handleSet) {
+      for (const i of handleSet) {
         const n = state.notes[i];
         if (n) this._drawResizeHandles(n);
       }
-    } else if (hi >= 0) {
-      this._drawResizeHandles(state.notes[hi]);
     }
 
     ctx.restore();
@@ -418,7 +426,7 @@ export class PianoRoll {
 
   // Draws a clipped, top-left label inside a note box. `y` is the box top
   // (pitchToY + 1). Used for the per-note velocity number.
-  _drawNoteLabel(x, y, w, text, color) {
+  _drawNoteLabel(x, y, w, text, color, inset = 0) {
     const { ctx } = this;
     ctx.save();
     ctx.beginPath();
@@ -428,7 +436,7 @@ export class PianoRoll {
     ctx.font         = NOTE_LABEL_FONT;
     ctx.textBaseline = 'top';
     ctx.textAlign    = 'left';
-    ctx.fillText(text, x + 3, y + 4);
+    ctx.fillText(text, x + 3 + inset, y + 4);
     ctx.restore();
   }
 
@@ -453,7 +461,7 @@ export class PianoRoll {
     return { set, addingHits: this._rectHitSet, removingHits: removing, inDrag: true };
   }
 
-  _drawNote(i, n, effective, hasSel) {
+  _drawNote(i, n, effective, hasSel, hasHandles) {
     const { ctx } = this;
     const x = this.tickToX(n.startTick);
     const w = this._noteWidthPx(n);
@@ -495,7 +503,10 @@ export class PianoRoll {
     ctx.strokeRect(x + bOff, y + bOff, w - bw, h - bw);
 
     // Every note shows its velocity number (label colour adapts to the fill via labelColorFor).
-    this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill));
+    // When this note draws a resize grip, nudge the label right past the left handle so
+    // the grip doesn't occlude the number.
+    const labelInset = hasHandles ? Math.min(HANDLE_WIDTH, w / 2) : 0;
+    this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset);
   }
 
   // Left/right grip bars on a note, shown while it's hovered. Drawn within
