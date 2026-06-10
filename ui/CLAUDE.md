@@ -38,9 +38,10 @@ CSS/logical pixel ratios. Canvas is sized via `ResizeObserver` on `#roll-contain
 ## Selection
 
 A **classic** selection model: a plain click selects just the hit note (replacing whatever was
-selected); **Shift** turns clicks and rect drags into an **extend**. There is no remove gesture —
-to drop notes from a selection, click a different note (or empty space), Shift-drag a fresh rect,
-or **undo** (`setSelection` snapshots the selection onto the undo stack). Because moving and
+selected); **Shift** turns clicks into a **toggle** and rect drags into an **extend**. Shift+click
+removes a note already in the selection (and adds one that isn't); Shift-drag only ever extends.
+To drop notes from a selection, Shift-click them, click a different note (or empty space), or
+**undo** (`setSelection` snapshots the selection onto the undo stack). Because moving and
 resizing now need **no modifier**, a bare drag is a rubber-band only when it starts on **empty
 space** — a drag starting on a note's body moves it, on an edge resizes it.
 
@@ -51,10 +52,11 @@ Single-click selection follows this matrix (the empty-space row always wins):
 | no  | no  | yes | `selection = [hit]` |
 | no  | yes | yes | `selection = [hit]` |
 | yes | no  | yes | `selection = [hit]` (collapses to the one clicked) |
-| yes | yes | yes | `selection += [hit]` (Shift adds; never removes) |
+| yes | yes | yes (not in sel) | `selection += [hit]` (Shift adds) |
+| yes | yes | yes (in sel)     | `selection −= [hit]` (Shift removes) |
 | any | any | no  | `selection = []` |
 
-- **Left click note** — select just that note (Shift+click on an existing selection adds it instead; Shift never removes)
+- **Left click note** — select just that note (Shift+click toggles it against an existing selection: adds it if absent, removes it if already selected)
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
 - **Left drag empty** — draws a **teal** rubber-band; overlapping notes **replace** the selection on release
 - **Shift+left drag empty** — same teal rubber-band, but overlapping notes **extend** the selection (union)
@@ -64,7 +66,8 @@ Single-click selection follows this matrix (the empty-space row always wins):
 
 The press target decides the gesture (resolved in `_onMouseDown` from the live hover indices):
 **Alt → insert** (wins outright, even over a note), else edge → resize, body → move, empty →
-rubber-band. The rect mode is fixed at mousedown into `_rectSelMode` (`'replace'` bare /
+rubber-band. (A Shift+click on a note toggles it in/out of the selection; only Shift+*drag*
+extends.) The rect mode is fixed at mousedown into `_rectSelMode` (`'replace'` bare /
 `'extend'` Shift), so releasing the modifier mid-drag doesn't flip it. An Alt press never reaches
 the rect path — it sets up an insert drag instead, so there is no longer an `inert` rect mode.
 During a rect drag, `_rectHitSet`
