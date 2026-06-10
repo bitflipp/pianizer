@@ -29,10 +29,11 @@ custom element both listen to these events.
   endTick: int,
   track: int,
   channel: int,
+  muted: bool,            // toggled via M (state.toggleNoteMutes); skipped at playback, drawn with a diagonal hatch
 }
 ```
 Notes are sorted by `startTick` on load (both MusicXML and project). Editing methods
-that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `scaleNoteDurations`,
+that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `toggleNoteMutes`, `scaleNoteDurations`,
 `addNote`, `deleteNotes`, `moveNotes`/`moveNotesStart`/`moveNotesLive`,
 `resizeNotesRight`/`resizeNotesLeft`/`resizeNoteStart`, `setSelection`) dispatch
 `selectionchanged` so the roll re-renders. (The single-note `resizeNote`/`resizeNoteLeft`
@@ -159,6 +160,7 @@ and CC64 messages using `performance.now()` timestamps.
 - `setInterval(tick, 30)` — every 30ms, schedule events up to 150ms ahead
 - `safeOnMs = Math.max(onMs, nowMs + 5)` — prevents scheduling in the past
 - Notes already ended (offMs + 200 ≤ nowMs) are skipped
+- **Muted notes** (`n.muted`) are filtered out of `sortedNotes`, so they never sound; the flag is per-note, toggled with `M` (`state.toggleNoteMutes`), and persisted in project JSON
 - **Re-strike gap** (`state.restrikeGapMs`, default 60 ms, `0` disables): each note's
   off is pulled in so the same key (pitch+channel) is released at least that many ms
   (wall-clock) before its next strike, giving a real grand's hammer/jack/damper time

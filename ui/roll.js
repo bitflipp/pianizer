@@ -495,6 +495,10 @@ export class PianoRoll {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
 
+    // Muted notes keep their velocity colour (so the shaping stays visible) but get a
+    // diagonal hatch — a fill-independent "silenced" marker that reads against any fill.
+    if (n.muted) this._drawMuteHatch(x, y, w, h, fill);
+
     const isSel   = selected && !willAdd;
     const bw      = isSel ? 2 : 1;
     const bOff    = bw / 2;
@@ -507,6 +511,27 @@ export class PianoRoll {
     // the grip doesn't occlude the number.
     const labelInset = hasHandles ? Math.min(HANDLE_WIDTH, w / 2) : 0;
     this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset);
+  }
+
+  // Diagonal hatch (╱╱╱) over a muted note's box, clipped to it. The stripe colour is
+  // chosen from the fill's luminance the same way the velocity label is (labelColorFor),
+  // so it always contrasts — white over dark low-velocity blues, black over bright yellows.
+  _drawMuteHatch(x, y, w, h, fill) {
+    const { ctx } = this;
+    const gap = 5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.strokeStyle = labelColorFor(fill) === '#000' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    for (let sx = x - h; sx < x + w; sx += gap) {
+      ctx.moveTo(sx, y + h);
+      ctx.lineTo(sx + h, y);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   // Left/right grip bars on a note, shown while it's hovered. Drawn within
@@ -738,6 +763,10 @@ export class PianoRoll {
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
       e.preventDefault();
       state.deleteNotes([...sel]);
+    }
+    if ((e.key === 'm' || e.key === 'M') && sel.size > 0) {
+      e.preventDefault();
+      state.toggleNoteMutes([...sel]);
     }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); this._seekToBookmark(-1); }
     if (e.key === 'ArrowRight') { e.preventDefault(); this._seekToBookmark( 1); }
