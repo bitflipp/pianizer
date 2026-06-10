@@ -110,7 +110,7 @@ encodes velocity as brightness, so don't flatten lightness to a constant. Three 
 states adjust the base lightness:
 - **Normal**: notes in the current selection, or all notes when nothing is selected
 - **Dimmed**: unselected notes when a selection exists (lightness × 0.55)
-- **Highlighted**: hovered note (or, when the hovered note is selected, the whole selection — they read as one unit), or notes being added by an in-progress rect drag (lightness + 16, capped at 78%)
+- **Highlighted**: hovered note (or, when the hovered note is selected, the whole selection — they read as one unit), or notes being added by an in-progress rect drag (lightness + 16, capped at 80%)
 
 Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi-transparent
 white for others. Label text color is **luminance-adaptive** (`labelColorFor` in `roll.js`):

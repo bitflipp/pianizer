@@ -195,6 +195,14 @@ export class PianoRoll {
   yToPitch(y)    { return PITCH_MAX - Math.floor((y - HEADER_HEIGHT + this.scrollY) / this.noteHeight); }
   _noteWidthPx(n){ return Math.max(MIN_NOTE_PX, (n.endTick - n.startTick) * this.pixelsPerTick); }
 
+  // Full canvas bounding box {x1,y1,x2,y2} of a note — no 1 px gap (that's applied
+  // only when drawing). Used for rect-overlap hit-testing and off-screen markers.
+  _noteBox(n) {
+    const x1 = this.tickToX(n.startTick);
+    const y1 = this.pitchToY(n.pitch);
+    return { x1, y1, x2: x1 + this._noteWidthPx(n), y2: y1 + this.noteHeight };
+  }
+
   // Full scrollable tick range — piece length plus a SCROLL_TAIL_BEATS pad.
   get scrollableTicks() {
     return state.totalTicks + SCROLL_TAIL_BEATS * state.ticksPerBeat;
@@ -872,10 +880,7 @@ export class PianoRoll {
     for (const i of sel) {
       const n = state.notes[i];
       if (!n) continue;
-      const nx1 = this.tickToX(n.startTick);
-      const nx2 = nx1 + this._noteWidthPx(n);
-      const ny1 = this.pitchToY(n.pitch);
-      const ny2 = ny1 + this.noteHeight;
+      const { x1: nx1, y1: ny1, x2: nx2, y2: ny2 } = this._noteBox(n);
 
       let edge, pos;
       if      (nx2 < left)   { edge = 'L'; pos = (ny1 + ny2) / 2; }
@@ -922,11 +927,7 @@ export class PianoRoll {
     const { x1, y1, x2, y2 } = this._selectionRect();
     const hits = new Set();
     for (let i = 0; i < state.notes.length; i++) {
-      const n   = state.notes[i];
-      const nx1 = this.tickToX(n.startTick);
-      const nx2 = nx1 + this._noteWidthPx(n);
-      const ny1 = this.pitchToY(n.pitch);
-      const ny2 = ny1 + this.noteHeight;
+      const { x1: nx1, y1: ny1, x2: nx2, y2: ny2 } = this._noteBox(state.notes[i]);
       if (nx2 >= x1 && nx1 <= x2 && ny2 >= y1 && ny1 <= y2) hits.add(i);
     }
     return hits;
