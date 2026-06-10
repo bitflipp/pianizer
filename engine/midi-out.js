@@ -85,7 +85,7 @@ export class MidiOut {
         noteStart: tickToTime(n.startTick),
         noteEnd:   tickToTime(n.endTick),
       }))
-      .filter(({ noteStart }) => noteStart >= startTime - 0.05)
+      .filter(({ n, noteStart }) => !n.muted && noteStart >= startTime - 0.05)
       .sort((a, b) => a.noteStart - b.noteStart);
 
     // For each note, the onset (piece seconds) of the next note that re-strikes

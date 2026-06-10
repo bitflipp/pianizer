@@ -137,6 +137,18 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
+  // Toggle mute on the given notes. Muted notes are skipped during playback and
+  // drawn light grey (velocity ignored). If any target note is currently unmuted
+  // they all mute; only when every target is already muted do they all unmute —
+  // so a mixed selection resolves to "all muted" first, matching DAW [M] behaviour.
+  toggleNoteMutes(indices) {
+    this._pushUndo();
+    const targets = indices.map(i => this.notes[i]).filter(Boolean);
+    const muteAll = targets.some(n => !n.muted);
+    for (const n of targets) n.muted = muteAll;
+    this.dispatch('selectionchanged');
+  }
+
   // ── Device calibration ─────────────────────────────────────────────
 
   setVelocityCurve(curve) {
@@ -174,7 +186,7 @@ export class AppState extends EventTarget {
       timeSignatures: this.timeSignatures.map(s => ({ tick: s.tick, numerator: s.numerator, denominator: s.denominator })),
       totalTicks:     this.totalTicks,
       totalTime:      this.totalTime,
-      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0 })),
+      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, muted: !!n.muted })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
       bookmarks:      this.bookmarks.slice(),
