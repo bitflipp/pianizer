@@ -833,12 +833,17 @@
     return new Response(stream).text();
   }
 
+  function projectFilename(d = new Date()) {
+    const p = (n, w = 2) => String(n).padStart(w, '0');
+    return `${p(d.getFullYear(), 4)}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json.gz`;
+  }
+
   document.addEventListener('save-project', async () => {
     if (!state.loaded) return;
     const json = JSON.stringify(state.saveProject(), null, 2);
     const blob = await gzip(json);
     const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), { href: url, download: 'pianizer-project.json.gz' });
+    const a    = Object.assign(document.createElement('a'), { href: url, download: projectFilename() });
     a.click();
     URL.revokeObjectURL(url);
   });

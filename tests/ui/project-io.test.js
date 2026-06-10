@@ -20,9 +20,10 @@ async function loadBuffer(page, name, buffer) {
   await page.evaluate(() => document.dispatchEvent(new Event('load-project')));
 }
 
-test('saves a gzip-compressed .json.gz file', async ({ page }) => {
+test('saves a gzip-compressed .json.gz file named with a timestamp', async ({ page }) => {
   const { name, buffer } = await saveAndCapture(page);
-  expect(name).toBe('pianizer-project.json.gz');
+  // YYYYMMDD-HHmm.json.gz
+  expect(name).toMatch(/^\d{8}-\d{4}\.json\.gz$/);
   // gzip magic bytes
   expect(buffer[0]).toBe(0x1f);
   expect(buffer[1]).toBe(0x8b);
