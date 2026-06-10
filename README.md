@@ -65,6 +65,8 @@ to pick a MIDI output port, then load a MusicXML file.
 
 ## Keyboard shortcuts
 
+Press **?** at any time to open an in-app overlay listing the shortcuts below.
+
 ### Selection
 
 | Key / gesture | Action |
