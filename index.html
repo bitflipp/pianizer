@@ -929,6 +929,16 @@
   function startPlayback() {
     if (playAnchor === null) playAnchor = state.playheadTime;
     else                     state.setPlayheadTime(playAnchor);
+
+    // Centre the view on the playhead if it's currently off-screen, so playback
+    // always starts in view rather than scrolling silently somewhere off-frame.
+    const playTick = state.timeToTick(state.playheadTime);
+    const visTicks = roll.rollWidth / roll.pixelsPerTick;
+    if (playTick < roll.scrollX || playTick > roll.scrollX + visTicks) {
+      roll.scrollX = roll._clampScrollX(playTick - visTicks / 2);
+      roll.render();
+    }
+
     playStartPieceTime = playAnchor;
     playStartPerfMs    = performance.now();
     // schedulePlayback's per-note prep can take ~100ms; rebaseline the clock once
