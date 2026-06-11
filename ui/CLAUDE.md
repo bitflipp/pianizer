@@ -257,6 +257,28 @@ viewport indicator's hover brightening, so the mousemove/mouseleave handlers com
 `render()` only when it flips. Moving within (or outside) the indicator without crossing its
 edge does no work.
 
+**Render wiring (minimap + lanes).** The minimap and curve lanes mirror the roll, but they
+**do not** repaint on every `roll.render()`. `index.html` splits their triggers in two:
+
+- *View transform* (`scrollX`/`scrollY`/`pixelsPerTick`/`rollWidth`) is roll-internal and
+  fires no state event, so the roll's `onPostRender` hook syncs them — but **gated on a view
+  signature**, so it skips the hook entirely when the signature is unchanged. This is what
+  stops the frequent hover-only roll repaints (note/edge/pitch/bookmark highlight, and the
+  per-pixel lane reticle which is drawn *by the roll*) from cascading into a full re-render of
+  all three downstream canvases (the minimap re-buckets every note). `scheduleViewSave` also
+  rides this gate, so the view is persisted only when it actually changes.
+- *Shared state* is subscribed directly, per canvas, so a change repaints only the canvases
+  that show it: the minimap on `loaded`/`selectionchanged`/`playheadmoved`/`bookmarkschanged`
+  (every note edit dispatches `selectionchanged`); the lanes on `loaded`/`playheadmoved`/
+  `snapchanged` (plus their own `pedalchanged`/`tempochanged` for curve data). Because
+  `snapGrid` is not in the view signature, the `snapchanged` handler calls `scheduleViewSave`
+  itself.
+
+The curve lane's own hover follows the same principle: `_updateHover`/`_onMouseLeave` repaint
+the **lane** canvas only when the hot control point (`_hoverPointIdx`) flips, and ask the
+**roll** to repaint only when the reticle (cursor tick or hot state) changes — so per-pixel
+cursor motion over a lane repaints just the roll for the reticle, not the lane canvas.
+
 ---
 
 ## Velocity Curve Editor

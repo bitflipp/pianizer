@@ -225,9 +225,40 @@
   const pedalLane = new PedalLane(pedalCanvas, roll);
   const miniMap   = new MiniMap(minimapCanvas, roll);
 
-  roll.onPostRender = () => { tempoLane.render(); pedalLane.render(); miniMap.render(); scheduleViewSave(); };
+  // The lanes and minimap mirror the roll's horizontal view (scroll/zoom/width) plus a
+  // few pieces of shared state. They stay in sync two ways: (a) by subscribing directly
+  // to the state events they each render (below), and (b) via this post-render hook for
+  // the roll's *view transform* — pan/zoom/resize are roll-internal and fire no state
+  // event. The hook is gated on a view signature, so the many hover-only roll repaints
+  // (note/edge/pitch/bookmark highlight, lane reticle tracking) no longer cascade into
+  // re-rendering all three downstream canvases — the minimap alone re-buckets every note.
+  let _lastViewSig = null;
+  roll.onPostRender = () => {
+    const sig = `${roll.scrollX}|${roll.scrollY}|${roll.pixelsPerTick}|${roll.rollWidth}`;
+    if (sig === _lastViewSig) return;
+    _lastViewSig = sig;
+    tempoLane.render();
+    pedalLane.render();
+    miniMap.render();
+    scheduleViewSave();
+  };
   roll.pedalLane = pedalLane;
   roll.tempoLane = tempoLane;
+
+  // Non-view state each downstream canvas renders, subscribed directly so a change
+  // updates only the canvases that show it — not all three via a roll repaint. The
+  // minimap draws notes/used-range/bookmarks/playhead (so it tracks selectionchanged,
+  // which every note edit dispatches, plus bookmarks and the playhead); the lanes draw
+  // their curve, the snap grid and the playhead (curve data via their own
+  // pedalchanged/tempochanged subscription). Neither shows roll hover or per-note
+  // selection detail, so selectionchanged touches only the minimap and snapchanged only
+  // the lanes.
+  for (const ev of ['loaded', 'selectionchanged', 'playheadmoved', 'bookmarkschanged']) {
+    state.addEventListener(ev, () => miniMap.render());
+  }
+  for (const ev of ['loaded', 'playheadmoved', 'snapchanged']) {
+    state.addEventListener(ev, () => { tempoLane.render(); pedalLane.render(); });
+  }
 
   function observeResize(cv, container, render) {
     new ResizeObserver(() => {
@@ -971,7 +1002,10 @@
   }, { passive: false });
 
   // ── Grid rerender on snap change ────────────────────────────────────
-  state.addEventListener('snapchanged', () => roll.render());
+  // The lanes redraw their grid via their own 'snapchanged' subscription; the roll
+  // redraws its grid here. snapGrid isn't part of the view signature, so persist it
+  // explicitly (onPostRender's scheduleViewSave only fires on a view-transform change).
+  state.addEventListener('snapchanged', () => { roll.render(); scheduleViewSave(); });
 
   // ── Auto-save to localStorage ─────────────────────────────────────
   const AUTOSAVE_KEY = 'pianizer-autosave';
