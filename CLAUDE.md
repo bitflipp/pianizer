@@ -34,7 +34,7 @@ There is no auto-humanization magic — the tool is an instrument, not an algori
 
 ```
 pianizer/
-  index.html                 ← entry point, layout, app wiring, tool windows, velocity curve editor, autosave
+  index.html                 ← entry point, layout, app wiring, tool windows, help overlay, velocity curve editor, autosave
   engine/
     state.js                 ← AppState (EventTarget), single source of truth
     musicxml.js              ← MusicXML score-partwise parser
@@ -75,8 +75,9 @@ Two suites, both run by `npm test`:
   `test.musicxml.js`) cover `engine/state.js` and `engine/musicxml.js` in
   isolation — pure JS, no DOM beyond `DOMParser`. Coverage is collected for
   those two files only (`vitest.config.js`). Run alone with `npm run test:engine`.
-- **Playwright UI tests** (`tests/ui/smoke.test.js`, `notes.test.js`, helpers
-  in `helpers.js`, fixture in `fixtures/project.json`) drive the real page via
+- **Playwright UI tests** (`tests/ui/smoke.test.js`, `notes.test.js`,
+  `project-io.test.js`, helpers in `helpers.js`, fixture in
+  `fixtures/project.json`) drive the real page via
   a `python3 -m http.server` web server started by `playwright.config.js`. Run
   alone with `npm run test:ui`. Single worker, serial — these tests share the
   static server.

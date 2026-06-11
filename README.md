@@ -16,7 +16,8 @@ auto-humanization — the tool is an instrument.
   similar software, including ties, dynamics, multi-voice measures, multiple
   rests, and tremolo expansion
 - **Piano roll canvas** — 88-key range (A0–C8), velocity-colored notes,
-  snap-to-grid note placement and resizing, rect selection, undo/redo
+  snap-to-grid note placement and resizing, rect selection, note muting,
+  undo/redo
 - **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
   Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10; per-key
   velocity curve for device calibration
@@ -72,7 +73,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Key / gesture | Action |
 |---|---|
 | Click note | Select just that note |
-| Shift+click note | Add note to the selection |
+| Shift+click note | Toggle note in the selection (add, or remove if already selected) |
 | Drag empty | Rectangle select (replaces selection) |
 | Shift+drag empty | Rectangle select (extends selection) |
 | Click empty | Clear selection |
@@ -92,6 +93,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Drag note body | Move selection (axis-locked: timing or pitch) |
 | Drag left / right edge | Resize note start / end (handles show on hover) |
 | Delete / Backspace | Delete selected notes |
+| M | Mute / unmute selected notes |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 
 ### View
