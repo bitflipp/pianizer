@@ -247,36 +247,30 @@ test('resizing keeps a multi-note selection intact', async ({ page }) => {
 
 // ── tool windows ─────────────────────────────────────────────────────────────
 
-test('[2] velocity tool sets velocity', async ({ page }) => {
+test('[1] velocity tool sets velocity', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
-  await page.keyboard.press('2');
+  await page.keyboard.press('1');
   await expect(page.locator('.tool-window')).toBeVisible();
   await page.locator('.velocity-grid button', { hasText: '80' }).click();
   const vel = await page.evaluate(() => window._state.notes[0].velocity);
   expect(vel).toBe(80);
 });
 
-test('[2] velocity tool does not open with no selection', async ({ page }) => {
-  await page.keyboard.press('2');
+test('[1] velocity tool does not open with no selection', async ({ page }) => {
+  await page.keyboard.press('1');
   await expect(page.locator('.tool-window')).not.toBeVisible();
 });
 
-test('[3] duration delta tool scales note duration', async ({ page }) => {
+test('[3] velocity delta tool offsets note velocity', async ({ page }) => {
   const pos = await notePagePos(page, 0);
   await page.mouse.click(pos.x, pos.y);
-  const before = await page.evaluate(() => {
-    const n = window._state.notes[0];
-    return n.endTick - n.startTick;
-  });
+  const before = await page.evaluate(() => window._state.notes[0].velocity);
   await page.keyboard.press('3');
   await expect(page.locator('.tool-window')).toBeVisible();
-  await page.locator('.delta-btn', { hasText: '-50%' }).click();
-  const after = await page.evaluate(() => {
-    const n = window._state.notes[0];
-    return n.endTick - n.startTick;
-  });
-  expect(after).toBe(Math.round(before * 0.5));
+  await page.locator('.delta-btn', { hasText: '+10' }).click();
+  const after = await page.evaluate(() => window._state.notes[0].velocity);
+  expect(after).toBe(before + 10);
 });
 
 test('Escape closes tool window', async ({ page }) => {

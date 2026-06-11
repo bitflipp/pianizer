@@ -107,24 +107,13 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
-  // ── Note value edits (velocity / duration) ─────────────────────────
+  // ── Note value edits (velocity) ────────────────────────────────────
 
   setNoteVelocities(indices, velocity) {
     this._pushUndo();
     const v = clampVelocity(velocity);
     for (const i of indices) {
       if (this.notes[i]) this.notes[i].velocity = v;
-    }
-    this.dispatch('selectionchanged');
-  }
-
-  scaleNoteDurations(indices, factor) {
-    this._pushUndo();
-    for (const i of indices) {
-      const n = this.notes[i];
-      if (!n) continue;
-      const dur = n.endTick - n.startTick;
-      n.endTick = n.startTick + Math.max(1, Math.round(dur * factor));
     }
     this.dispatch('selectionchanged');
   }

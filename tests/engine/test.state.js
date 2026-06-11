@@ -90,29 +90,6 @@ describe('setNoteVelocities', () => {
   });
 });
 
-// ── scaleNoteDurations ────────────────────────────────────────────────────────
-
-describe('scaleNoteDurations', () => {
-  test('scales duration by factor', () => {
-    const s = mkState([n(0, 480)]);
-    s.scaleNoteDurations([0], 0.5);
-    expect(s.notes[0].endTick).toBe(240);
-  });
-
-  test('clamps to minimum 1 tick', () => {
-    const s = mkState([n(0, 1)]);
-    s.scaleNoteDurations([0], 0.1);
-    expect(s.notes[0].endTick).toBe(1);
-  });
-
-  test('does not move startTick', () => {
-    const s = mkState([n(480, 960)]);
-    s.scaleNoteDurations([0], 2.0);
-    expect(s.notes[0].startTick).toBe(480);
-    expect(s.notes[0].endTick).toBe(1440);
-  });
-});
-
 // ── setNoteVelocitiesMap ──────────────────────────────────────────────────────
 
 describe('setNoteVelocitiesMap', () => {

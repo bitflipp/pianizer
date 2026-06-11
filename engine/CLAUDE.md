@@ -15,7 +15,7 @@ custom element both listen to these events.
   `toggle-playback` on `document` for the app layer to handle
 - `user-seek` bubbling event dispatched from roll canvas when playhead is dragged;
   caught in `index.html` to restart MIDI scheduling from the new position
-- Tool windows ([1]/[2]/[3]/[4]) and the velocity-curve editor are plain DOM elements
+- Tool windows ([1]/[2]/[3]) and the velocity-curve editor are plain DOM elements
   created in `index.html`; capture-phase keydown intercepts shortcuts before
   roll.js handlers
 
@@ -24,7 +24,7 @@ custom element both listen to these events.
 {
   id: int,                // stable, assigned on load / mint on add
   pitch: 0-127,
-  velocity: 1-127,        // editable via the curve [1] / velocity [2] / velocity-delta [4] tools
+  velocity: 1-127,        // editable via the velocity [1] / curve [2] / velocity-delta [3] tools
   startTick: int,
   endTick: int,
   track: int,
@@ -33,7 +33,7 @@ custom element both listen to these events.
 }
 ```
 Notes are sorted by `startTick` on load (both MusicXML and project). Editing methods
-that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `toggleNoteMutes`, `scaleNoteDurations`,
+that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `toggleNoteMutes`,
 `addNote`, `deleteNotes`, `moveNotes`/`moveNotesStart`/`moveNotesLive`,
 `resizeNotesRight`/`resizeNotesLeft`/`resizeNoteStart`, `setSelection`) dispatch
 `selectionchanged` so the roll re-renders. (The single-note `resizeNote`/`resizeNoteLeft`
@@ -41,7 +41,7 @@ remain for unit tests; the roll drives the multi-note `resizeNotesRight`/`resize
 `beginCurvePointMove()` to push undo once at drag start.
 
 **Curve tool** (`applyVelocityCurve(indices, from, to, shape)`): a **one-shot** velocity
-shaper invoked by tool [1]. Bakes a start→end ramp (eased by `shape`, one of `SCALE_EASINGS`,
+shaper invoked by tool [2]. Bakes a start→end ramp (eased by `shape`, one of `SCALE_EASINGS`,
 defined and exported here in `state.js`) across the selection by onset time so a chord gets one
 value, then stops — it sets velocities directly, a one-shot edit with nothing persisted. Pushes
 undo, dispatches `selectionchanged`.

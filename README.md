@@ -21,8 +21,6 @@ auto-humanization — the tool is an instrument.
 - **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
   Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10; per-key
   velocity curve for device calibration
-- **Duration delta** — scale selected notes' durations by −50/−25/−10/+10/+25/+50%
-  without mutating the underlying score
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
   interpolated value is seeded correctly on mid-piece playback start
 - **Tempo lane** — draw a tempo ratio curve (×0.8–×1.2) as a monotone-cubic spline
@@ -84,10 +82,9 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 
 | Key / gesture | Action |
 |---|---|
-| 1 | Curve tool (bake an eased velocity ramp over the selection) |
-| 2 | Velocity tool |
-| 3 | Duration delta tool |
-| 4 | Velocity delta tool |
+| 1 | Velocity tool |
+| 2 | Curve tool (bake an eased velocity ramp over the selection) |
+| 3 | Velocity delta tool |
 | Alt+click | Insert note at cursor (one snap-step long) |
 | Alt+drag | Insert note, dragging sets its duration |
 | Drag note body | Move selection (axis-locked: timing or pitch) |
