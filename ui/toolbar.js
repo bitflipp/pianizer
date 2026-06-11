@@ -14,12 +14,33 @@ const STYLE = `
   }
   .inner {
     display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px;
+    align-items: stretch;
     font: 12px monospace;
     color: #fff;
     flex-wrap: wrap;
+  }
+  /* Ribbon groups: each logical area is a mini tool window — a #111 box with a
+     #222 title strip over a 5px-padded body, matching .tool-window in index.html. */
+  .group {
+    border: 1px solid #444;
+    border-bottom: none;
+    background: #111;
+  }
+  /* Collapse adjacent borders into a single shared line (à la border-collapse). */
+  .group + .group { margin-left: -1px; }
+  .group-title {
+    background: #222;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #888;
+    border-bottom: 1px solid #333;
+    user-select: none;
+  }
+  .group-body {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px;
   }
   button {
     background: #222;
@@ -31,7 +52,6 @@ const STYLE = `
   }
   button:hover:not(:disabled) { background: #333; border-color: #bbb; }
   button:disabled { opacity: 0.3; cursor: default; }
-  .transport { display: flex; gap: 6px; align-items: center; }
   .time { font-size: 12px; letter-spacing: 1px; min-width: 56px; }
   select {
     background: #222;
@@ -40,8 +60,7 @@ const STYLE = `
     font: 12px monospace;
     padding: 2px 4px;
   }
-  .sep { color: #666; }
-  .snap-label, .midi-label, .restrike-label { color: #ccc; }
+  .restrike-label { color: #ccc; }
 `;
 
 // Selectable re-strike-gap values (ms). Topping out at 80 ms: a grand can't
@@ -62,41 +81,63 @@ export class Toolbar extends HTMLElement {
     const inner = document.createElement('div');
     inner.className = 'inner';
     inner.innerHTML = `
-      <button data-action="load">Load MusicXML</button>
-      <button data-action="load-project">Load project</button>
-      <button data-action="save-project" disabled>Save project</button>
-      <button data-action="undo" disabled title="Ctrl+Z">Undo</button>
-      <button data-action="redo" disabled title="Ctrl+Y">Redo</button>
-      <span class="sep">│</span>
-      <div class="transport">
-        <button data-action="stop" disabled>Stop</button>
-        <button data-action="play" disabled>Play</button>
-        <select data-role="speed">
-          <option value="0.25">25%</option>
-          <option value="0.5">50%</option>
-          <option value="0.75">75%</option>
-          <option value="1" selected>100%</option>
-          <option value="1.25">125%</option>
-          <option value="1.5">150%</option>
-          <option value="2">200%</option>
-        </select>
-        <span class="time">0:00</span>
+      <div class="group">
+        <div class="group-title">File</div>
+        <div class="group-body">
+          <button data-action="load">Load MusicXML</button>
+          <button data-action="load-project">Load project</button>
+          <button data-action="save-project" disabled>Save project</button>
+        </div>
       </div>
-      <span class="sep">│</span>
-      <span class="snap-label">Snap</span>
-      <select data-role="snap">
-        ${SNAP_GRIDS.map(g => `<option value="${g}"${g === state.snapGrid ? ' selected' : ''}>${g}</option>`).join('')}
-      </select>
-      <span class="sep">│</span>
-      <button data-action="vel-curve">Vel. curve</button>
-      <span class="restrike-label" title="Minimum key-up before the same key is struck again, so an acoustic grand's action can reset. Off passes note durations through untouched.">Re-strike</span>
-      <select data-role="restrike">
-        ${RESTRIKE_OPTIONS.map(ms => `<option value="${ms}"${ms === state.restrikeGapMs ? ' selected' : ''}>${ms === 0 ? 'Off' : ms + ' ms'}</option>`).join('')}
-      </select>
-      <span class="sep">│</span>
-      <span class="midi-label">MIDI out</span>
-      <button data-action="midi-connect">Connect</button>
-      <select data-role="midi-port" hidden></select>
+      <div class="group">
+        <div class="group-title">Edit</div>
+        <div class="group-body">
+          <button data-action="undo" disabled title="Ctrl+Z">Undo</button>
+          <button data-action="redo" disabled title="Ctrl+Y">Redo</button>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-title">Transport</div>
+        <div class="group-body">
+          <button data-action="stop" disabled>Stop</button>
+          <button data-action="play" disabled>Play</button>
+          <select data-role="speed">
+            <option value="0.25">25%</option>
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+          </select>
+          <span class="time">0:00</span>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-title">Snap</div>
+        <div class="group-body">
+          <select data-role="snap">
+            ${SNAP_GRIDS.map(g => `<option value="${g}"${g === state.snapGrid ? ' selected' : ''}>${g}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-title">Expression</div>
+        <div class="group-body">
+          <button data-action="vel-curve">Vel. curve</button>
+          <span class="restrike-label" title="Minimum key-up before the same key is struck again, so an acoustic grand's action can reset. Off passes note durations through untouched.">Re-strike</span>
+          <select data-role="restrike">
+            ${RESTRIKE_OPTIONS.map(ms => `<option value="${ms}"${ms === state.restrikeGapMs ? ' selected' : ''}>${ms === 0 ? 'Off' : ms + ' ms'}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-title">MIDI out</div>
+        <div class="group-body">
+          <button data-action="midi-connect">Connect</button>
+          <select data-role="midi-port" hidden></select>
+        </div>
+      </div>
     `;
     shadow.appendChild(inner);
 

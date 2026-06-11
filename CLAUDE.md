@@ -57,7 +57,9 @@ pianizer/
   control borders `#666`. Monospace font throughout (`12px monospace`).
 - **5 px padding** on all control panels. Use a `.inner` wrapper div inside custom
   elements rather than `:host { padding }` — the wrapper approach is immune to
-  shadow DOM padding quirks in some browsers.
+  shadow DOM padding quirks in some browsers. (Exception: the toolbar ribbon's
+  `.inner` has no outer padding so its collapsed-border groups span edge to edge;
+  the padding lives in each group's body instead — see ui/CLAUDE.md.)
 - **No rounded corners, drop shadows, or decorative glows.**
 - **No dependencies** — no npm, no CDN imports. If something can be done in vanilla
   JS, do it there; otherwise write it ourselves.
