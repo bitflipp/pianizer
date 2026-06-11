@@ -138,7 +138,7 @@ export class AppState extends EventTarget {
   }
 
   // Toggle mute on the given notes. Muted notes are skipped during playback and
-  // drawn light grey (velocity ignored). If any target note is currently unmuted
+  // marked with a diagonal hatch. If any target note is currently unmuted
   // they all mute; only when every target is already muted do they all unmute —
   // so a mixed selection resolves to "all muted" first, matching DAW [M] behaviour.
   toggleNoteMutes(indices) {

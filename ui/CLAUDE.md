@@ -156,8 +156,8 @@ Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 - **[4] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
 
-Tools [1]–[4] require a non-empty selection (`requireSelection`); otherwise they act on
-whatever is selected.
+Tools [1]–[4] require a non-empty selection (`requireSelection`) and silently refuse to
+open without one.
 
 ---
 
@@ -174,8 +174,9 @@ colors are read from `lane.config.reticleColor/reticleHotColor` by `roll.js`.
 - `Right-click` — remove nearest control point
 - `Ctrl+left-click` — add control point without any snapping
 
-**Right mouse button** is disabled globally (`window contextmenu` prevention) except
-on the two curve lane canvases (point removal).
+**The browser context menu** is suppressed globally (window-level `contextmenu`
+prevention), freeing the right button for gestures: roll pan, bookmark removal
+(Ctrl+right-click on the ruler), and lane point removal.
 
 ### Tempo Lane (150 px, above pedal lane)
 **Monotone cubic** tempo ratio curve (PCHIP — see engine/CLAUDE.md). Control points are

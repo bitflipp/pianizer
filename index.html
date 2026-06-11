@@ -299,11 +299,9 @@
     win.style.visibility = 'visible';
   }
 
-  // Opens a tool window. buildContent receives (body, close) — call close() to
-  // dismiss the window from inside button handlers. Returns nothing useful.
-  function openToolWindow(title, buildContent) {
-    closeTool();
-
+  // Floating window scaffold shared by the tool windows and the velocity curve
+  // editor: outer frame, title bar, content body.
+  function buildWindowShell(title) {
     const win = document.createElement('div');
     win.className = 'tool-window';
 
@@ -316,6 +314,14 @@
     body.className = 'tool-window-body';
     win.appendChild(body);
 
+    return { win, titleEl, body };
+  }
+
+  // Opens a tool window. buildContent receives (body, close) — call close() to
+  // dismiss the window from inside button handlers. Returns nothing useful.
+  function openToolWindow(title, buildContent) {
+    closeTool();
+    const { win, body } = buildWindowShell(title);
     buildContent(body, closeTool);
     positionWindow(win);
     _currentTool = win;
@@ -512,25 +518,13 @@
   function openVelocityCurveWindow() {
     if (_velCurveWin) { closeVelCurveWin(); return; }
 
-    const win = document.createElement('div');
-    win.className = 'tool-window';
-
-    const titleEl = document.createElement('div');
-    titleEl.className = 'tool-window-title';
+    const { win, titleEl, body } = buildWindowShell('Velocity curve');
     titleEl.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
-    const titleTxt = document.createElement('span');
-    titleTxt.textContent = 'Velocity curve';
     const closeX = document.createElement('span');
     closeX.textContent = '✕';
     closeX.style.cssText = 'cursor:pointer;color:#888;padding:0 2px;user-select:none';
     closeX.addEventListener('mousedown', e => { e.stopPropagation(); closeVelCurveWin(); });
-    titleEl.appendChild(titleTxt);
     titleEl.appendChild(closeX);
-    win.appendChild(titleEl);
-
-    const body = document.createElement('div');
-    body.className = 'tool-window-body';
-    win.appendChild(body);
 
     const vcCanvas = document.createElement('canvas');
     vcCanvas.width  = VCL_W;
@@ -668,22 +662,29 @@
     return btn;
   }
 
+  // Builds the velocity-preset grid; onPick(v, btn) fires on each button click.
+  function buildVelGrid(onPick) {
+    const grid = document.createElement('div');
+    grid.className = 'velocity-grid';
+    for (let v = VEL_PRESET_MIN; v <= VEL_PRESET_MAX; v += VEL_PRESET_STEP) {
+      const btn = makeVelBtn(v);
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        onPick(v, btn);
+      });
+      grid.appendChild(btn);
+    }
+    return grid;
+  }
+
   // ── Tool: Note velocity [2] ───────────────────────────────────────
   function openVelocityTool() {
     if (!requireSelection()) return;
     openToolWindow('Note velocity', (body, close) => {
-      const grid = document.createElement('div');
-      grid.className = 'velocity-grid';
-      for (let v = VEL_PRESET_MIN; v <= VEL_PRESET_MAX; v += VEL_PRESET_STEP) {
-        const btn = makeVelBtn(v);
-        btn.addEventListener('click', ev => {
-          ev.stopPropagation();
-          state.setNoteVelocities([...state.selectedNoteIndices], v);
-          close();
-        });
-        grid.appendChild(btn);
-      }
-      body.appendChild(grid);
+      body.appendChild(buildVelGrid(v => {
+        state.setNoteVelocities([...state.selectedNoteIndices], v);
+        close();
+      }));
     });
   }
 
@@ -722,24 +723,15 @@
     let shape      = initialShape;
 
     body.appendChild(buildShapeRow(shape, name => { shape = name; }));
-
-    const grid = document.createElement('div');
-    grid.className = 'velocity-grid';
-    for (let v = VEL_PRESET_MIN; v <= VEL_PRESET_MAX; v += VEL_PRESET_STEP) {
-      const btn = makeVelBtn(v);
-      btn.addEventListener('click', ev => {
-        ev.stopPropagation();
-        if (firstValue === null) {
-          firstValue = v;
-          btn.dataset.sel = '1';
-          styleVelBtn(btn, v, 'selected');
-        } else if (v !== firstValue) {
-          onPick(firstValue, v, shape);
-        }
-      });
-      grid.appendChild(btn);
-    }
-    body.appendChild(grid);
+    body.appendChild(buildVelGrid((v, btn) => {
+      if (firstValue === null) {
+        firstValue = v;
+        btn.dataset.sel = '1';
+        styleVelBtn(btn, v, 'selected');
+      } else if (v !== firstValue) {
+        onPick(firstValue, v, shape);
+      }
+    }));
   }
 
   function openCurveTool() {
@@ -897,6 +889,17 @@
     return playStartPieceTime + (performance.now() - playStartPerfMs) / 1000 * state.playSpeed;
   }
 
+  // (Re)starts MIDI scheduling from `fromTime` and rebases the playback clock.
+  // schedulePlayback's per-note prep can take ~100ms; it invokes onReady once
+  // that's done, and rebaselining the clock there keeps the playhead and the
+  // first scheduled notes both starting from `fromTime`, not ~100ms in.
+  function scheduleFrom(fromTime) {
+    playStartPieceTime = fromTime;
+    playStartPerfMs    = performance.now();
+    midiOut.schedulePlayback(fromTime, getPieceTime,
+      () => { playStartPerfMs = performance.now(); });
+  }
+
   document.addEventListener('toggle-playback', () => {
     if (!state.loaded) return;
     if (state.playing) pausePlayback(); else startPlayback();
@@ -915,10 +918,7 @@
       state.playSpeed    = newSpeed;
       state.dispatch('playspeedchanged');
       midiOut.stopPlayback();
-      playStartPieceTime = currentTime;
-      playStartPerfMs    = performance.now();
-      midiOut.schedulePlayback(currentTime, getPieceTime,
-        () => { playStartPerfMs = performance.now(); });
+      scheduleFrom(currentTime);
     } else {
       state.playSpeed = newSpeed;
       state.dispatch('playspeedchanged');
@@ -939,13 +939,7 @@
       roll.render();
     }
 
-    playStartPieceTime = playAnchor;
-    playStartPerfMs    = performance.now();
-    // schedulePlayback's per-note prep can take ~100ms; rebaseline the clock once
-    // it's done (see schedulePlayback's onReady) so the playhead and the first
-    // scheduled notes both start from playStartPieceTime, not 100ms in.
-    midiOut.schedulePlayback(playStartPieceTime, getPieceTime,
-      () => { playStartPerfMs = performance.now(); });
+    scheduleFrom(playAnchor);
     state.setPlaying(true);
     tick();
   }
@@ -986,10 +980,7 @@
     playAnchor = e.detail.time;
     if (!state.playing) return;
     midiOut.stopPlayback();
-    playStartPieceTime = e.detail.time;
-    playStartPerfMs    = performance.now();
-    midiOut.schedulePlayback(playStartPieceTime, getPieceTime,
-      () => { playStartPerfMs = performance.now(); });
+    scheduleFrom(e.detail.time);
   });
 
   state.addEventListener('loaded', () => { playAnchor = null; });

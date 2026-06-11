@@ -135,7 +135,8 @@ Parses `score-partwise` documents using the browser `DOMParser`. Key decisions:
   subsequent note durations are scaled: `Math.round(durRaw * tpb / divisions)`
 - Ties tracked by pitch → noteIndex map; tied notes extend `endTick` of the first note
 - Tempo from `<sound tempo="">` in the first part only
-- Dynamics (`pp`/`p`/`mp`/`mf`/`f`/`ff`) converted to velocity values
+- Dynamics from `<sound dynamics="">` (numeric, tracked per part) used directly
+  as the running note velocity (clamped 1–127)
 - Grace notes skipped (`<grace/>` element present)
 - `<backup>` / `<forward>` supported for multi-voice measures
 - `<multiple-rest>N</multiple-rest>`: MuseScore omits the intermediate N−1 measures
@@ -231,7 +232,7 @@ forward compatibility but always recomputed from the tempo curve on load (the st
 
 ## Auto-save / view restore (localStorage)
 
-Three independent localStorage entries, all best-effort (errors swallowed):
+Four independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
   `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`, and flushed on `beforeunload`.
   Auto-loaded on page open.
