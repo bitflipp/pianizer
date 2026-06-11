@@ -145,18 +145,16 @@ to front so the topmost note wins.
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
 Keyboard shortcuts work when no `<input>`/`<select>` is focused.
 
-- **[1] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
+- **[1] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
+- **[2] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
   `SCALE_EASINGS` in engine/state.js, default S-curve; the selector row is built by the
   shared `buildShapeRow` helper, the picker by `buildRampPicker`), then two-click: first click
   sets start velocity, second sets end. The eased ramp is baked across the selection by onset
   time — **a one-shot velocity edit, nothing persisted** (`state.applyVelocityCurve`).
-- **[2] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
-- **[3] Duration delta** — −50/−25/−10/+10/+25/+50%; scales selected notes' durations
-  by the given factor (minimum 1 tick)
-- **[4] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
+- **[3] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
 
-Tools [1]–[4] require a non-empty selection (`requireSelection`) and silently refuse to
+Tools [1]–[3] require a non-empty selection (`requireSelection`) and silently refuse to
 open without one.
 
 ---
