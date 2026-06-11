@@ -7,9 +7,9 @@ import {
 } from './dom-utils.js';
 
 const COL_BG         = '#1a1a1a';
-const COL_GRID_BEAT  = '#3d3d3d';
-const COL_GRID_BAR   = '#6b6b6b';
-const COL_GRID_SUB   = '#202020';
+const COL_GRID_BEAT  = '#343434';
+const COL_GRID_BAR   = '#525252';
+const COL_GRID_SUB   = '#212121';
 const COL_RULER_BG   = '#111111';
 const COL_RULER_TEXT = '#888888';
 const COL_PLAYHEAD   = '#ffffff';
@@ -252,7 +252,7 @@ export class PianoRoll {
       const y1 = this.pitchToY(topPitch + 11);
       const y2 = this.pitchToY(topPitch - 1);
       if (oct % 2 === 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
         ctx.fillRect(KEY_WIDTH, y1, this.rollWidth, y2 - y1);
       }
       for (const semi of BLACK_KEYS) {
