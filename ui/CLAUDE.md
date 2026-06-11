@@ -212,12 +212,29 @@ in `index.html` — keep it in sync when adding or changing shortcuts.
 
 ## Toolbar (`toolbar.js`)
 
-`<ph-toolbar>` custom element. Items:
-Load MusicXML | Load project | Save project | Undo | Redo |
-Stop | Play/Pause | Speed | Time | Snap grid | Vel. curve |
-Re-strike (gap dropdown, `RESTRIKE_OPTIONS` 0–80 ms, default 60; 0 = Off; drives
-`state.setRestrikeGap`, device-scoped — see engine/CLAUDE.md) |
-MIDI out: Connect button (hidden once connected) + port dropdown
+`<ph-toolbar>` custom element. A **ribbon** of captioned groups, each styled as a mini
+**tool window** to match `.tool-window` in index.html: a `.group` is a `#111`/`#444`-border
+box (no bottom border — the toolbar host's own `border-bottom` is the delimiter) with a
+`.group-title` strip (`#222`, 11 px `#888`, `#333` bottom border) over a `.group-body`
+(5 px padding, flex row). Adjacent groups sit flush with collapsed borders
+(`.group + .group { margin-left: -1px }`, à la `border-collapse`), so the row reads as one
+segmented strip rather than spaced boxes. The `.inner` wrapper has **no** outer padding (the
+ribbon spans edge to edge; the per-group `.group-body` 5 px supplies the only breathing room) —
+a deliberate exception to the project-wide 5 px panel padding. Groups wrap (`flex-wrap`) when
+the bar runs out of width. The groups, left to right:
+
+- **File** — Load MusicXML, Load project, Save project
+- **Edit** — Undo, Redo
+- **Transport** — Stop, Play/Pause, Speed dropdown, Time readout
+- **Snap** — snap-grid dropdown (`SNAP_GRIDS`)
+- **Expression** — Vel. curve button, Re-strike (gap dropdown, `RESTRIKE_OPTIONS`
+  0–80 ms, default 60; 0 = Off; drives `state.setRestrikeGap`, device-scoped — see
+  engine/CLAUDE.md)
+- **MIDI out** — Connect button (hidden once connected) + port dropdown
+
+The group caption replaces the old inline label for Snap/MIDI; only Re-strike keeps an inline
+`.restrike-label` (it carries the explanatory tooltip). Buttons/selects keep their original
+`data-action`/`data-role` hooks, so the event wiring is unchanged by the regrouping.
 
 ---
 
