@@ -42,23 +42,26 @@ const STYLE = `
     gap: 5px;
     padding: 5px;
   }
-  button {
+  /* Buttons and selects share an explicit height + box-sizing so they line up
+     exactly: native <select> ignores line-height/padding the way buttons honor
+     them, so matching padding alone leaves the select visibly shorter. */
+  button, select {
+    box-sizing: border-box;
+    height: 26px;
     background: #222;
-    border: 1px solid #666;
     color: #fff;
-    padding: 4px 8px;
+    border: 1px solid #666;
     font: 12px monospace;
+  }
+  button {
+    padding: 0 8px;
     cursor: pointer;
   }
   button:hover:not(:disabled) { background: #333; border-color: #bbb; }
   button:disabled { opacity: 0.3; cursor: default; }
   .time { font-size: 12px; letter-spacing: 1px; min-width: 56px; }
   select {
-    background: #222;
-    color: #fff;
-    border: 1px solid #666;
-    font: 12px monospace;
-    padding: 2px 4px;
+    padding: 0 4px;
   }
   .restrike-label { color: #ccc; }
 `;
