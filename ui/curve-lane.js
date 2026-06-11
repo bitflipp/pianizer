@@ -359,28 +359,38 @@ export class CurveLane {
     this._updateHover(this._canvasPos(e));
   }
 
+  // Two visuals depend on lane hover: the dashed reticle (drawn by the roll, follows
+  // the cursor tick pixel by pixel) and this lane's own hot-point square (drawn here,
+  // changes only when the nearest control point flips). They're repainted independently
+  // so per-pixel cursor motion repaints just the roll for the reticle — the lane canvas
+  // repaints only when the hot point actually changes. (The roll's onPostRender is view-
+  // gated, so it no longer drags the lane along on every reticle move.)
   _updateHover(pos) {
     const tick = pos.x > KEY_WIDTH ? this.roll.xToTick(pos.x) : null;
     const idx  = tick !== null ? this._nearestPointIdx(pos) : -1;
 
-    const changed = !this._isHovered
+    const reticleChanged = !this._isHovered
       || this._hoverTick     !== tick
       || this._hoverPointIdx !== idx;
+    const hotPointChanged = this._hoverPointIdx !== idx;
 
     this._isHovered     = true;
     this._hoverTick     = tick;
     this._hoverPointIdx = idx;
 
-    if (changed) this.roll.render();
+    if (hotPointChanged) this.render();       // own hot-point square
+    if (reticleChanged)  this.roll.render();  // reticle in the roll
   }
 
   _onMouseLeave() {
     if (this._dragPoint) return;
     if (!this._isHovered) return;
+    const hadHotPoint = this._hoverPointIdx >= 0;
     this._isHovered     = false;
     this._hoverTick     = null;
     this._hoverPointIdx = -1;
-    this.roll.render();
+    if (hadHotPoint) this.render();  // clear the hot-point square only if one was lit
+    this.roll.render();              // clear the reticle
   }
 
   _onClick(e) {
