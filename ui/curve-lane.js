@@ -28,11 +28,11 @@ const HIT_RADIUS      = 12;
 const DRAG_THRESHOLD  = 4;
 const Y_SNAP_RADIUS   = 11;
 
-const COL_GRID_SUB  = '#222';
-const COL_GRID_BEAT = '#2a2a2a';
-const COL_GRID_BAR  = '#3a3a3a';
+const COL_GRID_SUB  = '#202020';
+const COL_GRID_BEAT = '#3d3d3d';
+const COL_GRID_BAR  = '#6b6b6b';
 
-const COL_REF_BASE  = '#2d2d2d'; // baseline reference line (range midpoint)
+const COL_REF_BASE  = '#3d3d3d'; // baseline reference line (range midpoint)
 const COL_REF_OTHER = '#222222'; // remaining eighth reference lines
 
 const PT_SIZE       = 6;  // control-point square (px)
