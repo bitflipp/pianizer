@@ -5,6 +5,18 @@
 
 import { state } from '../engine/state.js';
 import { KEY_WIDTH, PITCH_MIN, PITCH_MAX, PITCH_RANGE, canvasPos } from './dom-utils.js';
+import { noteHSL } from './roll.js';
+
+// Velocity-coloured notes, batched into bands so the per-render cost stays
+// flat. Setting ctx.fillStyle to a fresh hsl() string re-parses a CSS colour
+// every time, so a naive per-note colour would parse once per note per frame
+// — and the minimap re-renders on every mousemove. Instead we quantize
+// velocity into VEL_BUCKETS bands, precompute one colour string per band, and
+// set fillStyle once per band: ~VEL_BUCKETS parses per frame regardless of how
+// many notes the piece has.
+const VEL_BUCKETS = 16;
+const VEL_COLORS  = Array.from({ length: VEL_BUCKETS }, (_, b) =>
+  noteHSL(Math.round((b + 0.5) / VEL_BUCKETS * 127), 'normal'));
 
 export class MiniMap {
   constructor(canvas, roll) {
@@ -13,6 +25,7 @@ export class MiniMap {
     this.roll   = roll;
     this._dragging = false;
     this._mousePos = null;
+    this._hot      = false;   // last-painted viewport-indicator hover state
     this._bindEvents();
   }
 
@@ -25,6 +38,21 @@ export class MiniMap {
 
   _pitchToY(pitch) {
     return ((PITCH_MAX - pitch) / PITCH_RANGE) * this.canvas.height;
+  }
+
+  // Left edge + width of the viewport indicator (in canvas px).
+  _viewportBounds() {
+    const vpL = this._tickToX(this.roll.scrollX);
+    const vpR = this._tickToX(this.roll.scrollX + this.roll.rollWidth / this.roll.pixelsPerTick);
+    return { vpL, vpW: Math.max(2, vpR - vpL) };
+  }
+
+  // Whether the indicator should paint in its brightened (hover/drag) state.
+  _isHot(pos) {
+    if (this._dragging) return true;
+    if (pos === null)   return false;
+    const { vpL, vpW } = this._viewportBounds();
+    return pos.x >= vpL && pos.x <= vpL + vpW;
   }
 
   render() {
@@ -50,12 +78,22 @@ export class MiniMap {
       ctx.fillRect(KEY_WIDTH, y1, this._cw, y2 - y1);
     }
 
-    // Notes
-    ctx.fillStyle = '#4a7abf';
+    // Notes, velocity-coloured. Bucket once, then draw band by band so
+    // fillStyle (and its CSS-colour parse) is set only VEL_BUCKETS times.
+    const buckets = Array.from({ length: VEL_BUCKETS }, () => []);
     for (const n of state.notes) {
-      const x = this._tickToX(n.startTick);
-      const w = Math.max(1, this._tickToX(n.endTick) - x);
-      ctx.fillRect(x, this._pitchToY(n.pitch), w, noteH);
+      const b = Math.min(VEL_BUCKETS - 1, (n.velocity / 128 * VEL_BUCKETS) | 0);
+      buckets[b].push(n);
+    }
+    for (let b = 0; b < VEL_BUCKETS; b++) {
+      const group = buckets[b];
+      if (!group.length) continue;
+      ctx.fillStyle = VEL_COLORS[b];
+      for (const n of group) {
+        const x = this._tickToX(n.startTick);
+        const w = Math.max(1, this._tickToX(n.endTick) - x);
+        ctx.fillRect(x, this._pitchToY(n.pitch), w, noteH);
+      }
     }
 
     // Bookmarks
@@ -67,12 +105,8 @@ export class MiniMap {
     }
 
     // Viewport indicator
-    const vpL = this._tickToX(this.roll.scrollX);
-    const vpR = this._tickToX(this.roll.scrollX + this.roll.rollWidth / this.roll.pixelsPerTick);
-    const vpW = Math.max(2, vpR - vpL);
-    const hot = this._dragging ||
-                (this._mousePos !== null &&
-                 this._mousePos.x >= vpL && this._mousePos.x <= vpL + vpW);
+    const { vpL, vpW } = this._viewportBounds();
+    const hot = this._hot = this._isHot(this._mousePos);
     ctx.fillStyle = hot ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(vpL, 0, vpW, canvas.height);
     ctx.strokeStyle = hot ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.45)';
@@ -112,11 +146,13 @@ export class MiniMap {
     });
     this.canvas.addEventListener('mousemove', e => {
       this._mousePos = this._canvasPos(e);
-      this.render();
+      // Only the viewport-indicator hover state depends on the cursor, so
+      // repaint solely when it flips — not on every mouse event.
+      if (this._isHot(this._mousePos) !== this._hot) this.render();
     });
     this.canvas.addEventListener('mouseleave', () => {
       this._mousePos = null;
-      this.render();
+      if (this._hot) this.render();   // clear the indicator only if it was lit
     });
     window.addEventListener('mousemove', e => {
       if (this._dragging) this._panToPos(this._canvasPos(e));

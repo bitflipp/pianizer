@@ -245,6 +245,18 @@ faint band, bookmark verticals, the playhead, and a translucent viewport indicat
 brightens on hover/drag. Left-click or left-drag pans the roll so the clicked tick centers
 in the viewport.
 
+Notes are velocity-coloured with the same `noteHSL` viridis ramp as the roll, but **bucketed**
+into `VEL_BUCKETS` (16) precomputed bands to keep rendering cheap: setting `fillStyle` to a
+fresh `hsl()` string re-parses a CSS colour each time, so a naive per-note colour would parse
+once per note per frame. Bucketing groups notes by band and sets `fillStyle` once per band —
+~16 parses per frame regardless of note count.
+
+**Repaint on mousemove is gated.** The only cursor-dependent thing the minimap draws is the
+viewport indicator's hover brightening, so the mousemove/mouseleave handlers compare the new
+"hot" state (`_isHot`, against the `_viewportBounds`) to the last-painted `_hot` and call
+`render()` only when it flips. Moving within (or outside) the indicator without crossing its
+edge does no work.
+
 ---
 
 ## Velocity Curve Editor
