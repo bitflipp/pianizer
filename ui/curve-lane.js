@@ -33,7 +33,7 @@ const COL_GRID_BEAT = '#343434';
 const COL_GRID_BAR  = '#525252';
 
 const COL_REF_BASE  = '#353535'; // baseline reference line (range midpoint)
-const COL_REF_OTHER = '#222222'; // remaining eighth reference lines
+const COL_REF_OTHER = '#222222'; // non-baseline reference lines
 
 const PT_SIZE       = 6;  // control-point square (px)
 const PT_SIZE_HOT   = 8;  // hovered/dragged control-point square (px)
@@ -246,7 +246,7 @@ export class CurveLane {
   // Returns the nearest snap target within Y_SNAP_RADIUS px as { value }, or
   // { value: null } if no target is close enough. Snap targets are the neighbouring
   // control points (excluding `excludePoint`), the lane's top/bottom edges
-  // (valueMin/valueMax), the REF_FRACS reference lines, and the baseline (config.emptyValue).
+  // (valueMin/valueMax), the `_refFracs` reference lines, and the baseline (config.emptyValue).
   _snapCandidate(pos, tick, excludePoint = null) {
     const pts = this._points;
     let prevIdx = -1;
@@ -261,10 +261,10 @@ export class CurveLane {
       if (dist < bestDist) { bestDist = dist; value = pts[ci].value; }
     }
     const { valueMin, valueMax, emptyValue } = this.config;
-    // Snap targets are the reference lines (eighths of the value range incl. the
-    // edges — see REF_FRACS / _drawBackground) plus the baseline. Expressed as
-    // values so a snapped point lands exactly on its drawn line under the value↔Y
-    // mapping (the edges come in via frac 0 / frac 1 of refFracs).
+    // Snap targets are the reference lines (`_refFracs` fractions of the value
+    // range incl. the edges — see REF_FRACS / _drawBackground) plus the baseline.
+    // Expressed as values so a snapped point lands exactly on its drawn line under
+    // the value↔Y mapping (the edges come in via frac 0 / frac 1 of refFracs).
     const refLines = [
       emptyValue,
       ...this._refFracs.map(f => valueMin + f * (valueMax - valueMin)),
