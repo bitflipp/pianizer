@@ -169,10 +169,7 @@ export class Toolbar extends HTMLElement {
     this._connBtn.addEventListener('click', emit('midi-connect'));
     shadow.querySelector('[data-action="vel-curve"]').addEventListener('click', emit('vel-curve'));
 
-    this._snapSel.addEventListener('change', e => {
-      state.snapGrid = e.target.value;
-      state.dispatch('snapchanged');
-    });
+    this._snapSel.addEventListener('change', e => { state.setSnapGrid(e.target.value); });
     this._midiSel.addEventListener('change', e => { midiOut.outputId = e.target.value; });
     this._restrikeSel.addEventListener('change', e => { state.setRestrikeGap(Number(e.target.value)); });
     this._speedSel.addEventListener('change', e => {

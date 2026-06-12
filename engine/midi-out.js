@@ -75,17 +75,20 @@ export class MidiOut {
       }
     }
 
-    // One precomputed tempo timeline for the whole batch — converting every
-    // note's start/end via state.tickToTime() would re-integrate the curve from
-    // tick 0 each call (O(N·breaks)) and is what made playback start ~100ms late.
-    const tickToTime = state.buildTickToTime();
+    // state.tickToTime() is the cached batched converter (state._timeline), so
+    // converting every note's start/end here is O(breaks + notes) — the naive
+    // per-call re-integration from tick 0 is what made playback start ~100ms late.
+    // Notes are kept if they start after the start point — or started before it
+    // but are still sounding (noteEnd > startTime): those are *chased*, scheduled
+    // immediately at the start so beginning playback mid-held-note still sounds it.
     const sortedNotes = state.notes
       .map(n => ({
         n,
-        noteStart: tickToTime(n.startTick),
-        noteEnd:   tickToTime(n.endTick),
+        noteStart: state.tickToTime(n.startTick),
+        noteEnd:   state.tickToTime(n.endTick),
       }))
-      .filter(({ n, noteStart }) => !n.muted && noteStart >= startTime - 0.05)
+      .filter(({ n, noteStart, noteEnd }) =>
+        !n.muted && (noteStart >= startTime - 0.05 || noteEnd > startTime))
       .sort((a, b) => a.noteStart - b.noteStart);
 
     // For each note, the onset (piece seconds) of the next note that re-strikes
@@ -99,8 +102,9 @@ export class MidiOut {
       lastStartForKey.set(key, noteStart);
     }
 
-    // Pedal events: one per control point after the start point (the start-point
-    // value was already asserted immediately above).
+    // Pedal events after the start point — control points plus the per-CC-step
+    // ramp samples between them (the start-point value was already asserted
+    // immediately above). See buildPedalEvents.
     const pedalEvents = buildPedalEvents(startTime);
 
     let notePtr  = 0;
@@ -196,18 +200,35 @@ export class MidiOut {
 
 // ── Pedal helpers ──────────────────────────────────────────────────────────
 
-// Returns [{time, value}] sorted by time: one entry per control point that falls
-// after startTime. The held value at startTime is asserted eagerly in
-// schedulePlayback (see there), so it is intentionally not included here.
+// Returns [{time, value}] sorted by time, covering everything after startTime.
+// The lane draws (and the musician hears, on a half-pedal-capable instrument)
+// a *linear ramp* between control points, so emitting only the points would
+// play a slow ramp as a single jump. Between each pair of points we therefore
+// emit one event per integer CC64 step the ramp crosses — the densest stream
+// that changes the output, and self-thinning for slow ramps. The held value at
+// startTime is asserted eagerly in schedulePlayback (see there), so events at
+// or before it are intentionally excluded here.
 function buildPedalEvents(startTime) {
+  const pts = state.pedalPoints;
   const events = [];
+  const push = (tick, value) => {
+    const t = state.tickToTime(tick);
+    if (t > startTime) events.push({ time: t, value });
+  };
 
-  for (const p of state.pedalPoints) {
-    const t = state.tickToTime(p.tick);
-    if (t > startTime) events.push({ time: t, value: p.value });
+  for (let i = 0; i < pts.length; i++) {
+    if (i > 0) {
+      const p0 = pts[i - 1], p1 = pts[i];
+      const steps = Math.abs(Math.round(p1.value * 127) - Math.round(p0.value * 127));
+      for (let s = 1; s < steps; s++) {
+        const f = s / steps;
+        push(p0.tick + (p1.tick - p0.tick) * f, p0.value + (p1.value - p0.value) * f);
+      }
+    }
+    push(pts[i].tick, pts[i].value);
   }
 
-  return events; // pts is already sorted by tick so this is already sorted by time
+  return events; // pts is sorted by tick, so this is sorted by time
 }
 
 export const midiOut = new MidiOut();

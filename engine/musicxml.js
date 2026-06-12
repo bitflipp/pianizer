@@ -18,10 +18,14 @@ export function parseMusicXml(xmlText) {
     throw new Error('Only score-partwise MusicXML is supported (got: ' + root.tagName + ').\n'
       + 'Re-export from MuseScore with File → Export → MusicXML.');
 
-  // The first <divisions> value becomes our global ticks-per-beat.
-  // All other divisions values are scaled relative to this one.
+  // The first <divisions> value seeds our global ticks-per-beat; all other
+  // divisions values are scaled relative to it. Low-divisions files (some tools
+  // export 1–24, vs MuseScore's 480) are scaled up by an integer factor to at
+  // least 480 — durations stay exact integers, and snap grids, triplets, and
+  // tremolo strokes keep a usable tick resolution.
   const firstDivEl = doc.querySelector('divisions');
-  const tpb = firstDivEl ? parseInt(firstDivEl.textContent, 10) : 480;
+  const rawTpb = firstDivEl ? parseInt(firstDivEl.textContent, 10) : 480;
+  const tpb = rawTpb > 0 ? rawTpb * Math.ceil(480 / rawTpb) : 480;
 
   const tempoMap = [];
   const timeSigs = [];
@@ -46,7 +50,8 @@ export function parseMusicXml(xmlText) {
     let curNumerator = 4, curDenominator = 4; // current time sig for multiple-rest math
     let pendingTremolo = null; // buffered start-note of a two-note tremolo
 
-    // Tie tracking: MIDI pitch → index into notes[], so we can extend endTick
+    // Tie tracking: `voice|pitch` → index into notes[], so we can extend endTick.
+    // Keyed per voice so two voices holding ties on the same pitch don't collide.
     const ties = new Map();
 
     const measures = [...parts[pi].children].filter(el => el.tagName === 'measure');
@@ -145,10 +150,13 @@ export function parseMusicXml(xmlText) {
             const tieEls  = [...child.querySelectorAll('tie')];
             const tieStop = tieEls.some(t => t.getAttribute('type') === 'stop');
             const tieStart= tieEls.some(t => t.getAttribute('type') === 'start');
+            const tieKey  = (tieStop || tieStart)
+              ? (child.querySelector('voice')?.textContent.trim() ?? '') + '|' + pitch
+              : null;
 
-            if (tieStop && ties.has(pitch)) {
-              notes[ties.get(pitch)].endTick = noteTick + durTick;
-              if (!tieStart) ties.delete(pitch);
+            if (tieStop && ties.has(tieKey)) {
+              notes[ties.get(tieKey)].endTick = noteTick + durTick;
+              if (!tieStart) ties.delete(tieKey);
             } else {
               const ni = notes.length;
               notes.push({
@@ -159,7 +167,7 @@ export function parseMusicXml(xmlText) {
                 track:     pi,
                 channel,
               });
-              if (tieStart) ties.set(pitch, ni);
+              if (tieStart) ties.set(tieKey, ni);
             }
             break;
           }

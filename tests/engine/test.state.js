@@ -288,6 +288,88 @@ describe('project round-trip', () => {
   });
 });
 
+// ── totals tracking ───────────────────────────────────────────────────────────
+// totalTicks/totalTime re-derive from the notes after any edit that can change
+// note ticks — playback end and the scroll range depend on them.
+
+describe('totals tracking', () => {
+  function loaded(notes) {
+    const s = new AppState();
+    s.loadScore(notes, [{ tick: 0, bpm: 120 }], [{ tick: 0, numerator: 4, denominator: 4 }], TPB);
+    return s;
+  }
+
+  test('loadScore derives totals from the notes', () => {
+    const s = loaded([n(0, TPB * 4)]);
+    expect(s.totalTicks).toBe(TPB * 4);
+    expect(s.totalTime).toBeCloseTo(2, 5);
+  });
+
+  test('loadScore with no notes yields zero totals (not -Infinity)', () => {
+    const s = loaded([]);
+    expect(s.totalTicks).toBe(0);
+    expect(s.totalTime).toBe(0);
+  });
+
+  test('resizing a note past the end extends the totals', () => {
+    const s = loaded([n(0, TPB * 4)]);
+    s.resizeNoteStart();
+    s.resizeNote(0, TPB * 8);
+    expect(s.totalTicks).toBe(TPB * 8);
+    expect(s.totalTime).toBeCloseTo(4, 5);
+  });
+
+  test('moving a note past the end extends the totals', () => {
+    const s = loaded([n(0, TPB * 4)]);
+    s.moveNotes([0], 0, TPB * 4);
+    expect(s.totalTicks).toBe(TPB * 8);
+  });
+
+  test('adding a note past the end extends the totals', () => {
+    const s = loaded([n(0, TPB * 4)]);
+    s.addNote(60, TPB * 8, TPB * 10, 64);
+    expect(s.totalTicks).toBe(TPB * 10);
+  });
+
+  test('deleting the last note shrinks the totals', () => {
+    const s = loaded([n(0, TPB * 4), n(TPB * 4, TPB * 8)]);
+    s.deleteNotes([1]);
+    expect(s.totalTicks).toBe(TPB * 4);
+  });
+
+  test('undo restores the totals along with the notes', () => {
+    const s = loaded([n(0, TPB * 4)]);
+    s.resizeNoteStart();
+    s.resizeNote(0, TPB * 8);
+    s.undo();
+    expect(s.totalTicks).toBe(TPB * 4);
+    expect(s.totalTime).toBeCloseTo(2, 5);
+  });
+});
+
+// ── tick↔time cache invalidation ──────────────────────────────────────────────
+
+describe('timeline cache', () => {
+  test('tickToTime reflects tempo point edits made after a conversion', () => {
+    const s = mkState();
+    const base = s.tickToTime(TPB); // builds the cached converter
+    expect(base).toBeCloseTo(0.5, 9);
+    s.addTempoPoint(0, 1.5);
+    s.addTempoPoint(9600, 1.5);
+    expect(s.tickToTime(TPB)).toBeCloseTo(base / 1.5, 9);
+  });
+
+  test('undoing a tempo edit restores the original mapping', () => {
+    const s = mkState();
+    const base = s.tickToTime(TPB);
+    s.addTempoPoint(0, 1.5);
+    s.addTempoPoint(9600, 1.5);
+    s.undo();
+    s.undo();
+    expect(s.tickToTime(TPB)).toBeCloseTo(base, 9);
+  });
+});
+
 // ── undo / redo ───────────────────────────────────────────────────────────────
 
 describe('undo/redo', () => {
@@ -368,6 +450,33 @@ describe('undo/redo', () => {
     s.addTempoPoint(0, 1.1);
     s.undo();
     expect(s.tempoPoints).toHaveLength(0);
+  });
+
+  test('undo/redo of a selection change restores the selections', () => {
+    const s = mkState([n(0, 480), n(480, 960)]);
+    s.setSelection([0]);
+    s.setSelection([1]);
+    s.undo();
+    expect([...s.selectedNoteIndices]).toEqual([0]);
+    s.redo();
+    expect([...s.selectedNoteIndices]).toEqual([1]);
+  });
+
+  test('selection-only undo entries skip the notes deep copy', () => {
+    const s = mkState([n(0, 480)]);
+    s.setSelection([0]);
+    expect(s._undoStack[s._undoStack.length - 1].notes).toBeUndefined();
+  });
+
+  test('mixed selection and note edits undo in order', () => {
+    const s = mkState([n(0, 480)]);
+    s.setSelection([0]);
+    s.setNoteVelocities([0], 100);
+    s.undo();
+    expect(s.notes[0].velocity).toBe(64);
+    expect([...s.selectedNoteIndices]).toEqual([0]);
+    s.undo();
+    expect(s.selectedNoteIndices.size).toBe(0);
   });
 });
 

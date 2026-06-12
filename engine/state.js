@@ -42,9 +42,13 @@ export class AppState extends EventTarget {
 
     this.pieceId = null;
 
-    // Undo / redo stacks — each entry is {notes, pedalPoints, tempoPoints}
+    // Undo / redo stacks — each entry is {notes, pedalPoints, tempoPoints,
+    // selection}, or just {selection} for selection-only changes (see _snapshot)
     this._undoStack = [];
     this._redoStack = [];
+
+    // Lazily built tick→time converter (see _timeline)
+    this._tickToTimeFn = null;
 
     // Per-pitch velocity offset (device calibration), pitch 21-108 → index 0-87
     this.velocityCurve = new Array(88).fill(0);
@@ -69,7 +73,6 @@ export class AppState extends EventTarget {
     this.tempoMap       = tempoMap;
     this.timeSignatures = timeSigs;
     this.ticksPerBeat   = tpb;
-    this.totalTicks     = Math.max(...notes.map(n => n.endTick));
     this.pedalPoints    = [];
     this.tempoPoints    = [];
     this.bookmarks      = [];
@@ -77,10 +80,11 @@ export class AppState extends EventTarget {
     this._finishLoad();
   }
 
-  // Common tail of loadScore and loadProject: derive totalTime, reset session
-  // state, dispatch load events.
+  // Common tail of loadScore and loadProject: derive totalTicks/totalTime, reset
+  // session state, dispatch load events.
   _finishLoad() {
-    this.totalTime           = this.tickToTime(this.totalTicks);
+    this._invalidateTimeline();
+    this._refreshTotals();
     this.loaded              = true;
     this.selectedNoteIndices = new Set();
     this.playheadTime        = 0;
@@ -102,7 +106,7 @@ export class AppState extends EventTarget {
   // ── Selection ──────────────────────────────────────────────────────
 
   setSelection(indices) {
-    this._pushUndo();
+    this._pushUndo(false); // selection-only — no need to deep-copy the notes
     this.selectedNoteIndices = new Set(indices);
     this.dispatch('selectionchanged');
   }
@@ -189,7 +193,6 @@ export class AppState extends EventTarget {
     this.tempoMap       = (data.tempoMap ?? [{ tick: 0, bpm: 120, time: 0 }]).map(s => ({ ...s }));
     this.timeSignatures = (data.timeSignatures ?? [{ tick: 0, numerator: 4, denominator: 4 }]).map(s => ({ ...s }));
     this.ticksPerBeat   = data.ticksPerBeat ?? 480;
-    this.totalTicks     = data.totalTicks ?? (this.notes.length ? Math.max(...this.notes.map(n => n.endTick)) : 0);
     this.pedalPoints    = (data.pedalPoints ?? []).map(p => ({ ...p }));
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
     this.bookmarks      = (data.bookmarks  ?? []).map(Number).sort((a, b) => a - b);
@@ -199,18 +202,41 @@ export class AppState extends EventTarget {
 
   // ── Time / tick conversion ─────────────────────────────────────────
 
+  // The cached batched converter from buildTickToTime(), built lazily and torn
+  // down by _invalidateTimeline() whenever the tempo timeline changes (load,
+  // tempo-point edits, undo restore). Every tick↔time conversion goes through
+  // it, so the playhead draws (roll + lanes + minimap, every frame during
+  // playback) cost a binary search instead of a full re-integration from tick 0.
+  _timeline() {
+    return this._tickToTimeFn ??= this.buildTickToTime();
+  }
+
+  _invalidateTimeline() {
+    this._tickToTimeFn = null;
+  }
+
+  // Re-derives totalTicks/totalTime from the notes. Call after any edit that can
+  // change note ticks — the natural end of playback and the scrollable range both
+  // depend on these, so a note moved or resized past the old end must extend them.
+  _refreshTotals() {
+    let max = 0;
+    for (const n of this.notes) if (n.endTick > max) max = n.endTick;
+    this.totalTicks = max;
+    this.totalTime  = this.tickToTime(max);
+  }
+
   tickToTime(tick) {
-    if (this.tempoPoints.length === 0) return this.baseTickToTime(tick);
-    return this.curvedTickToTime(tick);
+    return this._timeline()(tick);
   }
 
   timeToTick(time) {
     if (this.tempoPoints.length === 0) return this._baseTimeToTick(time);
     // Binary search on the curved mapping
+    const tickToTime = this._timeline();
     let lo = 0, hi = Math.max(this.totalTicks * 1.1 + 960, 1e5);
     for (let i = 0; i < 64; i++) {
       const mid = (lo + hi) / 2;
-      if (this.curvedTickToTime(mid) < time) lo = mid; else hi = mid;
+      if (tickToTime(mid) < time) lo = mid; else hi = mid;
       if (hi - lo < 0.5) break;
     }
     return Math.round((lo + hi) / 2);
@@ -286,12 +312,12 @@ export class AppState extends EventTarget {
     return t;
   }
 
-  // Batched tick→time. Returns a closure `tick => seconds` numerically identical
-  // to tickToTime() but with the tempo timeline precomputed once, so converting
-  // many ticks is O(breaks + queries) instead of curvedTickToTime()'s O(breaks)
-  // *per call* (which re-derives tangents and re-integrates from tick 0 each
-  // time → O(N·breaks) for N notes). Used by the MIDI scheduler, which converts
-  // every note's start/end up front. Rebuild after any tempo change.
+  // Batched tick→time. Returns a closure `tick => seconds` with the tempo
+  // timeline precomputed once, so converting many ticks is O(breaks + queries)
+  // instead of curvedTickToTime()'s O(breaks) *per call* (which re-derives
+  // tangents and re-integrates from tick 0 each time → O(N·breaks) for N notes).
+  // tickToTime()/timeToTick() route every conversion through one cached instance
+  // (see _timeline), invalidated whenever the tempo timeline changes.
   buildTickToTime() {
     if (this.tempoPoints.length === 0) return tick => this.baseTickToTime(tick);
 
@@ -341,6 +367,7 @@ export class AppState extends EventTarget {
     const toDelete = new Set(indices);
     this.notes = this.notes.filter((_, i) => !toDelete.has(i));
     this.selectedNoteIndices = new Set();
+    this._refreshTotals();
     this.dispatch('selectionchanged');
   }
 
@@ -367,6 +394,7 @@ export class AppState extends EventTarget {
       }
     }
     if (deltaTick) this._reselectByNotes(new Set(moved));
+    if (deltaTick) this._refreshTotals();
     this.dispatch('selectionchanged');
   }
 
@@ -377,6 +405,7 @@ export class AppState extends EventTarget {
     this.notes.sort((a, b) => a.startTick - b.startTick);
     const idx = this.notes.indexOf(note);
     this.selectedNoteIndices = new Set(idx >= 0 ? [idx] : []);
+    this._refreshTotals();
     this.dispatch('selectionchanged');
   }
 
@@ -396,6 +425,7 @@ export class AppState extends EventTarget {
     const n = this.notes[index];
     if (!n) return;
     n.endTick = Math.max(n.startTick + 1, newEndTick);
+    this._refreshTotals();
     this.dispatch('selectionchanged');
   }
 
@@ -413,6 +443,7 @@ export class AppState extends EventTarget {
     for (const { note, endTick } of moves) {
       note.endTick = Math.max(note.startTick + 1, endTick);
     }
+    this._refreshTotals();
     this.dispatch('selectionchanged');
   }
 
@@ -442,6 +473,7 @@ export class AppState extends EventTarget {
       note.pitch = Math.max(PITCH_LO, Math.min(PITCH_HI, pitch));
     }
     this._reselectByNotes(new Set(moves.map(m => m.note)));
+    this._refreshTotals();
     this.dispatch('selectionchanged');
   }
 
@@ -494,6 +526,7 @@ export class AppState extends EventTarget {
   addTempoPoint(tick, value) {
     this._pushUndo();
     this.tempoPoints = upsertCurvePoint(this.tempoPoints, tick, value);
+    this._invalidateTimeline();
     this.totalTime = this.tickToTime(this.totalTicks);
     this.dispatch('tempochanged');
   }
@@ -502,6 +535,7 @@ export class AppState extends EventTarget {
     if (index < 0 || index >= this.tempoPoints.length) return;
     this._pushUndo();
     this.tempoPoints.splice(index, 1);
+    this._invalidateTimeline();
     this.totalTime = this.tickToTime(this.totalTicks);
     this.dispatch('tempochanged');
   }
@@ -511,6 +545,7 @@ export class AppState extends EventTarget {
     point.tick  = Math.max(0, tick);
     point.value = value;
     this.tempoPoints.sort((a, b) => a.tick - b.tick);
+    this._invalidateTimeline();
     this.totalTime = this.tickToTime(this.totalTicks);
     this.dispatch('tempochanged');
   }
@@ -525,7 +560,13 @@ export class AppState extends EventTarget {
   get canUndo() { return this._undoStack.length > 0; }
   get canRedo() { return this._redoStack.length > 0; }
 
-  _snapshot() {
+  // A selection-only snapshot (full = false) skips the deep copies: any later
+  // mutation of notes or curves pushes its own full snapshot before touching
+  // them, so when a light entry is popped the live arrays already equal what
+  // they were at push time — only the selection needs restoring. This keeps
+  // click-around selection churn from stacking up full copies of large scores.
+  _snapshot(full = true) {
+    if (!full) return { selection: [...this.selectedNoteIndices] };
     return {
       notes:       this.notes.map(n => ({ ...n })),
       pedalPoints: this.pedalPoints.map(p => ({ ...p })),
@@ -535,15 +576,18 @@ export class AppState extends EventTarget {
   }
 
   _restore(snap) {
-    this.notes               = snap.notes.map(n => ({ ...n }));
-    this.pedalPoints         = snap.pedalPoints.map(p => ({ ...p }));
-    this.tempoPoints         = snap.tempoPoints.map(p => ({ ...p }));
+    if (snap.notes) {
+      this.notes       = snap.notes.map(n => ({ ...n }));
+      this.pedalPoints = snap.pedalPoints.map(p => ({ ...p }));
+      this.tempoPoints = snap.tempoPoints.map(p => ({ ...p }));
+      this._invalidateTimeline();
+      this._refreshTotals();
+    }
     this.selectedNoteIndices = new Set(snap.selection ?? []);
-    this.totalTime           = this.tickToTime(this.totalTicks);
   }
 
-  _pushUndo() {
-    this._undoStack.push(this._snapshot());
+  _pushUndo(full = true) {
+    this._undoStack.push(this._snapshot(full));
     if (this._undoStack.length > UNDO_STACK_LIMIT) this._undoStack.shift();
     this._redoStack = [];
     this.dispatch('undochanged');
@@ -551,10 +595,13 @@ export class AppState extends EventTarget {
 
   // Pops one snapshot off `from`, banks the current state onto `to`, restores it, and
   // fires every event a restore can affect. undo/redo differ only in stack direction.
+  // The banked entry mirrors the popped one's shape: undoing a selection-only entry
+  // changes only the selection, so its redo twin needs only the selection too.
   _applyHistory(from, to) {
     if (!from.length) return;
-    to.push(this._snapshot());
-    this._restore(from.pop());
+    const snap = from.pop();
+    to.push(this._snapshot(!!snap.notes));
+    this._restore(snap);
     this.dispatch('undochanged');
     this.dispatch('selectionchanged');
     this.dispatch('pedalchanged');
@@ -609,6 +656,11 @@ export class AppState extends EventTarget {
 
   // ── Snap ───────────────────────────────────────────────────────────
 
+  setSnapGrid(grid) {
+    this.snapGrid = grid;
+    this.dispatch('snapchanged');
+  }
+
   /** Returns the nearest snap tick for a given tick value */
   snapTick(tick) {
     const tpb = this.ticksPerBeat;
@@ -626,6 +678,11 @@ export class AppState extends EventTarget {
   setPlayheadTime(t) {
     this.playheadTime = t;
     this.dispatch('playheadmoved', { time: t });
+  }
+
+  setPlaySpeed(speed) {
+    this.playSpeed = speed;
+    this.dispatch('playspeedchanged');
   }
 
   // ── Event dispatch ─────────────────────────────────────────────────

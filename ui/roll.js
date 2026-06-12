@@ -42,8 +42,16 @@ function relativeLuminance(hsl) {
 // adapting to the actual rendered fill, so it tracks velocity and the hover
 // brightening alike (a near-threshold fill flips on hover, by design: the label
 // always follows the most legible choice for the current fill).
+// Memoized: this runs per visible note per frame, and the input space is tiny
+// (the hsl() strings noteHSL can produce), but the regex parse isn't free.
+const _labelColorCache = new Map();
 export function labelColorFor(fill) {
-  return relativeLuminance(fill) > 0.179 ? '#000' : '#fff';
+  let color = _labelColorCache.get(fill);
+  if (color === undefined) {
+    color = relativeLuminance(fill) > 0.179 ? '#000' : '#fff';
+    _labelColorCache.set(fill, color);
+  }
+  return color;
 }
 const NOTE_LABEL_FONT = '9px monospace'; // per-note velocity number
 
@@ -721,6 +729,11 @@ export class PianoRoll {
   }
 
   _onKeyDown(e) {
+    // A focused form control owns the keyboard outright — every shortcut below
+    // (including Space/Home/End/Escape) must yield to typing and native control
+    // behaviour like Space opening a <select>.
+    if (isFormFocused(e)) return;
+
     // Show the insert (cell) cursor when Alt is held over the roll content. Alt is
     // the insert modifier and overrides move/resize, so it wins even over a note.
     if (e.key === 'Alt' && this._lastMousePos
@@ -755,9 +768,8 @@ export class PianoRoll {
       this.render();
     }
 
-    // ── Note editing shortcuts (ignore when typing in an input) ────────
+    // ── Note editing shortcuts ─────────────────────────────────────────
     if (!state.loaded) return;
-    if (isFormFocused(e.target)) return;
 
     const sel = state.selectedNoteIndices;
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
@@ -1015,6 +1027,10 @@ export class PianoRoll {
       return;
     }
     this._suppressClick = false;  // a fresh, non-locked press starts clean
+    // Stale suppress flags: if the previous gesture's release landed off-canvas,
+    // its trailing click never fired and the flag would eat this press's click.
+    // Any click those flags were meant for has fired before this mousedown.
+    this._didRectSel = this._didNoteDrag = this._didResize = this._didInsert = false;
 
     const pos = this._canvasPos(e);
 

@@ -317,6 +317,9 @@ export class CurveLane {
 
   _onMouseDown(e) {
     if (e.button !== 0 || !state.loaded) return;
+    // Stale if the previous drag released off-canvas (its click never fired on
+    // this canvas to consume the flag) — don't let it eat this press's click.
+    this._didDrag = false;
     const pos = this._canvasPos(e);
     if (pos.x <= KEY_WIDTH) return;
     const idx = this._nearestPointIdx(pos);
