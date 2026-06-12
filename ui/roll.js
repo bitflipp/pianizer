@@ -1084,6 +1084,7 @@ export class PianoRoll {
     if (this._hoverNoteHandle    >= 0) {
       this._pendingNoteHandle = this._hoverNoteHandle;
       this._pendingDragStart  = pos;
+      this.canvas.style.cursor = 'grabbing';  // commit to grab on press, before the drag threshold
       return;
     }
 
@@ -1332,6 +1333,7 @@ export class PianoRoll {
     if (this._pendingNoteHandle >= 0) {
       this._pendingNoteHandle = -1;
       this._pendingDragStart  = null;
+      this._refreshCursor();  // restore grab/idle cursor: the grabbing was committed on press
       // No threshold crossed — let click event handle selection normally
       return;
     }
