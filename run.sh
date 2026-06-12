@@ -45,6 +45,9 @@ done
 # works through XWayland; when DISPLAY is unset (no XWayland — e.g. a future
 # Wayland-only GNOME) we skip those flags and launch a native Wayland window with
 # Chromium's slim bar, so the launcher keeps working regardless.
+# --class sets the window's WM_CLASS so a .desktop file's StartupWMClass=Pianizer
+# matches it; without it the app-mode window gets an auto-generated class and the
+# desktop shows a second, generic icon for the running window instead of ours.
 PROFILE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pianizer/browser-profile"
 deco=()
 if [[ -n "${DISPLAY:-}" ]]; then
@@ -52,5 +55,6 @@ if [[ -n "${DISPLAY:-}" ]]; then
   deco=(--ozone-platform=x11)
 fi
 "$browser" "${deco[@]}" \
+  --class=Pianizer \
   --user-data-dir="$PROFILE_DIR" \
   --app="$URL"
