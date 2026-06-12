@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start":         "./run.sh",
     "test": "vitest run && NODE_OPTIONS=--no-deprecation playwright test",
     "test:engine": "vitest run",
     "test:watch":    "vitest",
