@@ -230,8 +230,8 @@
   // to the state events they each render (below), and (b) via this post-render hook for
   // the roll's *view transform* — pan/zoom/resize are roll-internal and fire no state
   // event. The hook is gated on a view signature, so the many hover-only roll repaints
-  // (note/edge/pitch/bookmark highlight, lane reticle tracking) no longer cascade into
-  // re-rendering all three downstream canvases — the minimap alone re-buckets every note.
+  // (note/edge/pitch/bookmark highlight, lane reticle tracking) don't cascade into
+  // re-rendering all three downstream canvases.
   let _lastViewSig = null;
   roll.onPostRender = () => {
     const sig = `${roll.scrollX}|${roll.scrollY}|${roll.pixelsPerTick}|${roll.rollWidth}`;
@@ -581,10 +581,6 @@
     positionWindow(win);
     _velCurveWin = win;
 
-    let _vcPainting = false;
-    let _vcLastCol  = -1;
-    let _vcLastRow  = -1;
-
     vcCanvas.addEventListener('mousedown', e => {
       if (e.button === 2) {
         const { col } = vclCell(vcCanvas, e);
@@ -605,9 +601,16 @@
       vclPaint(vcCanvas, _vcLastCol, _vcLastRow, col, row);
       _vcLastCol = col; _vcLastRow = row;
     });
-
-    window.addEventListener('mouseup', () => { _vcPainting = false; });
   }
+
+  // Paint-drag state for the velocity curve editor. Module-scoped (with one
+  // window-level mouseup) rather than per-window: a listener added inside
+  // openVelocityCurveWindow would accumulate on every open, since the window
+  // teardown removes only the DOM subtree, not window listeners.
+  let _vcPainting = false;
+  let _vcLastCol  = -1;
+  let _vcLastRow  = -1;
+  window.addEventListener('mouseup', () => { _vcPainting = false; });
 
   document.addEventListener('vel-curve', openVelocityCurveWindow);
 
@@ -630,7 +633,7 @@
     }
 
     // '?' toggles the help overlay; Escape also closes it
-    if (e.key === '?' && !_currentTool && !isFormFocused(e.target)) {
+    if (e.key === '?' && !_currentTool && !isFormFocused(e)) {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (_helpOverlay) closeHelpOverlay(); else openHelpOverlay();
@@ -656,7 +659,7 @@
     }
 
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (isFormFocused(e.target)) return;
+    if (isFormFocused(e)) return;
 
     if (e.key === '1' && state.loaded) { e.preventDefault(); openVelocityTool(); }
     if (e.key === '2' && state.loaded) { e.preventDefault(); openCurveTool(); }
@@ -922,14 +925,14 @@
     const newSpeed = e.detail.speed;
     if (state.playing) {
       // Re-anchor with old speed before switching, so the playhead doesn't jump.
-      const currentTime  = getPieceTime();
-      state.playSpeed    = newSpeed;
-      state.dispatch('playspeedchanged');
-      midiOut.stopPlayback();
+      // No explicit stopPlayback here: schedulePlayback does its own reset,
+      // scoped to the channels in use — a full 16-channel reset would flood the
+      // pipe right before the rescheduled notes (see midi-out.js).
+      const currentTime = getPieceTime();
+      state.setPlaySpeed(newSpeed);
       scheduleFrom(currentTime);
     } else {
-      state.playSpeed = newSpeed;
-      state.dispatch('playspeedchanged');
+      state.setPlaySpeed(newSpeed);
     }
     scheduleViewSave();
   });
@@ -987,7 +990,7 @@
   canvas.addEventListener('user-seek', e => {
     playAnchor = e.detail.time;
     if (!state.playing) return;
-    midiOut.stopPlayback();
+    // schedulePlayback resets the in-use channels itself — see play-speed above.
     scheduleFrom(e.detail.time);
   });
 
@@ -1032,18 +1035,12 @@
         const v = JSON.parse(saved);
         if (v.pixelsPerTick != null) roll.pixelsPerTick = v.pixelsPerTick;
         if (v.scrollX       != null) roll.scrollX = roll._clampScrollX(v.scrollX);
-        if (v.scrollY       != null) roll.scrollY = v.scrollY;
-        if (v.snapGrid != null && SNAP_GRIDS.includes(v.snapGrid)) {
-          state.snapGrid = v.snapGrid;
-          state.dispatch('snapchanged');
-        }
+        if (v.scrollY       != null) roll.scrollY = roll._clampScrollY(v.scrollY);
+        if (v.snapGrid != null && SNAP_GRIDS.includes(v.snapGrid)) state.setSnapGrid(v.snapGrid);
         if (v.playSpeed != null && SPEED_VALUES.includes(v.playSpeed)) restoredSpeed = v.playSpeed;
       }
     } catch (_) {}
-    if (state.playSpeed !== restoredSpeed) {
-      state.playSpeed = restoredSpeed;
-      state.dispatch('playspeedchanged');
-    }
+    if (state.playSpeed !== restoredSpeed) state.setPlaySpeed(restoredSpeed);
     roll.render();
   }
 

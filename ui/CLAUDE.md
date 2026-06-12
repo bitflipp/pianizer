@@ -248,8 +248,15 @@ in the viewport.
 Notes are velocity-coloured with the same `noteHSL` viridis ramp as the roll, but **bucketed**
 into `VEL_BUCKETS` (16) precomputed bands to keep rendering cheap: setting `fillStyle` to a
 fresh `hsl()` string re-parses a CSS colour each time, so a naive per-note colour would parse
-once per note per frame. Bucketing groups notes by band and sets `fillStyle` once per band —
-~16 parses per frame regardless of note count.
+once per note per frame. Bucketing groups notes by band and sets `fillStyle` once per band.
+
+**Static layer cache.** The piece-dependent content (background, pitch band, all notes,
+bookmarks, key strip) is rendered into an offscreen canvas (`_renderStatic`) and blitted
+each `render()`; only the viewport indicator and playhead are drawn live on top. The
+playhead repaints the minimap every frame during playback, so without the cache every
+note would be re-bucketed and redrawn 60×/s just to move a 1 px line. `_staticDirty`
+flips on `loaded`/`selectionchanged`/`bookmarkschanged` (every note edit dispatches
+`selectionchanged`); a canvas-size mismatch also rebuilds, covering resize.
 
 **Repaint on mousemove is gated.** The only cursor-dependent thing the minimap draws is the
 viewport indicator's hover brightening, so the mousemove/mouseleave handlers compare the new
@@ -265,7 +272,7 @@ edge does no work.
   signature**, so it skips the hook entirely when the signature is unchanged. This is what
   stops the frequent hover-only roll repaints (note/edge/pitch/bookmark highlight, and the
   per-pixel lane reticle which is drawn *by the roll*) from cascading into a full re-render of
-  all three downstream canvases (the minimap re-buckets every note). `scheduleViewSave` also
+  all three downstream canvases. `scheduleViewSave` also
   rides this gate, so the view is persisted only when it actually changes.
 - *Shared state* is subscribed directly, per canvas, so a change repaints only the canvases
   that show it: the minimap on `loaded`/`selectionchanged`/`playheadmoved`/`bookmarkschanged`

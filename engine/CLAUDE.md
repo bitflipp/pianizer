@@ -54,7 +54,7 @@ undo, dispatches `selectionchanged`.
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
-- `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`
+- `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`. Set via `setPlaySpeed()` (dispatches `playspeedchanged`); `snapGrid` likewise via `setSnapGrid()` (dispatches `snapchanged`)
 - `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
@@ -72,10 +72,15 @@ accumulating 1-based bar numbers across changes. Used by `_drawGrid` and `_drawR
 ## Undo / Redo
 
 Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, plus the selection.
-100-entry stack. Drag interactions (note resize, note move, curve-point move) push undo
-**once** at drag start via `resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove`;
-per-frame updates mutate live without pushing. Bookmarks and the velocity curve are NOT
-part of undo.
+100-entry stack. **Selection-only changes push light entries**: `setSelection` calls
+`_pushUndo(false)`, which snapshots just `{selection}` — no deep copies. That is safe
+because any later mutation of notes or curves pushes its own full snapshot before touching
+them, so when a light entry is popped the live arrays already equal their state at push
+time. Undo/redo banks a twin of the same shape (`_applyHistory`), so click-around
+selection churn never stacks up full copies of a large score. Drag interactions (note
+resize, note move, curve-point move) push undo **once** at drag start via
+`resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove`; per-frame updates mutate
+live without pushing. Bookmarks and the velocity curve are NOT part of undo.
 
 ---
 
@@ -112,10 +117,14 @@ and stays piecewise-linear (`interpolateCurveAtTick`).
 call — fine for one-offs, O(N·breaks) when converting many ticks. `buildTickToTime()`
 is the batched form: it builds the break timeline once (cumulative time per break +
 per-segment seconds-per-tick), then each `tick → seconds` query is a binary search plus
-one partial-segment Simpson — numerically identical to `tickToTime`, O(breaks + queries).
-The MIDI scheduler uses it to convert every note's start/end up front; doing that
-per-call instead is what delayed playback start by ~100ms on large scores. Rebuild the
-closure after any tempo change.
+one partial-segment Simpson — O(breaks + queries). **Every conversion is routed through
+one cached instance**: `tickToTime()` / `timeToTick()` call `_timeline()`, which lazily
+builds the closure and reuses it until `_invalidateTimeline()` tears it down (load,
+tempo-point add/remove/move, undo restore). This matters because the playhead draws
+(roll + both lanes + minimap) convert time→tick every frame during playback, and
+`timeToTick` alone is up to 64 conversions per call — uncached, that was a full
+re-integration from tick 0 each time. The MIDI scheduler's per-note start/end conversion
+rides the same cache.
 
 ---
 
@@ -131,9 +140,12 @@ Per-device calibration, not per-score.
 ## MusicXML Import (`musicxml.js`)
 
 Parses `score-partwise` documents using the browser `DOMParser`. Key decisions:
-- First `<divisions>` element encountered becomes the global `ticksPerBeat`; all
-  subsequent note durations are scaled: `Math.round(durRaw * tpb / divisions)`
-- Ties tracked by pitch → noteIndex map; tied notes extend `endTick` of the first note
+- First `<divisions>` element encountered seeds the global `ticksPerBeat`, scaled up by
+  an integer factor to at least 480 (low-divisions files from tools other than MuseScore
+  would otherwise quantize snap grids, triplets, and tremolo strokes to a uselessly
+  coarse tick); all note durations are scaled: `Math.round(durRaw * tpb / divisions)`
+- Ties tracked by `voice|pitch` → noteIndex map (per part), so two voices holding ties
+  on the same pitch don't collide; tied notes extend `endTick` of the first note
 - Tempo from `<sound tempo="">` in the first part only
 - Dynamics from `<sound dynamics="">` (numeric, tracked per part) used directly
   as the running note velocity (clamped 1–127)
@@ -161,6 +173,10 @@ and CC64 messages using `performance.now()` timestamps.
 - `setInterval(tick, 30)` — every 30ms, schedule events up to 150ms ahead
 - `safeOnMs = Math.max(onMs, nowMs + 5)` — prevents scheduling in the past
 - Notes already ended (offMs + 200 ≤ nowMs) are skipped
+- **Note chasing**: notes that started before the start point but are still sounding
+  there (`noteEnd > startTime`) are kept and fire immediately (their past `onMs` clamps
+  to `nowMs+5`), so starting playback in the middle of a held note still sounds it —
+  consistent with the pedal level, which is likewise chased (asserted) at the start
 - **Muted notes** (`n.muted`) are filtered out of `sortedNotes`, so they never sound; the flag is per-note, toggled with `M` (`state.toggleNoteMutes`), and persisted in project JSON
 - **Re-strike gap** (`state.restrikeGapMs`, default 60 ms, `0` disables): each note's
   off is pulled in so the same key (pitch+channel) is released at least that many ms
@@ -179,7 +195,11 @@ and CC64 messages using `performance.now()` timestamps.
   right after `stopPlayback`'s CC64=0 reset and on the same direct path — so the held
   value can't lose a delivery race with the reset on backends that reorder a queued
   (slightly-future) send behind an immediate one (Linux/ALSA → FluidSynth). The lookahead
-  loop (`buildPedalEvents`) then only schedules control points *after* the start point.
+  loop (`buildPedalEvents`) then schedules everything *after* the start point — the
+  control points **plus ramp samples between them**: the lane draws a linear ramp
+  between points, so `buildPedalEvents` emits one event per integer CC64 step the ramp
+  crosses (the densest stream that changes the output, self-thinning for slow ramps).
+  Without that, a drawn half-pedal ramp would play as a single jump at each point.
   This keeps pedal state correct both at tick 0 and when starting mid-piece.
 
 **`stopPlayback(channels = null)`** calls `out.clear()` then sends CC64=0, All
@@ -191,7 +211,9 @@ on a serial/USB-MIDI port (or ALSA → FluidSynth, which floats immediate sends
 ahead of slightly-future ones) that head-of-line drain stalls the first ~100ms
 of output — the playhead advances in silence and the backlog then fires
 compressed before catching up. Scoping the reset (one channel for a piano score)
-keeps the start tight.
+keeps the start tight. For the same reason, the mid-playback reschedule paths in
+`index.html` (`user-seek`, `play-speed`) do **not** call `stopPlayback()` before
+`scheduleFrom` — `schedulePlayback`'s own scoped reset is the only one on the pipe.
 
 **Port management:** `requestAccess()` opens MIDI access, auto-selects first port,
 dispatches `midiportschanged`. `onstatechange` handles hot-plug; if the selected port
@@ -225,8 +247,11 @@ pauses (rather than stops) so the anchor survives.
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
 totalTime, notes (with `id`), pedalPoints, tempoPoints, bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
-resets and re-renders. `totalTime` is written for
-forward compatibility but always recomputed from the tempo curve on load (the stored value is ignored).
+resets and re-renders. `totalTicks` and `totalTime` are written for forward
+compatibility but always recomputed from the notes / tempo curve on load (the
+stored values are ignored) — and re-derived (`_refreshTotals`) after every note
+edit that can change ticks (add/delete/move/resize, undo restore), since playback's
+natural end and the scrollable range both depend on them.
 
 ---
 

@@ -19,7 +19,7 @@ function attrs({ divs = 480, beats = 4, beatType = 4 } = {}) {
 }
 
 function note(step, octave, dur, { alter = 0, chord = false, grace = false,
-    tieStop = false, tieStart = false, tremolo = null } = {}) {
+    tieStop = false, tieStart = false, tremolo = null, voice = null } = {}) {
   let s = '<note>';
   if (grace) s += '<grace/>';
   if (chord) s += '<chord/>';
@@ -28,6 +28,7 @@ function note(step, octave, dur, { alter = 0, chord = false, grace = false,
   s += `<octave>${octave}</octave></pitch><duration>${dur}</duration>`;
   if (tieStop)  s += '<tie type="stop"/>';
   if (tieStart) s += '<tie type="start"/>';
+  if (voice != null) s += `<voice>${voice}</voice>`;
   if (tremolo)  s += `<tremolo type="${tremolo.type}">${tremolo.slashes}</tremolo>`;
   return s + '</note>';
 }
@@ -98,6 +99,15 @@ describe('basic parsing', () => {
     expect(tpb).toBe(960);
   });
 
+  test('low divisions are scaled up to at least 480 tpb', () => {
+    // divisions=2: a quarter note has duration 2 — useless tick resolution raw,
+    // so tpb is scaled by an integer factor (×240 → 480) and durations follow.
+    const xml = sp(`<measure number="1">${attrs({ divs: 2 })}${note('C', 4, 2)}</measure>`);
+    const { tpb, notes } = parseMusicXml(xml);
+    expect(tpb).toBe(480);
+    expect(notes[0]).toMatchObject({ startTick: 0, endTick: 480 });
+  });
+
   test('grace notes are skipped', () => {
     const xml = sp(`<measure number="1">${attrs()}${note('C', 4, 60, { grace: true })}${note('D', 4, 480)}</measure>`);
     const { notes } = parseMusicXml(xml);
@@ -164,6 +174,22 @@ describe('ties', () => {
     const { notes } = parseMusicXml(xml);
     expect(notes).toHaveLength(1);
     expect(notes[0].endTick).toBe(1440);
+  });
+
+  test('ties in different voices on the same pitch do not collide', () => {
+    const m1 = `<measure number="1">${attrs()}` +
+      note('C', 4, 480, { tieStart: true, voice: 1 }) +
+      `<backup><duration>480</duration></backup>` +
+      note('C', 4, 480, { tieStart: true, voice: 2 }) +
+      `</measure>`;
+    const m2 = `<measure number="2">` +
+      note('C', 4, 480, { tieStop: true, voice: 1 }) +
+      `<backup><duration>480</duration></backup>` +
+      note('C', 4, 480, { tieStop: true, voice: 2 }) +
+      `</measure>`;
+    const { notes } = parseMusicXml(sp(m1 + m2));
+    expect(notes).toHaveLength(2);
+    expect(notes.every(n => n.endTick === 960)).toBe(true);
   });
 });
 

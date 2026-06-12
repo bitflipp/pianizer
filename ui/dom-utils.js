@@ -20,10 +20,14 @@ export function canvasPos(canvas, e) {
   };
 }
 
-// True when a form element is focused — used to skip keyboard shortcuts so
-// typing in an input/select/textarea doesn't trigger app actions.
-export function isFormFocused(target) {
-  return target instanceof HTMLInputElement
-      || target instanceof HTMLSelectElement
-      || target instanceof HTMLTextAreaElement;
+// True when the keyboard event originates from a form element — used to skip
+// keyboard shortcuts so typing in an input/select/textarea doesn't trigger app
+// actions. Takes the event, not its target: events from inside a shadow DOM
+// (the toolbar's selects) retarget `e.target` to the host element, hiding the
+// real control; composedPath()[0] sees through that.
+export function isFormFocused(e) {
+  const t = e.composedPath ? e.composedPath()[0] : e.target;
+  return t instanceof HTMLInputElement
+      || t instanceof HTMLSelectElement
+      || t instanceof HTMLTextAreaElement;
 }
