@@ -133,6 +133,12 @@
     .delta-btn:hover { background: #333; border-color: #bbb; }
     .shape-row { display: flex; gap: 2px; margin-bottom: 5px; }
     .shape-row .delta-btn.sel { background: #333; border-color: #fff; color: #fff; }
+    /* Curve-shape buttons: easing glyph stacked above the label. */
+    .shape-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 6px; }
+    .shape-glyph { width: 30px; height: 18px; display: block; }
+    .shape-glyph-axes  { fill: none; stroke: #555; stroke-width: 1; }
+    /* currentColor tracks the button's text colour, so glyph and label stay matched. */
+    .shape-glyph-curve { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
     /* Help overlay */
     .help-overlay {
@@ -728,15 +734,52 @@
   // onset position t∈[0,1] → eased fraction of the start→end velocity span, so the
   // musician picks a crescendo/decrescendo contour deliberately.
 
+  // Builds a small SVG glyph that plots an easing curve (onset t∈[0,1] → eased
+  // value∈[0,1], origin bottom-left) by sampling the easing function itself, so the
+  // icon is always an exact preview of the ramp shape it triggers — no hand-drawn
+  // path to keep in sync if SCALE_EASINGS changes.
+  const GLYPH_W = 30, GLYPH_H = 18, GLYPH_PAD = 2, GLYPH_SAMPLES = 24;
+  function buildEasingGlyph(fn) {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('class', 'shape-glyph');
+    svg.setAttribute('viewBox', `0 0 ${GLYPH_W} ${GLYPH_H}`);
+    svg.setAttribute('aria-hidden', 'true');           // label carries the accessible name
+    const xL = GLYPH_PAD, xR = GLYPH_W - GLYPH_PAD;
+    const yB = GLYPH_H - GLYPH_PAD, yT = GLYPH_PAD;     // y grows downward, so bottom = max y
+    // Faint L-shaped axes (left + bottom) anchor the curve's reading direction.
+    const axes = document.createElementNS(SVG, 'path');
+    axes.setAttribute('class', 'shape-glyph-axes');
+    axes.setAttribute('d', `M${xL} ${yT} L${xL} ${yB} L${xR} ${yB}`);
+    svg.appendChild(axes);
+    let d = '';
+    for (let i = 0; i <= GLYPH_SAMPLES; i++) {
+      const t = i / GLYPH_SAMPLES;
+      const x = xL + t * (xR - xL);
+      const y = yB - fn(t) * (yB - yT);
+      d += `${i === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)} `;
+    }
+    const curve = document.createElementNS(SVG, 'path');
+    curve.setAttribute('class', 'shape-glyph-curve');
+    curve.setAttribute('d', d.trim());
+    svg.appendChild(curve);
+    return svg;
+  }
+
   // Builds the Linear / Ease in / Ease out / S-curve selector row, calling
   // onPick(name) when a button is chosen. `selected` highlights the current shape.
+  // Each button pairs an easing-curve glyph with its text label.
   function buildShapeRow(selected, onPick) {
     const row = document.createElement('div');
     row.className = 'shape-row';
     for (const name of Object.keys(SCALE_EASINGS)) {
       const btn = document.createElement('button');
-      btn.className = 'delta-btn';
-      btn.textContent = name;
+      btn.className = 'delta-btn shape-btn';
+      btn.title = name;
+      btn.appendChild(buildEasingGlyph(SCALE_EASINGS[name]));
+      const label = document.createElement('span');
+      label.textContent = name;
+      btn.appendChild(label);
       if (name === selected) btn.classList.add('sel');
       btn.addEventListener('click', ev => {
         ev.stopPropagation();
