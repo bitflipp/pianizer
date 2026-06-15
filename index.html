@@ -218,9 +218,9 @@
   };
 
   // localStorage keys, named once so save and load can't drift apart silently.
-  const AUTOSAVE_KEY     = 'pianizer-autosave';
-  const VEL_CURVE_KEY    = 'pianizer-vel-curve';
-  const RESTRIKE_GAP_KEY = 'pianizer-restrike-gap';
+  const AUTOSAVE_KEY       = 'pianizer-autosave';
+  const VELOCITY_CURVE_KEY = 'pianizer-velocity-curve';
+  const RESTRIKE_GAP_KEY   = 'pianizer-restrike-gap';
   const viewKey = () => `pianizer-view-${state.pieceId}`;
 
   // ── Canvas setup ───────────────────────────────────────────────────
@@ -483,7 +483,7 @@
   const VC_W      = VC_MARGIN + VC_COLS * VC_CW;  // 640
   const VC_H      = VC_ROWS * VC_CH;               // 270
 
-  function saveVelocityCurve() { safeSet(VEL_CURVE_KEY, state.velocityCurve); }
+  function saveVelocityCurve() { safeSet(VELOCITY_CURVE_KEY, state.velocityCurve); }
 
   function renderVelocityCurve(canvas) {
     const ctx   = canvas.getContext('2d');
@@ -1114,7 +1114,7 @@
 
   // Load per-device velocity curve (independent of score/project)
   try {
-    const vc = localStorage.getItem(VEL_CURVE_KEY);
+    const vc = localStorage.getItem(VELOCITY_CURVE_KEY);
     if (vc) {
       const arr = JSON.parse(vc);
       if (Array.isArray(arr) && arr.length === VC_COLS)
