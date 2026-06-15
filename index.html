@@ -109,7 +109,7 @@
     }
     .velocity-grid button {
       border: 1px solid;
-      /* text color is set inline per-button (luminance-adaptive); see styleVelBtn */
+      /* text color is set inline per-button (luminance-adaptive); see styleVelocityBtn */
       font: 12px monospace;
       padding: 4px 4px 4px 0;
       cursor: pointer;
@@ -137,7 +137,7 @@
     .shape-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 6px; }
     .shape-glyph { width: 30px; height: 18px; display: block; }
     .shape-glyph-axes  { fill: none; stroke: #555; stroke-width: 1; }
-    /* currentColor tracks the button's text colour, so glyph and label stay matched. */
+    /* currentColor tracks the button's text color, so glyph and label stay matched. */
     .shape-glyph-curve { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
     /* Help overlay */
@@ -208,7 +208,7 @@
   import { PianoRoll, noteHSL, labelColorFor } from './ui/roll.js';
   import { PedalLane }               from './ui/pedal-lane.js';
   import { TempoLane }               from './ui/tempo-lane.js';
-  import { MiniMap }                 from './ui/minimap.js';
+  import { Minimap }                 from './ui/minimap.js';
   import { canvasPos, isFormFocused, PITCH_MAX } from './ui/dom-utils.js';
   import './ui/toolbar.js';
 
@@ -230,7 +230,7 @@
   const roll      = new PianoRoll(canvas);
   const tempoLane = new TempoLane(tempoCanvas, roll);
   const pedalLane = new PedalLane(pedalCanvas, roll);
-  const miniMap   = new MiniMap(minimapCanvas, roll);
+  const minimap   = new Minimap(minimapCanvas, roll);
 
   // The lanes and minimap mirror the roll's horizontal view (scroll/zoom/width) plus a
   // few pieces of shared state. They stay in sync two ways: (a) by subscribing directly
@@ -246,7 +246,7 @@
     _lastViewSig = sig;
     tempoLane.render();
     pedalLane.render();
-    miniMap.render();
+    minimap.render();
     scheduleViewSave();
   };
   roll.pedalLane = pedalLane;
@@ -261,7 +261,7 @@
   // selection detail, so selectionchanged touches only the minimap and snapchanged only
   // the lanes.
   for (const ev of ['loaded', 'selectionchanged', 'playheadmoved', 'bookmarkschanged']) {
-    state.addEventListener(ev, () => miniMap.render());
+    state.addEventListener(ev, () => minimap.render());
   }
   for (const ev of ['loaded', 'playheadmoved', 'snapchanged']) {
     state.addEventListener(ev, () => { tempoLane.render(); pedalLane.render(); });
@@ -277,7 +277,7 @@
   observeResize(canvas,        rollContainer,    () => roll.render());
   observeResize(tempoCanvas,   tempoContainer,   () => tempoLane.render());
   observeResize(pedalCanvas,   pedalContainer,   () => pedalLane.render());
-  observeResize(minimapCanvas, minimapContainer, () => miniMap.render());
+  observeResize(minimapCanvas, minimapContainer, () => minimap.render());
 
   // ── Status bar ────────────────────────────────────────────────────
   const statusEl = document.getElementById('status');
@@ -314,15 +314,15 @@
 
   // ── Tool window system ────────────────────────────────────────────
   let _currentTool = null;
-  let _velCurveWin = null;
+  let _velocityCurveWindow = null;
   let _mouseX = 0, _mouseY = 0;
 
   window.addEventListener('mousemove', e => { _mouseX = e.clientX; _mouseY = e.clientY; });
 
-  function closeVelCurveWin() {
-    if (!_velCurveWin) return;
-    _velCurveWin.remove();
-    _velCurveWin = null;
+  function closeVelocityCurveWindow() {
+    if (!_velocityCurveWindow) return;
+    _velocityCurveWindow.remove();
+    _velocityCurveWindow = null;
   }
 
   function positionWindow(win) {
@@ -374,7 +374,7 @@
   // Close on click outside the tool window
   document.addEventListener('mousedown', e => {
     if (_currentTool && !_currentTool.contains(e.target)) closeTool();
-    if (_velCurveWin  && !_velCurveWin.contains(e.target))  closeVelCurveWin();
+    if (_velocityCurveWindow  && !_velocityCurveWindow.contains(e.target))  closeVelocityCurveWindow();
   }, true);
 
   // ── Help overlay ──────────────────────────────────────────────────
@@ -468,106 +468,106 @@
   }, true);
 
   // ── Velocity curve window ─────────────────────────────────────────
-  const VCL_MARGIN = 24;   // left margin width for delta labels
-  const VCL_CW     = 7;    // cell width  (88 cols → 616 px)
-  const VCL_CH     = 6;    // cell height (45 rows → 270 px)
-  const VCL_ROWS     = 45;
-  const VCL_COLS     = 88;
-  const VCL_ZERO_ROW = 22;
-  const VCL_W      = VCL_MARGIN + VCL_COLS * VCL_CW;  // 640
-  const VCL_H      = VCL_ROWS * VCL_CH;               // 270
+  const VC_MARGIN = 24;   // left margin width for delta labels
+  const VC_CW     = 7;    // cell width  (88 cols → 616 px)
+  const VC_CH     = 6;    // cell height (45 rows → 270 px)
+  const VC_ROWS     = 45;
+  const VC_COLS     = 88;
+  const VC_ZERO_ROW = 22;
+  const VC_W      = VC_MARGIN + VC_COLS * VC_CW;  // 640
+  const VC_H      = VC_ROWS * VC_CH;               // 270
 
-  function saveVelCurve() { safeSet('pianizer-vel-curve', state.velocityCurve); }
+  function saveVelocityCurve() { safeSet('pianizer-vel-curve', state.velocityCurve); }
 
-  function renderVCL(canvas) {
+  function renderVelocityCurve(canvas) {
     const ctx   = canvas.getContext('2d');
     const curve = state.velocityCurve;
 
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, VCL_W, VCL_H);
+    ctx.fillRect(0, 0, VC_W, VC_H);
 
     ctx.strokeStyle = '#252525';
     ctx.lineWidth = 1;
-    for (let r = 0; r <= VCL_ROWS; r += 5) {
-      const y = r * VCL_CH + 0.5;
+    for (let r = 0; r <= VC_ROWS; r += 5) {
+      const y = r * VC_CH + 0.5;
       ctx.beginPath();
-      ctx.moveTo(VCL_MARGIN, y);
-      ctx.lineTo(VCL_W, y);
+      ctx.moveTo(VC_MARGIN, y);
+      ctx.lineTo(VC_W, y);
       ctx.stroke();
     }
 
     ctx.fillStyle = '#2e2e2e';
-    ctx.fillRect(VCL_MARGIN, VCL_ZERO_ROW * VCL_CH, VCL_COLS * VCL_CW, VCL_CH);
+    ctx.fillRect(VC_MARGIN, VC_ZERO_ROW * VC_CH, VC_COLS * VC_CW, VC_CH);
 
     ctx.fillStyle = '#555';
     ctx.font = '9px monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (let d = -20; d <= 20; d += 5) {
-      const row = VCL_ZERO_ROW - d;
-      if (row < 0 || row > VCL_ROWS) continue;
+      const row = VC_ZERO_ROW - d;
+      if (row < 0 || row > VC_ROWS) continue;
       ctx.fillText(d === 0 ? '0' : d > 0 ? `+${d}` : String(d),
-                   VCL_MARGIN - 2, row * VCL_CH + VCL_CH / 2);
+                   VC_MARGIN - 2, row * VC_CH + VC_CH / 2);
     }
 
     ctx.fillStyle = '#d4a840';
-    for (let c = 0; c < VCL_COLS; c++) {
-      const row = VCL_ZERO_ROW - (curve[c] ?? 0);
-      ctx.fillRect(VCL_MARGIN + c * VCL_CW + 1, row * VCL_CH + 1, VCL_CW - 1, VCL_CH - 1);
+    for (let c = 0; c < VC_COLS; c++) {
+      const row = VC_ZERO_ROW - (curve[c] ?? 0);
+      ctx.fillRect(VC_MARGIN + c * VC_CW + 1, row * VC_CH + 1, VC_CW - 1, VC_CH - 1);
     }
 
     ctx.strokeStyle = 'rgba(212,168,64,0.45)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let c = 0; c < VCL_COLS; c++) {
-      const row = VCL_ZERO_ROW - (curve[c] ?? 0);
-      const x = VCL_MARGIN + c * VCL_CW + VCL_CW / 2;
-      const y = row * VCL_CH + VCL_CH / 2;
+    for (let c = 0; c < VC_COLS; c++) {
+      const row = VC_ZERO_ROW - (curve[c] ?? 0);
+      const x = VC_MARGIN + c * VC_CW + VC_CW / 2;
+      const y = row * VC_CH + VC_CH / 2;
       if (c === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
   }
 
-  function vclCell(canvas, e) {
+  function velocityCurveCell(canvas, e) {
     const { x, y } = canvasPos(canvas, e);
     return {
-      col: Math.floor((x - VCL_MARGIN) / VCL_CW),
-      row: Math.floor(y / VCL_CH),
+      col: Math.floor((x - VC_MARGIN) / VC_CW),
+      row: Math.floor(y / VC_CH),
     };
   }
 
-  function vclPaint(canvas, fromCol, fromRow, toCol, toRow) {
+  function velocityCurvePaint(canvas, fromCol, fromRow, toCol, toRow) {
     if (fromCol < 0) { fromCol = toCol; fromRow = toRow; }
     const newCurve = state.velocityCurve.slice();
-    const c0 = Math.max(0, Math.min(VCL_COLS - 1, Math.min(fromCol, toCol)));
-    const c1 = Math.max(0, Math.min(VCL_COLS - 1, Math.max(fromCol, toCol)));
+    const c0 = Math.max(0, Math.min(VC_COLS - 1, Math.min(fromCol, toCol)));
+    const c1 = Math.max(0, Math.min(VC_COLS - 1, Math.max(fromCol, toCol)));
     for (let c = c0; c <= c1; c++) {
       const t   = fromCol === toCol ? 0 : (c - fromCol) / (toCol - fromCol);
-      const row = Math.max(0, Math.min(VCL_ROWS - 1,
+      const row = Math.max(0, Math.min(VC_ROWS - 1,
                     Math.round(fromRow + (toRow - fromRow) * t)));
-      newCurve[c] = VCL_ZERO_ROW - row;
+      newCurve[c] = VC_ZERO_ROW - row;
     }
     state.setVelocityCurve(newCurve);
-    renderVCL(canvas);
-    saveVelCurve();
+    renderVelocityCurve(canvas);
+    saveVelocityCurve();
   }
 
   function openVelocityCurveWindow() {
-    if (_velCurveWin) { closeVelCurveWin(); return; }
+    if (_velocityCurveWindow) { closeVelocityCurveWindow(); return; }
 
     const { win, titleEl, body } = buildWindowShell('Velocity curve');
     titleEl.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
     const closeX = document.createElement('span');
     closeX.textContent = '✕';
     closeX.style.cssText = 'cursor:pointer;color:#888;padding:0 2px;user-select:none';
-    closeX.addEventListener('mousedown', e => { e.stopPropagation(); closeVelCurveWin(); });
+    closeX.addEventListener('mousedown', e => { e.stopPropagation(); closeVelocityCurveWindow(); });
     titleEl.appendChild(closeX);
 
-    const vcCanvas = document.createElement('canvas');
-    vcCanvas.width  = VCL_W;
-    vcCanvas.height = VCL_H;
-    vcCanvas.style.cssText = `display:block;cursor:crosshair;width:${VCL_W}px;height:${VCL_H}px;border:1px solid #444`;
-    body.appendChild(vcCanvas);
+    const velocityCurveCanvas = document.createElement('canvas');
+    velocityCurveCanvas.width  = VC_W;
+    velocityCurveCanvas.height = VC_H;
+    velocityCurveCanvas.style.cssText = `display:block;cursor:crosshair;width:${VC_W}px;height:${VC_H}px;border:1px solid #444`;
+    body.appendChild(velocityCurveCanvas);
 
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:5px';
@@ -576,37 +576,37 @@
     resetBtn.textContent = 'Reset all';
     resetBtn.addEventListener('click', ev => {
       ev.stopPropagation();
-      state.setVelocityCurve(new Array(VCL_COLS).fill(0));
-      renderVCL(vcCanvas);
-      saveVelCurve();
+      state.setVelocityCurve(new Array(VC_COLS).fill(0));
+      renderVelocityCurve(velocityCurveCanvas);
+      saveVelocityCurve();
     });
     btnRow.appendChild(resetBtn);
     body.appendChild(btnRow);
 
-    renderVCL(vcCanvas);
+    renderVelocityCurve(velocityCurveCanvas);
 
     positionWindow(win);
-    _velCurveWin = win;
+    _velocityCurveWindow = win;
 
-    vcCanvas.addEventListener('mousedown', e => {
+    velocityCurveCanvas.addEventListener('mousedown', e => {
       if (e.button === 2) {
-        const { col } = vclCell(vcCanvas, e);
-        if (col >= 0 && col < VCL_COLS) vclPaint(vcCanvas, col, VCL_ZERO_ROW, col, VCL_ZERO_ROW);
+        const { col } = velocityCurveCell(velocityCurveCanvas, e);
+        if (col >= 0 && col < VC_COLS) velocityCurvePaint(velocityCurveCanvas, col, VC_ZERO_ROW, col, VC_ZERO_ROW);
         return;
       }
       if (e.button !== 0) return;
-      _vcPainting = true;
-      _vcLastCol  = -1;
-      const { col, row } = vclCell(vcCanvas, e);
-      vclPaint(vcCanvas, -1, -1, col, row);
-      _vcLastCol = col; _vcLastRow = row;
+      _velocityCurvePainting = true;
+      _velocityCurveLastCol  = -1;
+      const { col, row } = velocityCurveCell(velocityCurveCanvas, e);
+      velocityCurvePaint(velocityCurveCanvas, -1, -1, col, row);
+      _velocityCurveLastCol = col; _velocityCurveLastRow = row;
     });
 
-    vcCanvas.addEventListener('mousemove', e => {
-      if (!_vcPainting) return;
-      const { col, row } = vclCell(vcCanvas, e);
-      vclPaint(vcCanvas, _vcLastCol, _vcLastRow, col, row);
-      _vcLastCol = col; _vcLastRow = row;
+    velocityCurveCanvas.addEventListener('mousemove', e => {
+      if (!_velocityCurvePainting) return;
+      const { col, row } = velocityCurveCell(velocityCurveCanvas, e);
+      velocityCurvePaint(velocityCurveCanvas, _velocityCurveLastCol, _velocityCurveLastRow, col, row);
+      _velocityCurveLastCol = col; _velocityCurveLastRow = row;
     });
   }
 
@@ -614,20 +614,20 @@
   // window-level mouseup) rather than per-window: a listener added inside
   // openVelocityCurveWindow would accumulate on every open, since the window
   // teardown removes only the DOM subtree, not window listeners.
-  let _vcPainting = false;
-  let _vcLastCol  = -1;
-  let _vcLastRow  = -1;
-  window.addEventListener('mouseup', () => { _vcPainting = false; });
+  let _velocityCurvePainting = false;
+  let _velocityCurveLastCol  = -1;
+  let _velocityCurveLastRow  = -1;
+  window.addEventListener('mouseup', () => { _velocityCurvePainting = false; });
 
   document.addEventListener('vel-curve', openVelocityCurveWindow);
 
   // ── Tool keyboard shortcuts (capture phase — runs before roll.js) ──
   window.addEventListener('keydown', e => {
     // Escape closes velocity curve window
-    if (e.key === 'Escape' && _velCurveWin) {
+    if (e.key === 'Escape' && _velocityCurveWindow) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      closeVelCurveWin();
+      closeVelocityCurveWindow();
       return;
     }
 
@@ -675,7 +675,7 @@
 
   // Applies velocity-based background/border to a velocity grid button.
   // `mode`: 'normal' | 'hover' | 'selected'
-  function styleVelBtn(btn, v, mode) {
+  function styleVelocityBtn(btn, v, mode) {
     const fill = noteHSL(v, mode === 'normal' ? 'normal' : 'hovered');
     btn.style.background  = fill;
     // Label color tracks the fill's luminance (same rule as the roll's per-note
@@ -692,21 +692,21 @@
   const VEL_PRESET_MAX  = 120;
   const VEL_PRESET_STEP = 5;
 
-  function makeVelBtn(v) {
+  function makeVelocityBtn(v) {
     const btn = document.createElement('button');
     btn.textContent = String(v);
-    styleVelBtn(btn, v, 'normal');
-    btn.addEventListener('mouseenter', () => { if (btn.dataset.sel !== '1') styleVelBtn(btn, v, 'hover'); });
-    btn.addEventListener('mouseleave', () => { if (btn.dataset.sel !== '1') styleVelBtn(btn, v, 'normal'); });
+    styleVelocityBtn(btn, v, 'normal');
+    btn.addEventListener('mouseenter', () => { if (btn.dataset.sel !== '1') styleVelocityBtn(btn, v, 'hover'); });
+    btn.addEventListener('mouseleave', () => { if (btn.dataset.sel !== '1') styleVelocityBtn(btn, v, 'normal'); });
     return btn;
   }
 
   // Builds the velocity-preset grid; onPick(v, btn) fires on each button click.
-  function buildVelGrid(onPick) {
+  function buildVelocityGrid(onPick) {
     const grid = document.createElement('div');
     grid.className = 'velocity-grid';
     for (let v = VEL_PRESET_MIN; v <= VEL_PRESET_MAX; v += VEL_PRESET_STEP) {
-      const btn = makeVelBtn(v);
+      const btn = makeVelocityBtn(v);
       btn.addEventListener('click', ev => {
         ev.stopPropagation();
         onPick(v, btn);
@@ -720,7 +720,7 @@
   function openVelocityTool() {
     if (!requireSelection()) return;
     openToolWindow('Note velocity', (body, close) => {
-      body.appendChild(buildVelGrid(v => {
+      body.appendChild(buildVelocityGrid(v => {
         state.setNoteVelocities([...state.selectedNoteIndices], v);
         close();
       }));
@@ -799,11 +799,11 @@
     let shape      = initialShape;
 
     body.appendChild(buildShapeRow(shape, name => { shape = name; }));
-    body.appendChild(buildVelGrid((v, btn) => {
+    body.appendChild(buildVelocityGrid((v, btn) => {
       if (firstValue === null) {
         firstValue = v;
         btn.dataset.sel = '1';
-        styleVelBtn(btn, v, 'selected');
+        styleVelocityBtn(btn, v, 'selected');
       } else if (v !== firstValue) {
         onPick(firstValue, v, shape);
       }
@@ -1112,8 +1112,8 @@
     const vc = localStorage.getItem('pianizer-vel-curve');
     if (vc) {
       const arr = JSON.parse(vc);
-      if (Array.isArray(arr) && arr.length === VCL_COLS)
-        state.velocityCurve = arr.map(v => Math.max(-VCL_ZERO_ROW, Math.min(VCL_ZERO_ROW, Math.round(v))));
+      if (Array.isArray(arr) && arr.length === VC_COLS)
+        state.velocityCurve = arr.map(v => Math.max(-VC_ZERO_ROW, Math.min(VC_ZERO_ROW, Math.round(v))));
     }
   } catch (_) {}
 

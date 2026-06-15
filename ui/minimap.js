@@ -7,18 +7,18 @@ import { state } from '../engine/state.js';
 import { KEY_WIDTH, PITCH_MIN, PITCH_MAX, PITCH_RANGE, canvasPos } from './dom-utils.js';
 import { noteHSL } from './roll.js';
 
-// Velocity-coloured notes, batched into bands so the per-render cost stays
-// flat. Setting ctx.fillStyle to a fresh hsl() string re-parses a CSS colour
-// every time, so a naive per-note colour would parse once per note per frame
+// Velocity-colored notes, batched into bands so the per-render cost stays
+// flat. Setting ctx.fillStyle to a fresh hsl() string re-parses a CSS color
+// every time, so a naive per-note color would parse once per note per frame
 // — and the minimap re-renders on every mousemove. Instead we quantize
-// velocity into VEL_BUCKETS bands, precompute one colour string per band, and
+// velocity into VEL_BUCKETS bands, precompute one color string per band, and
 // set fillStyle once per band: ~VEL_BUCKETS parses per frame regardless of how
 // many notes the piece has.
 const VEL_BUCKETS = 16;
 const VEL_COLORS  = Array.from({ length: VEL_BUCKETS }, (_, b) =>
   noteHSL(Math.round((b + 0.5) / VEL_BUCKETS * 127), 'normal'));
 
-export class MiniMap {
+export class Minimap {
   constructor(canvas, roll) {
     this.canvas = canvas;
     this.ctx    = canvas.getContext('2d');
@@ -128,8 +128,8 @@ export class MiniMap {
         ctx.fillRect(KEY_WIDTH, y1, this._cw, y2 - y1);
       }
 
-      // Notes, velocity-coloured. Bucket once, then draw band by band so
-      // fillStyle (and its CSS-colour parse) is set only VEL_BUCKETS times.
+      // Notes, velocity-colored. Bucket once, then draw band by band so
+      // fillStyle (and its CSS-color parse) is set only VEL_BUCKETS times.
       const buckets = Array.from({ length: VEL_BUCKETS }, () => []);
       for (const n of state.notes) {
         const b = Math.min(VEL_BUCKETS - 1, (n.velocity / 128 * VEL_BUCKETS) | 0);
