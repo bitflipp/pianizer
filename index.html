@@ -217,6 +217,12 @@
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
   };
 
+  // localStorage keys, named once so save and load can't drift apart silently.
+  const AUTOSAVE_KEY     = 'pianizer-autosave';
+  const VEL_CURVE_KEY    = 'pianizer-vel-curve';
+  const RESTRIKE_GAP_KEY = 'pianizer-restrike-gap';
+  const viewKey = () => `pianizer-view-${state.pieceId}`;
+
   // ── Canvas setup ───────────────────────────────────────────────────
   const canvas             = document.getElementById('roll');
   const rollContainer      = document.getElementById('roll-container');
@@ -477,7 +483,7 @@
   const VC_W      = VC_MARGIN + VC_COLS * VC_CW;  // 640
   const VC_H      = VC_ROWS * VC_CH;               // 270
 
-  function saveVelocityCurve() { safeSet('pianizer-vel-curve', state.velocityCurve); }
+  function saveVelocityCurve() { safeSet(VEL_CURVE_KEY, state.velocityCurve); }
 
   function renderVelocityCurve(canvas) {
     const ctx   = canvas.getContext('2d');
@@ -1055,14 +1061,13 @@
   state.addEventListener('snapchanged', () => { roll.render(); scheduleViewSave(); });
 
   // ── Auto-save to localStorage ─────────────────────────────────────
-  const AUTOSAVE_KEY = 'pianizer-autosave';
   let _autosaveTimer = null;
   let _viewSaveTimer = null;
 
   function scheduleViewSave() {
     if (!state.pieceId) return;
     clearTimeout(_viewSaveTimer);
-    _viewSaveTimer = setTimeout(() => safeSet(`pianizer-view-${state.pieceId}`, {
+    _viewSaveTimer = setTimeout(() => safeSet(viewKey(), {
       pixelsPerTick: roll.pixelsPerTick,
       scrollX:       roll.scrollX,
       scrollY:       roll.scrollY,
@@ -1074,7 +1079,7 @@
   function restoreView() {
     let restoredSpeed = 1.0;
     try {
-      const saved = state.pieceId && localStorage.getItem(`pianizer-view-${state.pieceId}`);
+      const saved = state.pieceId && localStorage.getItem(viewKey());
       if (saved) {
         const v = JSON.parse(saved);
         if (v.pixelsPerTick != null) roll.pixelsPerTick = v.pixelsPerTick;
@@ -1109,7 +1114,7 @@
 
   // Load per-device velocity curve (independent of score/project)
   try {
-    const vc = localStorage.getItem('pianizer-vel-curve');
+    const vc = localStorage.getItem(VEL_CURVE_KEY);
     if (vc) {
       const arr = JSON.parse(vc);
       if (Array.isArray(arr) && arr.length === VC_COLS)
@@ -1118,9 +1123,9 @@
   } catch (_) {}
 
   // Per-device re-strike gap (output-instrument property, independent of score)
-  state.addEventListener('restrikegapchanged', () => safeSet('pianizer-restrike-gap', state.restrikeGapMs));
+  state.addEventListener('restrikegapchanged', () => safeSet(RESTRIKE_GAP_KEY, state.restrikeGapMs));
   try {
-    const rg = localStorage.getItem('pianizer-restrike-gap');
+    const rg = localStorage.getItem(RESTRIKE_GAP_KEY);
     if (rg !== null) state.setRestrikeGap(Number(JSON.parse(rg)));
   } catch (_) {}
 

@@ -58,7 +58,7 @@ undo, dispatches `selectionchanged`.
 - `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
-`render()`, which triggers `tempoLane.render()`, `pedalLane.render()`, `miniMap.render()`,
+`render()`, which triggers `tempoLane.render()`, `pedalLane.render()`, `minimap.render()`,
 and a debounced view save. All three lanes stay locked to the roll's scroll/zoom with
 zero extra wiring.
 

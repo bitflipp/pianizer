@@ -138,7 +138,7 @@ pianizer/
     curve-lane.js     CurveLane base class — shared pedal/tempo lane logic
     pedal-lane.js     PedalLane — sustain pedal curve (CC64, value 0–1)
     tempo-lane.js     TempoLane — tempo ratio curve (0.8–1.2)
-    minimap.js        MiniMap — full-piece overview, viewport indicator
+    minimap.js        Minimap — full-piece overview, viewport indicator
     toolbar.js        <ph-toolbar> custom element
     dom-utils.js      Layout constants and shared helpers
 ```
