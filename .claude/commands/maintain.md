@@ -14,6 +14,14 @@ What counts as a finding (in rough priority order):
 - Duplicated logic that wants a small helper (only if used 2+ times — no
   premature abstraction)
 - Unclear identifiers (loop vars, params, fields)
+- Naming inconsistency — one concept spelled multiple ways across the tree. Pick a
+  root and grep its variants: abbreviation drift (`velCurve`/`VCL`/`velocityCurve`,
+  `Win`/`Window`), American vs British (`color`/`colour`), and casing of compound
+  words (`MiniMap`/`miniMap`/`minimap`). Comments count too, not just identifiers.
+  Converge on one spelling (full word for identifiers; a short prefix is fine for
+  constants). Exempt: compatibility contracts — storage keys, event/`data-action`
+  and DOM-id strings, and the public state API — renaming those breaks data or wiring,
+  so leave them and note the divergence instead.
 - Dead code, unreachable branches, unused exports
 - Inconsistent ordering or grouping (e.g. event handlers scattered)
 - Comments that explain WHAT instead of WHY (delete them)

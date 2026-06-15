@@ -503,7 +503,7 @@ export class PianoRoll {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
 
-    // Muted notes keep their velocity colour (so the shaping stays visible) but get a
+    // Muted notes keep their velocity color (so the shaping stays visible) but get a
     // diagonal hatch — a fill-independent "silenced" marker that reads against any fill.
     if (n.muted) this._drawMuteHatch(x, y, w, h, fill);
 
@@ -514,14 +514,14 @@ export class PianoRoll {
     ctx.strokeStyle = isSel ? '#ffffff' : 'rgba(255,255,255,0.5)';
     ctx.strokeRect(x + bOff, y + bOff, w - bw, h - bw);
 
-    // Every note shows its velocity number (label colour adapts to the fill via labelColorFor).
+    // Every note shows its velocity number (label color adapts to the fill via labelColorFor).
     // When this note draws a resize grip, nudge the label right past the left handle so
     // the grip doesn't occlude the number.
     const labelInset = hasHandles ? Math.min(HANDLE_WIDTH, w / 2) : 0;
     this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset);
   }
 
-  // Diagonal hatch (╱╱╱) over a muted note's box, clipped to it. The stripe colour is
+  // Diagonal hatch (╱╱╱) over a muted note's box, clipped to it. The stripe color is
   // chosen from the fill's luminance the same way the velocity label is (labelColorFor),
   // so it always contrasts — white over dark low-velocity blues, black over bright yellows.
   _drawMuteHatch(x, y, w, h, fill) {
@@ -569,7 +569,7 @@ export class PianoRoll {
   }
 
   // Ghost of the note being drawn during an Alt insert drag — dashed white outline over
-  // a translucent fill in the note's eventual velocity colour (insert velocity is 64).
+  // a translucent fill in the note's eventual velocity color (insert velocity is 64).
   _drawInsertPreview() {
     if (!this._insertActive) return;
     const { startTick, endTick } = this._insertSpan();
@@ -1170,9 +1170,9 @@ export class PianoRoll {
 
     // Bookmark hover in ruler
     const inRuler = pos.y >= 0 && pos.y < HEADER_HEIGHT && pos.x > KEY_WIDTH;
-    const bkIdx = inRuler ? this._bookmarkNear(pos.x) : -1;
-    if (bkIdx !== this._hoverBookmarkIdx) {
-      this._hoverBookmarkIdx = bkIdx;
+    const bookmarkIdx = inRuler ? this._bookmarkNear(pos.x) : -1;
+    if (bookmarkIdx !== this._hoverBookmarkIdx) {
+      this._hoverBookmarkIdx = bookmarkIdx;
       this.render();
     }
 
