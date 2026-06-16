@@ -20,6 +20,25 @@ export function canvasPos(canvas, e) {
   };
 }
 
+// Forwards a wheel gesture over a lane canvas to the roll: Ctrl/Cmd+wheel zooms
+// toward the cursor tick, a plain wheel pans horizontally. The lanes share the
+// roll's horizontal view, so they delegate the gesture rather than tracking
+// scroll/zoom themselves. The roll owns the same logic for its own canvas.
+export function forwardWheelToRoll(roll, canvas, e) {
+  e.preventDefault();
+  const mouseX = canvasPos(canvas, e).x;
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+
+  if (e.ctrlKey || e.metaKey) {
+    const mouseTick = roll.xToTick(mouseX);
+    roll.pixelsPerTick = Math.max(0.01, Math.min(8, roll.pixelsPerTick * factor));
+    roll.scrollX = roll._clampScrollX(mouseTick - (mouseX - KEY_WIDTH) / roll.pixelsPerTick);
+  } else {
+    roll.scrollX = roll._clampScrollX(roll.scrollX + e.deltaY / roll.pixelsPerTick * 0.5);
+  }
+  roll.render();
+}
+
 // True when the keyboard event originates from a form element — used to skip
 // keyboard shortcuts so typing in an input/select/textarea doesn't trigger app
 // actions. Takes the event, not its target: events from inside a shadow DOM

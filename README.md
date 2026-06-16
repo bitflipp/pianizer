@@ -25,11 +25,14 @@ auto-humanization — the tool is an instrument.
   interpolated value is seeded correctly on mid-piece playback start
 - **Tempo lane** — draw a tempo ratio curve (×0.8–×1.2) as a monotone-cubic spline
   that shapes playback timing and overall piece duration
+- **Soft-pedal lane** — paint binary una corda (CC67) regions that switch the soft
+  pedal on and off
 - **Minimap** — full-piece overview with viewport indicator; click or drag to pan
 - **Bookmarks** — ruler markers added with Ctrl+click; `←`/`→` seek between them
 - **Web MIDI output** — lookahead scheduler (30 ms tick / 150 ms window) sends
-  note on/off and CC64 to any browser MIDI port (e.g. FluidSynth, hardware piano);
-  an adjustable re-strike gap gives a repeated key's action time to reset
+  note on/off, CC64 (sustain) and CC67 (soft pedal) to any browser MIDI port
+  (e.g. FluidSynth, hardware piano); an adjustable re-strike gap gives a repeated
+  key's action time to reset
 - **Project save/load** — versioned JSON preserving all edits; auto-save to
   `localStorage` with per-piece view state restoration
 - **No build step, no dependencies** — vanilla JS ES modules, Canvas 2D, served
@@ -122,6 +125,17 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Drag point | Move control point (snaps to grid and Y; hold Ctrl to disable) |
 | Right-click | Remove nearest control point |
 
+### Soft-pedal lane (una corda)
+
+| Key / gesture | Action |
+|---|---|
+| Drag empty | Paint a soft-pedal region (binary CC67 on) |
+| Click empty | Add a one-snap-step region |
+| Drag region edge | Resize region start / end |
+| Drag region body | Move region |
+| Ctrl+drag | Paint / resize / move without snapping |
+| Right-click region | Remove region |
+
 ---
 
 ## Project structure
@@ -138,6 +152,7 @@ pianizer/
     curve-lane.js     CurveLane base class — shared pedal/tempo lane logic
     pedal-lane.js     PedalLane — sustain pedal curve (CC64, value 0–1)
     tempo-lane.js     TempoLane — tempo ratio curve (0.8–1.2)
+    region-lane.js    RegionLane — soft-pedal (una corda) binary CC67 regions
     minimap.js        Minimap — full-piece overview, viewport indicator
     toolbar.js        <ph-toolbar> custom element
     dom-utils.js      Layout constants and shared helpers
