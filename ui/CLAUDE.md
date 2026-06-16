@@ -5,7 +5,8 @@
 - Vertical axis: pitch (MIDI 21–108, A0–C8), fixed note height 16 px/semitone
 - Horizontal axis: time in ticks, scrollable and zoomable
 - Left strip (36 px, `KEY_WIDTH`): piano keyboard, all 88 keys labeled
-- Top strip (24 px, `HEADER_HEIGHT`): bar/beat ruler, click/drag to seek playhead
+- Top strip (24 px, `HEADER_HEIGHT`): measure ruler — bar numbers over alternating
+  per-measure background stripes (odd bars shaded); click/drag to seek playhead
 
 **Controls:**
 - `Scroll` — pan horizontal
