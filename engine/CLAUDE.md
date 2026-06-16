@@ -8,8 +8,8 @@ custom element both listen to these events.
 
 **Communication flow:**
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
-  `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `midiportschanged`,
-  `undochanged`, `bookmarkschanged`, `playspeedchanged`,
+  `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `softpedalchanged`,
+  `midiportschanged`, `undochanged`, `bookmarkschanged`, `playspeedchanged`,
   `restrikegapchanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle
@@ -53,6 +53,7 @@ undo, dispatches `selectionchanged`.
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
+- `state.softPedalRegions` — `[{startTick, endTick}]` sorted by startTick, disjoint & merged; binary una corda, drives CC67. Edited via the region lane; `addSoftPedalRegion` (paint commit), `removeSoftPedalRegionAt`, and the drag trio `beginSoftPedalEdit` / `resizeSoftPedalRegion` / `moveSoftPedalRegion` / `endSoftPedalEdit` (the live resize/move may overlap; `normalizeRegions` merges on commit). Dispatches `softpedalchanged`
 - `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`. Set via `setPlaySpeed()` (dispatches `playspeedchanged`); `snapGrid` likewise via `setSnapGrid()` (dispatches `snapchanged`)
 - `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
@@ -71,16 +72,16 @@ accumulating 1-based bar numbers across changes. Used by `_drawGrid` and `_drawR
 
 ## Undo / Redo
 
-Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, plus the selection.
-100-entry stack. **Selection-only changes push light entries**: `setSelection` calls
+Snapshot-based: deep copies of `notes`, `pedalPoints`, `tempoPoints`, `softPedalRegions`,
+plus the selection. 100-entry stack. **Selection-only changes push light entries**: `setSelection` calls
 `_pushUndo(false)`, which snapshots just `{selection}` — no deep copies. That is safe
 because any later mutation of notes or curves pushes its own full snapshot before touching
 them, so when a light entry is popped the live arrays already equal their state at push
 time. Undo/redo banks a twin of the same shape (`_applyHistory`), so click-around
 selection churn never stacks up full copies of a large score. Drag interactions (note
-resize, note move, curve-point move) push undo **once** at drag start via
-`resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove`; per-frame updates mutate
-live without pushing. Bookmarks and the velocity curve are NOT part of undo.
+resize, note move, curve-point move, soft-pedal region resize/move) push undo **once**
+at drag start via `resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove` /
+`beginSoftPedalEdit`; per-frame updates mutate live without pushing. Bookmarks and the velocity curve are NOT part of undo.
 
 ---
 
@@ -166,8 +167,9 @@ Parses `score-partwise` documents using the browser `DOMParser`. Key decisions:
 
 ## Web MIDI Output (`midi-out.js`)
 
-`MidiOut` class — connects to a browser MIDI output port and schedules note on/off
-and CC64 messages using `performance.now()` timestamps.
+`MidiOut` class — connects to a browser MIDI output port and schedules note on/off,
+CC64 (sustain) and CC67 (soft pedal / una corda) messages using `performance.now()`
+timestamps.
 
 **Lookahead scheduler:**
 - `setInterval(tick, 30)` — every 30ms, schedule events up to 150ms ahead
@@ -201,8 +203,15 @@ and CC64 messages using `performance.now()` timestamps.
   crosses (the densest stream that changes the output, self-thinning for slow ramps).
   Without that, a drawn half-pedal ramp would play as a single jump at each point.
   This keeps pedal state correct both at tick 0 and when starting mid-piece.
+- CC67 soft pedal (una corda) is **binary**, so it needs no ramp: each
+  `softPedalRegions` span emits CC67=127 at its start tick and 0 at its end
+  (`buildSoftPedalEvents`). The held value at the start point is asserted
+  immediately/untimed alongside the CC64 assertion (127 if `startTick` falls inside a
+  region, else 0), same race-avoidance path; the lookahead loop schedules only
+  transitions strictly after the start point. Sent on the same active channels as CC64.
+  `stopPlayback` releases it (CC67=0) along with CC64.
 
-**`stopPlayback(channels = null)`** calls `out.clear()` then sends CC64=0, All
+**`stopPlayback(channels = null)`** calls `out.clear()` then sends CC64=0, CC67=0, All
 Notes Off (CC 123), All Sound Off (CC 120) on each channel in `channels`,
 defaulting to all 16 for a clean standalone Stop. `schedulePlayback` passes just
 the channels actually carrying notes: a full 16-channel reset there would push
@@ -245,7 +254,8 @@ pauses (rather than stops) so the anchor survives.
 
 `state.saveProject()` / `state.loadProject(data)` — versioned JSON (version: 1).
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
-totalTime, notes (with `id`), pedalPoints, tempoPoints, bookmarks. On
+totalTime, notes (with `id`), pedalPoints, tempoPoints, softPedalRegions
+(re-normalized on load via `normalizeRegions`), bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
 resets and re-renders. `totalTicks` and `totalTime` are written for forward
 compatibility but always recomputed from the notes / tempo curve on load (the
@@ -259,8 +269,8 @@ natural end and the scrollable range both depend on them.
 
 Four independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
-  `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`, and flushed on `beforeunload`.
-  Auto-loaded on page open.
+  `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`/`softpedalchanged`, and flushed
+  on `beforeunload`. Auto-loaded on page open.
 - `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
   on every load.

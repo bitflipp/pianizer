@@ -40,10 +40,16 @@ export class AppState extends EventTarget {
     // Tempo envelope — [{tick, value}] sorted by tick, value 0.8–1.2
     this.tempoPoints = [];
 
+    // Soft-pedal (una corda) regions — [{startTick, endTick}] sorted by
+    // startTick, disjoint, merged. Binary: CC67 is on inside a region, off
+    // outside it (no half-pedal value axis). Edited via the region lane.
+    this.softPedalRegions = [];
+
     this.pieceId = null;
 
     // Undo / redo stacks — each entry is {notes, pedalPoints, tempoPoints,
-    // selection}, or just {selection} for selection-only changes (see _snapshot)
+    // softPedalRegions, selection}, or just {selection} for selection-only
+    // changes (see _snapshot)
     this._undoStack = [];
     this._redoStack = [];
 
@@ -75,6 +81,7 @@ export class AppState extends EventTarget {
     this.ticksPerBeat   = tpb;
     this.pedalPoints    = [];
     this.tempoPoints    = [];
+    this.softPedalRegions = [];
     this.bookmarks      = [];
     this.pieceId        = crypto.randomUUID();
     this._finishLoad();
@@ -182,6 +189,7 @@ export class AppState extends EventTarget {
       notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, muted: !!n.muted })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
+      softPedalRegions: this.softPedalRegions.map(r => ({ startTick: r.startTick, endTick: r.endTick })),
       bookmarks:      this.bookmarks.slice(),
     };
   }
@@ -195,6 +203,7 @@ export class AppState extends EventTarget {
     this.ticksPerBeat   = data.ticksPerBeat ?? 480;
     this.pedalPoints    = (data.pedalPoints ?? []).map(p => ({ ...p }));
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
+    this.softPedalRegions = normalizeRegions(data.softPedalRegions ?? []);
     this.bookmarks      = (data.bookmarks  ?? []).map(Number).sort((a, b) => a - b);
     this.pieceId        = data.pieceId ?? crypto.randomUUID();
     this._finishLoad();
@@ -555,6 +564,53 @@ export class AppState extends EventTarget {
     this._pushUndo();
   }
 
+  // ── Soft-pedal regions (una corda) ─────────────────────────────────
+  // Binary held state, so each region is a {startTick, endTick} span rather
+  // than a value curve. The set is kept disjoint (normalizeRegions) so playback
+  // emits one clean CC67 on/off pair per region. A live resize/move is allowed
+  // to overlap its neighbours; the overlap is merged away on commit, not per
+  // frame — merging mid-drag would swallow the very region being dragged.
+
+  // Paint commit. Pushes undo, inserts the span, and re-normalizes.
+  addSoftPedalRegion(startTick, endTick) {
+    this._pushUndo();
+    this.softPedalRegions = normalizeRegions([...this.softPedalRegions, { startTick, endTick }]);
+    this.dispatch('softpedalchanged');
+  }
+
+  removeSoftPedalRegionAt(index) {
+    if (index < 0 || index >= this.softPedalRegions.length) return;
+    this._pushUndo();
+    this.softPedalRegions.splice(index, 1);
+    this.dispatch('softpedalchanged');
+  }
+
+  // Call once when a region resize/move drag begins; pushes undo before mutation.
+  beginSoftPedalEdit() {
+    this._pushUndo();
+  }
+
+  // Per-frame during an edge resize — no undo push, no merge (see above).
+  resizeSoftPedalRegion(region, edge, tick) {
+    if (edge === 'start') region.startTick = Math.max(0, Math.min(region.endTick - 1, tick));
+    else                  region.endTick   = Math.max(region.startTick + 1, tick);
+    this.dispatch('softpedalchanged');
+  }
+
+  // Per-frame during a body move — no undo push, no merge (see above).
+  moveSoftPedalRegion(region, newStartTick) {
+    const dur = region.endTick - region.startTick;
+    region.startTick = Math.max(0, newStartTick);
+    region.endTick   = region.startTick + dur;
+    this.dispatch('softpedalchanged');
+  }
+
+  // Commit a resize/move drag: re-normalize the now-possibly-overlapping set.
+  endSoftPedalEdit() {
+    this.softPedalRegions = normalizeRegions(this.softPedalRegions);
+    this.dispatch('softpedalchanged');
+  }
+
   // ── Undo / redo ────────────────────────────────────────────────────
 
   get canUndo() { return this._undoStack.length > 0; }
@@ -568,18 +624,20 @@ export class AppState extends EventTarget {
   _snapshot(full = true) {
     if (!full) return { selection: [...this.selectedNoteIndices] };
     return {
-      notes:       this.notes.map(n => ({ ...n })),
-      pedalPoints: this.pedalPoints.map(p => ({ ...p })),
-      tempoPoints: this.tempoPoints.map(p => ({ ...p })),
-      selection:   [...this.selectedNoteIndices],
+      notes:            this.notes.map(n => ({ ...n })),
+      pedalPoints:      this.pedalPoints.map(p => ({ ...p })),
+      tempoPoints:      this.tempoPoints.map(p => ({ ...p })),
+      softPedalRegions: this.softPedalRegions.map(r => ({ ...r })),
+      selection:        [...this.selectedNoteIndices],
     };
   }
 
   _restore(snap) {
     if (snap.notes) {
-      this.notes       = snap.notes.map(n => ({ ...n }));
-      this.pedalPoints = snap.pedalPoints.map(p => ({ ...p }));
-      this.tempoPoints = snap.tempoPoints.map(p => ({ ...p }));
+      this.notes            = snap.notes.map(n => ({ ...n }));
+      this.pedalPoints      = snap.pedalPoints.map(p => ({ ...p }));
+      this.tempoPoints      = snap.tempoPoints.map(p => ({ ...p }));
+      this.softPedalRegions = (snap.softPedalRegions ?? []).map(r => ({ ...r }));
       this._invalidateTimeline();
       this._refreshTotals();
     }
@@ -606,6 +664,7 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
     this.dispatch('pedalchanged');
     this.dispatch('tempochanged');
+    this.dispatch('softpedalchanged');
   }
 
   undo() { this._applyHistory(this._undoStack, this._redoStack); }
@@ -708,6 +767,25 @@ export const SCALE_EASINGS = {
   'Ease out': t => t * (2 - t),      // fast → slow
   'S-curve':  t => t * t * (3 - 2 * t),
 };
+
+// Normalizes soft-pedal regions into a disjoint, sorted set: drops empty or
+// inverted spans, sorts by startTick, and merges spans that overlap *or touch*
+// (one region's end === the next's start joins them into a single bar). The
+// result is one continuous span per held passage — so playback emits exactly
+// one CC67 on/off pair per region with no redundant re-trigger at a seam.
+function normalizeRegions(regions) {
+  const valid = regions
+    .filter(r => r.endTick > r.startTick)
+    .map(r => ({ startTick: r.startTick, endTick: r.endTick }))
+    .sort((a, b) => a.startTick - b.startTick);
+  const out = [];
+  for (const r of valid) {
+    const last = out[out.length - 1];
+    if (last && r.startTick <= last.endTick) last.endTick = Math.max(last.endTick, r.endTick);
+    else out.push(r);
+  }
+  return out;
+}
 
 // Inserts (or replaces) a curve control point at the given tick, returning a
 // new array sorted by tick.

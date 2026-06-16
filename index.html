@@ -63,6 +63,12 @@
       border-top: 1px solid #444;
     }
 
+    #softpedal-container {
+      flex: 0 0 24px;
+      min-height: 0;
+      border-top: 1px solid #444;
+    }
+
     #minimap-container {
       flex: 0 0 75px;
       min-height: 0;
@@ -193,6 +199,9 @@
       <div id="pedal-container">
         <canvas id="pedal"></canvas>
       </div>
+      <div id="softpedal-container">
+        <canvas id="softpedal"></canvas>
+      </div>
       <div id="minimap-container">
         <canvas id="minimap"></canvas>
       </div>
@@ -208,6 +217,7 @@
   import { PianoRoll, noteHSL, labelColorFor } from './ui/roll.js';
   import { PedalLane }               from './ui/pedal-lane.js';
   import { TempoLane }               from './ui/tempo-lane.js';
+  import { RegionLane }              from './ui/region-lane.js';
   import { Minimap }                 from './ui/minimap.js';
   import { canvasPos, isFormFocused, PITCH_MAX } from './ui/dom-utils.js';
   import './ui/toolbar.js';
@@ -230,13 +240,16 @@
   const tempoContainer     = document.getElementById('tempo-container');
   const pedalCanvas        = document.getElementById('pedal');
   const pedalContainer     = document.getElementById('pedal-container');
+  const softPedalCanvas    = document.getElementById('softpedal');
+  const softPedalContainer = document.getElementById('softpedal-container');
   const minimapCanvas      = document.getElementById('minimap');
   const minimapContainer   = document.getElementById('minimap-container');
 
-  const roll      = new PianoRoll(canvas);
-  const tempoLane = new TempoLane(tempoCanvas, roll);
-  const pedalLane = new PedalLane(pedalCanvas, roll);
-  const minimap   = new Minimap(minimapCanvas, roll);
+  const roll          = new PianoRoll(canvas);
+  const tempoLane     = new TempoLane(tempoCanvas, roll);
+  const pedalLane     = new PedalLane(pedalCanvas, roll);
+  const softPedalLane = new RegionLane(softPedalCanvas, roll);
+  const minimap       = new Minimap(minimapCanvas, roll);
 
   // The lanes and minimap mirror the roll's horizontal view (scroll/zoom/width) plus a
   // few pieces of shared state. They stay in sync two ways: (a) by subscribing directly
@@ -252,6 +265,7 @@
     _lastViewSig = sig;
     tempoLane.render();
     pedalLane.render();
+    softPedalLane.render();
     minimap.render();
     scheduleViewSave();
   };
@@ -270,7 +284,7 @@
     state.addEventListener(ev, () => minimap.render());
   }
   for (const ev of ['loaded', 'playheadmoved', 'snapchanged']) {
-    state.addEventListener(ev, () => { tempoLane.render(); pedalLane.render(); });
+    state.addEventListener(ev, () => { tempoLane.render(); pedalLane.render(); softPedalLane.render(); });
   }
 
   function observeResize(cv, container, render) {
@@ -283,6 +297,7 @@
   observeResize(canvas,        rollContainer,    () => roll.render());
   observeResize(tempoCanvas,   tempoContainer,   () => tempoLane.render());
   observeResize(pedalCanvas,   pedalContainer,   () => pedalLane.render());
+  observeResize(softPedalCanvas, softPedalContainer, () => softPedalLane.render());
   observeResize(minimapCanvas, minimapContainer, () => minimap.render());
 
   // ── Status bar ────────────────────────────────────────────────────
@@ -425,6 +440,14 @@
       ['Ctrl+click',           'Add without snapping'],
       ['Drag point',           'Move control point (snaps to grid and Y; hold Ctrl to disable)'],
       ['Right-click',          'Remove nearest control point'],
+    ]],
+    ['Soft-pedal lane (una corda)', [
+      ['Drag empty',           'Paint a soft-pedal region (binary CC67 on)'],
+      ['Click empty',          'Add a one-snap-step region'],
+      ['Drag region edge',     'Resize region start / end'],
+      ['Drag region body',     'Move region'],
+      ['Ctrl+drag',            'Paint / resize / move without snapping'],
+      ['Right-click region',   'Remove region'],
     ]],
   ];
 
@@ -1103,6 +1126,7 @@
   state.addEventListener('selectionchanged', scheduleAutosave);
   state.addEventListener('pedalchanged',     scheduleAutosave);
   state.addEventListener('tempochanged',     scheduleAutosave);
+  state.addEventListener('softpedalchanged', scheduleAutosave);
 
   window.addEventListener('beforeunload', () => {
     if (_autosaveTimer !== null && state.loaded) {

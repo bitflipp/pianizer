@@ -19,7 +19,8 @@ There is no auto-humanization magic — the tool is an instrument, not an algori
 - **Plain custom element** for the toolbar — shadow DOM for style encapsulation,
   manual patch-on-event updates (no framework)
 - **Web MIDI API** (`navigator.requestMIDIAccess`) for playback output — sends note
-  on/off and CC64 (sustain pedal) to a user-selected MIDI port (e.g. FluidSynth).
+  on/off, CC64 (sustain pedal) and CC67 (soft pedal / una corda) to a user-selected
+  MIDI port (e.g. FluidSynth).
   Scheduling uses `performance.now()` timestamps with a 30ms/150ms lookahead interval.
 - **No build step** — ES modules loaded directly in the browser, served with
   `python3 -m http.server`. Everything must work by opening index.html via localhost.
@@ -44,6 +45,7 @@ pianizer/
     curve-lane.js            ← CurveLane base class: shared pedal/tempo lane logic
     pedal-lane.js            ← PedalLane extends CurveLane (sustain pedal, value 0–1)
     tempo-lane.js            ← TempoLane extends CurveLane (tempo ratio 0.8–1.2)
+    region-lane.js           ← RegionLane: soft-pedal (una corda) lane, binary CC67 regions
     minimap.js               ← Minimap lane: full-piece overview, viewport indicator, click-to-pan
     toolbar.js               ← <ph-toolbar> custom element
     dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused helpers

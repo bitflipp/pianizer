@@ -1,6 +1,6 @@
 // engine/midi-out.js
-// Web MIDI API output — schedules note on/off and CC64 (sustain pedal) via
-// MIDIOutput.send() with performance.now() timestamps.
+// Web MIDI API output — schedules note on/off, CC64 (sustain pedal) and CC67
+// (soft pedal / una corda) via MIDIOutput.send() with performance.now() timestamps.
 
 import { state, interpolateCurveAtTick } from './state.js';
 
@@ -66,12 +66,16 @@ export class MidiOut {
     // some MIDI backends (notably Linux/ALSA → FluidSynth), so the held pedal
     // value would otherwise lose a race with the reset and never take effect.
     // The lookahead loop below only schedules control points *after* startTime.
+    // The soft pedal (CC67) is binary, so its start value is asserted the same
+    // way: 127 if the start point falls inside a region, else 0.
     const startOut = this.selectedOutput;
     if (startOut) {
       const startTick = state.timeToTick(startTime);
       const cc64 = Math.round(interpolateCurveAtTick(state.pedalPoints, startTick, 0) * 127);
+      const cc67 = state.softPedalRegions.some(r => startTick >= r.startTick && startTick < r.endTick) ? 127 : 0;
       for (const ch of channels) {
         try { startOut.send([0xb0 | ch, 64, cc64]); } catch {}
+        try { startOut.send([0xb0 | ch, 67, cc67]); } catch {}
       }
     }
 
@@ -107,8 +111,13 @@ export class MidiOut {
     // immediately above). See buildPedalEvents.
     const pedalEvents = buildPedalEvents(startTime);
 
-    let notePtr  = 0;
-    let pedalPtr = 0;
+    // Soft-pedal CC67 on/off transitions after the start point (the start-point
+    // state was asserted immediately above). Binary, so no ramp samples.
+    const softPedalEvents = buildSoftPedalEvents(startTime);
+
+    let notePtr      = 0;
+    let pedalPtr     = 0;
+    let softPedalPtr = 0;
     const LOOKAHEAD            = 0.15; // seconds
     const SCHEDULE_INTERVAL_MS = 30;
 
@@ -169,6 +178,20 @@ export class MidiOut {
           try { out.send([0xb0 | ch, 64, cc64], safeMs); } catch {}
         }
       }
+
+      // Soft pedal CC67 — on/off transitions, sent on all active channels
+      while (softPedalPtr < softPedalEvents.length && softPedalEvents[softPedalPtr].time <= windowEnd) {
+        const { time, value } = softPedalEvents[softPedalPtr++];
+
+        if (time + 0.1 < pieceNow) continue; // already past
+
+        const evMs   = toWallMs(time);
+        const safeMs = Math.max(evMs, nowMs + 2);
+
+        for (const ch of channels) {
+          try { out.send([0xb0 | ch, 67, value], safeMs); } catch {}
+        }
+      }
     };
 
     onReady?.(); // baseline the playback clock now that the heavy prep is done
@@ -190,7 +213,8 @@ export class MidiOut {
     const chans = channels ?? [...Array(16).keys()];
     for (const ch of chans) {
       try {
-        out.send([0xb0 | ch, 64,  0]); // CC64 pedal release
+        out.send([0xb0 | ch, 64,  0]); // CC64 sustain pedal release
+        out.send([0xb0 | ch, 67,  0]); // CC67 soft pedal release
         out.send([0xb0 | ch, 123, 0]); // All Notes Off
         out.send([0xb0 | ch, 120, 0]); // All Sound Off
       } catch {}
@@ -229,6 +253,24 @@ function buildPedalEvents(startTime) {
   }
 
   return events; // pts is sorted by tick, so this is sorted by time
+}
+
+// Returns [{time, value}] sorted by time for the soft pedal (CC67), covering
+// transitions strictly after startTime. The pedal is binary, so each region
+// contributes exactly two events: CC67=127 at its start, CC67=0 at its end —
+// no ramp samples. The held value at startTime is asserted eagerly in
+// schedulePlayback, so an edge at or before it is intentionally excluded.
+function buildSoftPedalEvents(startTime) {
+  const events = [];
+  for (const r of state.softPedalRegions) {
+    const tOn  = state.tickToTime(r.startTick);
+    const tOff = state.tickToTime(r.endTick);
+    if (tOn  > startTime) events.push({ time: tOn,  value: 127 });
+    if (tOff > startTime) events.push({ time: tOff, value: 0 });
+  }
+  // Regions are sorted and disjoint, so these are already time-ordered; sort
+  // anyway to stay robust to an unsorted source.
+  return events.sort((a, b) => a.time - b.time);
 }
 
 export const midiOut = new MidiOut();

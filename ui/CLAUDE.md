@@ -194,6 +194,37 @@ Linear sustain pedal curve. Control points are `{tick, value}` pairs (value 0–
 
 ---
 
+## Soft-Pedal Lane (`region-lane.js`, 24 px, below pedal lane)
+
+The soft pedal (una corda) is treated as **binary** — CC67 is either on or off — so
+this lane is **not** a `CurveLane`. With no value axis it needs no height, so it's a
+thin strip, and the held state is modeled as time **regions** (`state.softPedalRegions`,
+`[{startTick, endTick}]`) rather than value control points. It's a note-like editor:
+filled **violet** bars (`#9a7cd0`, hot `#c0a8ee` — distinct from the pedal's teal and the
+tempo's amber, clear of the red↔green axis) with the `U.C.` label in the key strip.
+
+**Controls:**
+- `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to the roll, like the curve lanes)
+- `Left-drag empty` — **paint** a region (onset snapped at press, end snapped to grid). A
+  sub-grid drag or a bare **click** falls back to a one-snap-step region (`_paintSpan`,
+  mirroring the roll's note-insert fallback), so a single click drops a default-width bar.
+  A live dashed ghost previews the span. Committed on mouseup via `state.addSoftPedalRegion`.
+- `Drag region edge` — resize start / end (snapped; `state.resizeSoftPedalRegion`). The
+  hovered region draws left/right white **grip bars** (like a note's resize handles), their
+  width matching the edge hit zone so the affordance shows exactly where a grab lands.
+- `Drag region body` — move the whole region (snapped; `state.moveSoftPedalRegion`)
+- `Right-click region` — delete it (`state.removeSoftPedalRegionAt`)
+- `Ctrl` — held during paint/resize/move, disables grid snapping (like the curve lanes)
+
+A resize/move pushes undo once at the drag's threshold crossing (`state.beginSoftPedalEdit`,
+like the curve lanes' `beginCurvePointMove`) and is **merged on release**
+(`state.endSoftPedalEdit`): mid-drag the dragged region may overlap its neighbours, and the
+overlap is normalized away (sort + merge overlapping/touching spans) only on commit —
+merging per frame would swallow the very region being dragged. The lane draws no roll
+reticle (unlike the curve lanes); the strip's own bars are the indicator.
+
+---
+
 ## Status Bar (20 px, bottom)
 
 Shows state only — note count, selection count, and a `Press [?] for help` prompt.
@@ -276,10 +307,10 @@ edge does no work.
   rides this gate, so the view is persisted only when it actually changes.
 - *Shared state* is subscribed directly, per canvas, so a change repaints only the canvases
   that show it: the minimap on `loaded`/`selectionchanged`/`playheadmoved`/`bookmarkschanged`
-  (every note edit dispatches `selectionchanged`); the lanes on `loaded`/`playheadmoved`/
-  `snapchanged` (plus their own `pedalchanged`/`tempochanged` for curve data). Because
-  `snapGrid` is not in the view signature, the `snapchanged` handler calls `scheduleViewSave`
-  itself.
+  (every note edit dispatches `selectionchanged`); the three lanes (tempo, pedal, soft-pedal)
+  on `loaded`/`playheadmoved`/`snapchanged` (plus their own `pedalchanged`/`tempochanged`/
+  `softpedalchanged` for their own edit data). Because `snapGrid` is not in the view
+  signature, the `snapchanged` handler calls `scheduleViewSave` itself.
 
 The curve lane's own hover follows the same principle: `_updateHover`/`_onMouseLeave` repaint
 the **lane** canvas only when the hot control point (`_hoverPointIdx`) flips, and ask the
