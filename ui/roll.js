@@ -307,15 +307,28 @@ export class PianoRoll {
     ctx.fillRect(KEY_WIDTH, 0, this.rollWidth, HEADER_HEIGHT);
     if (!state.tempoMap.length) return;
 
+    const tpb       = state.ticksPerBeat;
     const tickStart = this.scrollX;
     const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
+
+    // Ruler ticks mirror the grid's tiers (same color and line width), so each tick
+    // lines up with — and reads as the head of — the grid line below it. Beat ticks
+    // are short; bar ticks are taller and drawn over them.
+    const drawTick = (x, top, w, col) => {
+      if (x <= KEY_WIDTH) return;
+      ctx.strokeStyle = col; ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, HEADER_HEIGHT); ctx.stroke();
+    };
+
+    for (let t = Math.floor(tickStart / tpb) * tpb; t <= tickEnd; t += tpb) {
+      drawTick(this.tickToX(t), HEADER_HEIGHT - 5, 1, COL_GRID_BEAT);
+    }
 
     ctx.fillStyle = COL_RULER_TEXT; ctx.font = '10px monospace'; ctx.textBaseline = 'middle';
     for (const { tick, bar } of state.barBoundaries(tickStart, tickEnd)) {
       const x = this.tickToX(tick);
+      drawTick(x, HEADER_HEIGHT - 9, 1.5, COL_GRID_BAR);
       ctx.fillText(bar, x + 3, HEADER_HEIGHT / 2);
-      ctx.fillStyle = COL_GRID_BAR; ctx.fillRect(x - 0.5, HEADER_HEIGHT - 6, 1, 6);
-      ctx.fillStyle = COL_RULER_TEXT;
     }
 
     // Bookmark markers — upward triangles at the bottom edge of the ruler
