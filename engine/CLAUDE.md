@@ -59,9 +59,11 @@ undo, dispatches `selectionchanged`.
 - `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
-`render()`, which triggers `tempoLane.render()`, `pedalLane.render()`, `minimap.render()`,
-and a debounced view save. All three lanes stay locked to the roll's scroll/zoom with
-zero extra wiring.
+`render()`, but **gated on a view signature** so it only triggers `tempoLane.render()`,
+`pedalLane.render()`, `softPedalLane.render()`, `minimap.render()` and a debounced view
+save when the scroll/zoom actually changed. The lanes and minimap also subscribe directly
+to the state events they each draw, so the hook covers only the roll-internal view transform
+(see ui/CLAUDE.md → Render wiring for the full split).
 
 **Bar boundaries:** `state.barBoundaries(tickStart, tickEnd)` returns `[{tick, bar}]` for
 every bar line in the visible tick range, walking `state.timeSignatures` segments and

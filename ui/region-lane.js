@@ -19,7 +19,7 @@
 // set stays disjoint and playback emits one clean CC67 on/off pair per region.
 
 import { state, snapGridTicks } from '../engine/state.js';
-import { KEY_WIDTH, canvasPos } from './dom-utils.js';
+import { KEY_WIDTH, canvasPos, forwardWheelToRoll } from './dom-utils.js';
 
 const PAD_V          = 5;   // vertical inset of the region bars within the strip
 const EDGE_PX        = 5;   // edge-grab zone width for resizing (px)
@@ -229,7 +229,7 @@ export class RegionLane {
     this.canvas.addEventListener('mousemove',   e => this._onMouseMove(e));
     this.canvas.addEventListener('mouseleave',  () => this._onMouseLeave());
     this.canvas.addEventListener('contextmenu', e => this._onContextMenu(e));
-    this.canvas.addEventListener('wheel',       e => this._onWheel(e), { passive: false });
+    this.canvas.addEventListener('wheel',       e => forwardWheelToRoll(this.roll, this.canvas, e), { passive: false });
     window.addEventListener('mousemove', e => this._onWindowMouseMove(e));
     window.addEventListener('mouseup',   () => this._onWindowMouseUp());
   }
@@ -319,20 +319,5 @@ export class RegionLane {
     if (!state.loaded || !state.softPedalRegions.length) return;
     const { index } = this._hitTest(this._canvasPos(e));
     if (index >= 0) state.removeSoftPedalRegionAt(index);
-  }
-
-  _onWheel(e) {
-    e.preventDefault();
-    const mouseX = this._canvasPos(e).x;
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-
-    if (e.ctrlKey || e.metaKey) {
-      const mouseTick = this.roll.xToTick(mouseX);
-      this.roll.pixelsPerTick = Math.max(0.01, Math.min(8, this.roll.pixelsPerTick * factor));
-      this.roll.scrollX = this.roll._clampScrollX(mouseTick - (mouseX - KEY_WIDTH) / this.roll.pixelsPerTick);
-    } else {
-      this.roll.scrollX = this.roll._clampScrollX(this.roll.scrollX + e.deltaY / this.roll.pixelsPerTick * 0.5);
-    }
-    this.roll.render();
   }
 }
