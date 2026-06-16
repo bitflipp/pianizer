@@ -11,6 +11,7 @@ const COL_GRID_BEAT  = '#343434';
 const COL_GRID_BAR   = '#525252';
 const COL_GRID_SUB   = '#212121';
 const COL_RULER_BG   = '#111111';
+const COL_RULER_STRIPE = '#1d1d1d';   // alternating (odd-bar) measure shade over the ruler base
 const COL_RULER_TEXT = '#888888';
 const COL_PLAYHEAD   = '#ffffff';
 const COL_BOOKMARK     = '#e08030';
@@ -307,28 +308,37 @@ export class PianoRoll {
     ctx.fillRect(KEY_WIDTH, 0, this.rollWidth, HEADER_HEIGHT);
     if (!state.tempoMap.length) return;
 
-    const tpb       = state.ticksPerBeat;
     const tickStart = this.scrollX;
     const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
+    const boundaries = state.barBoundaries(tickStart, tickEnd);
 
-    // Ruler ticks mirror the grid's tiers (same color and line width), so each tick
-    // lines up with — and reads as the head of — the grid line below it. Beat ticks
-    // are short; bar ticks are taller and drawn over them.
-    const drawTick = (x, top, w, col) => {
-      if (x <= KEY_WIDTH) return;
-      ctx.strokeStyle = col; ctx.lineWidth = w;
-      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, HEADER_HEIGHT); ctx.stroke();
+    // Alternating measure backgrounds delineate bars in place of tick marks: every
+    // other bar (odd bar number) gets a slightly lighter fill over the ruler base.
+    // fillSpan paints [xa, xb] clipped to the content area; the roll grid below keeps
+    // its own bar/beat lines.
+    const fillSpan = (xa, xb, bar) => {
+      if (bar % 2 !== 1) return;
+      const x0 = Math.max(xa, KEY_WIDTH);
+      if (xb <= x0) return;
+      ctx.fillStyle = COL_RULER_STRIPE;
+      ctx.fillRect(x0, 0, xb - x0, HEADER_HEIGHT);
     };
 
-    for (let t = Math.floor(tickStart / tpb) * tpb; t <= tickEnd; t += tpb) {
-      drawTick(this.tickToX(t), HEADER_HEIGHT - 5, 1, COL_GRID_BEAT);
+    for (let i = 0; i < boundaries.length; i++) {
+      const xa = this.tickToX(boundaries[i].tick);
+      const xb = i + 1 < boundaries.length ? this.tickToX(boundaries[i + 1].tick)
+                                           : this.canvas.width;
+      fillSpan(xa, xb, boundaries[i].bar);
+    }
+    // The bar clipped off the left edge has no boundary in range — it's the bar
+    // before the first one (opposite parity), filling up to that boundary.
+    if (boundaries.length) {
+      fillSpan(KEY_WIDTH, this.tickToX(boundaries[0].tick), boundaries[0].bar - 1);
     }
 
     ctx.fillStyle = COL_RULER_TEXT; ctx.font = '10px monospace'; ctx.textBaseline = 'middle';
-    for (const { tick, bar } of state.barBoundaries(tickStart, tickEnd)) {
-      const x = this.tickToX(tick);
-      drawTick(x, HEADER_HEIGHT - 9, 1.5, COL_GRID_BAR);
-      ctx.fillText(bar, x + 3, HEADER_HEIGHT / 2);
+    for (const { tick, bar } of boundaries) {
+      ctx.fillText(bar, this.tickToX(tick) + 6, HEADER_HEIGHT / 2 + 1);
     }
 
     // Bookmark markers — upward triangles at the bottom edge of the ruler
