@@ -805,6 +805,11 @@ export class PianoRoll {
     }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); this._seekToBookmark(-1); }
     if (e.key === 'ArrowRight') { e.preventDefault(); this._seekToBookmark( 1); }
+
+    // Zoom toward the viewport center (no cursor to anchor on). '+' is typically
+    // Shift+'='; accept both glyphs so the unshifted '=' works too.
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); this._zoomBy(1.1, KEY_WIDTH + this.rollWidth / 2); }
+    if (e.key === '-' || e.key === '_') { e.preventDefault(); this._zoomBy(0.9, KEY_WIDTH + this.rollWidth / 2); }
   }
 
   // Briefly surface a message in the status bar (handled in index.html).
@@ -1452,12 +1457,19 @@ export class PianoRoll {
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
 
     if (e.ctrlKey || e.metaKey) {
-      const mouseTick    = this.xToTick(pos.x);
-      this.pixelsPerTick = Math.max(0.01, Math.min(8, this.pixelsPerTick * factor));
-      this.scrollX       = this._clampScrollX(mouseTick - (pos.x - KEY_WIDTH) / this.pixelsPerTick);
+      this._zoomBy(factor, pos.x);
     } else {
       this.scrollX = this._clampScrollX(this.scrollX + e.deltaY / this.pixelsPerTick * 0.5);
+      this.render();
     }
+  }
+
+  // Zoom horizontally by `factor`, holding the tick under `anchorX` (a canvas x
+  // coordinate) fixed. Shared by Ctrl+wheel and the +/- keyboard shortcuts.
+  _zoomBy(factor, anchorX) {
+    const anchorTick   = this.xToTick(anchorX);
+    this.pixelsPerTick = Math.max(0.01, Math.min(8, this.pixelsPerTick * factor));
+    this.scrollX       = this._clampScrollX(anchorTick - (anchorX - KEY_WIDTH) / this.pixelsPerTick);
     this.render();
   }
 }

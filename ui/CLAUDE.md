@@ -11,6 +11,7 @@
 **Controls:**
 - `Scroll` — pan horizontal
 - `Ctrl+scroll` — zoom horizontal (toward cursor tick); browser zoom is blocked
+- `+` / `-` — zoom in / out (toward viewport center); `=` and `_` accepted too, so the unshifted keys work
 - `Right drag` — pan (horizontal + vertical); cursor shows `grabbing`
 - `Home` — scroll to tick 0
 - `End` — scroll to show last note at right edge
