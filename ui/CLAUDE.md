@@ -118,6 +118,18 @@ states adjust the base lightness:
 - **Dimmed**: unselected notes when a selection exists (lightness × 0.55)
 - **Highlighted**: hovered note (or, when the hovered note is selected, the whole selection — they read as one unit), or notes being added by an in-progress rect drag (lightness + 16, capped at 80%)
 
+**Unplayable notes** are painted a flat **warning red** (`COL_UNPLAYABLE` /
+`COL_UNPLAYABLE_HOVERED` in `roll.js`) overriding the velocity fill — two (or more) notes on
+the **same pitch with the same `startTick`**, i.e. two note-ons fired at one instant for a
+single key, which a real piano can't do (Re-striking a *still-sounding* note at a **later**
+onset is legitimate, so only an identical onset conflicts — the held note's duration is 
+irrelevant.) Detection lives in `_ensureNoteCaches` (`_unplayableSet`): notes are keyed by
+`pitch:startTick` and every note after the first to share a key is flagged, so the redundant
+copies light up while one stays as the note to keep. Red is absent from the viridis velocity
+ramp, so these stand out; the marker ignores selection/dim state (an error to surface, not a
+note to fade), brightening only on hover. Recomputed on the same `loaded`/`selectionchanged`
+dirty flag (`_notesDirty`) as the draw order.
+
 **Muted notes** (`n.muted`) keep their velocity-mapped fill (so the shaping stays visible)
 and are marked instead by a **diagonal hatch** (`_drawMuteHatch` in `roll.js`) — a
 fill-independent cue, since a flat grey fill collided with the mid-velocity (~50–65)
