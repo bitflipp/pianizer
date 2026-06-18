@@ -70,6 +70,15 @@ export function noteHSL(velocity, displayState) {
   return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
 }
 
+// Coincident (unplayable) note fill. Two notes on the same pitch with the same onset are two
+// note-ons fired at one instant for a single key — impossible on a real piano, and a source of
+// inconsistent velocities — so the redundant copies are painted a flat warning red instead of their
+// velocity color (see _ensureNoteCaches). Red is otherwise absent from the viridis velocity
+// ramp, so these stand out against every legitimate note. hsl() form keeps labelColorFor's
+// luminance parse working (it expects an hsl() string).
+const COL_UNPLAYABLE         = 'hsl(0,75%,45%)';
+const COL_UNPLAYABLE_HOVERED = 'hsl(0,80%,60%)';
+
 // Rectangle-selection rubber band (teal)
 const COL_RECT_FILL   = 'rgba(92,200,200,0.1)';
 const COL_RECT_STROKE = 'rgba(92,200,200,0.55)';
@@ -182,11 +191,15 @@ export class PianoRoll {
     this._hoverBookmarkIdx  = -1;
     this._hoverPitch        = -1;
 
-    // Indices into state.notes sorted by duration descending: longest drawn first
-    // (bottom), shortest drawn last (top), so contained notes are always on top.
-    // Rebuilt lazily (see _ensureDrawOrder) only when notes change, not every render.
-    this._drawOrder      = [];
-    this._drawOrderDirty = true;
+    // Per-note render caches, rebuilt lazily (see _ensureNoteCaches) only when notes
+    // change, not every render:
+    //   _drawOrder     — indices sorted by duration descending: longest drawn first
+    //                    (bottom), shortest last (top), so contained notes stay on top.
+    //   _unplayableSet — indices of notes sharing a pitch+onset with an earlier note
+    //                    (drawn red — unplayable on a real piano, see _ensureNoteCaches).
+    this._drawOrder     = [];
+    this._unplayableSet = new Set();
+    this._notesDirty    = true;
 
     this._bindEvents();
     this._bindStateEvents();
@@ -406,7 +419,7 @@ export class PianoRoll {
     const effective = this._effectiveSelection();
     const hasSel    = effective.set.size > 0;
 
-    this._ensureDrawOrder();
+    this._ensureNoteCaches();
 
     // Notes that will have resize handles drawn over them this frame. The left grip
     // overlaps the top-left velocity label, so these notes shift their label right by
@@ -441,18 +454,35 @@ export class PianoRoll {
     ctx.restore();
   }
 
-  // Rebuilds the duration-sorted draw order, but only when notes have actually
-  // changed (flagged dirty on loaded/selectionchanged). render()
-  // runs on every hover, pan, and playback frame, so re-sorting all notes here
-  // unconditionally would sort the whole piece ~60×/s during playback for nothing.
-  _ensureDrawOrder() {
-    if (!this._drawOrderDirty) return;
+  // Rebuilds the per-note render caches, but only when notes have actually changed
+  // (flagged dirty on loaded/selectionchanged). render() runs on every hover, pan, and
+  // playback frame, so redoing this work unconditionally would re-sort and re-scan the
+  // whole piece ~60×/s during playback for nothing.
+  _ensureNoteCaches() {
+    if (!this._notesDirty) return;
     const notes = state.notes;
+
     const order = Array.from({ length: notes.length }, (_, i) => i);
     order.sort((a, b) =>
       (notes[b].endTick - notes[b].startTick) - (notes[a].endTick - notes[a].startTick));
-    this._drawOrder      = order;
-    this._drawOrderDirty = false;
+    this._drawOrder = order;
+
+    // Coincident notes: two notes on the same pitch with the same onset are two note-ons
+    // fired at one instant for a single key — unplayable. Re-striking a still-sounding
+    // note at a *later* onset is fine and common, so only an identical startTick conflicts;
+    // the held note's duration is irrelevant.) Key by pitch+onset and flag every note
+    // after the first to share a key, so the redundant copies light up while one stays
+    // as the note to keep.
+    const seen = new Set();
+    const unplayable = new Set();
+    for (let i = 0; i < notes.length; i++) {
+      const key = notes[i].pitch + ':' + notes[i].startTick;
+      if (seen.has(key)) unplayable.add(i);
+      else               seen.add(key);
+    }
+    this._unplayableSet = unplayable;
+
+    this._notesDirty = false;
   }
 
   // Draws a clipped, top-left label inside a note box. `y` is the box top
@@ -522,7 +552,12 @@ export class PianoRoll {
     else if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
     else if (hovered || willAdd) colorState = 'hovered';
 
-    const fill = noteHSL(n.velocity, colorState);
+    // A coincident (unplayable) note is painted red regardless of selection/dim state —
+    // it's an error to surface, not a note to fade into the background — brightening only on
+    // hover. Everything else uses the velocity-mapped viridis fill.
+    const fill = this._unplayableSet.has(i)
+      ? (colorState === 'hovered' ? COL_UNPLAYABLE_HOVERED : COL_UNPLAYABLE)
+      : noteHSL(n.velocity, colorState);
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
 
@@ -659,7 +694,7 @@ export class PianoRoll {
   // Walks _drawOrder back to front (topmost note first) and returns the index of
   // the first note in pos's pitch row for which test(n) is true, or -1.
   _hitNote(pos, test) {
-    this._ensureDrawOrder();  // keep the cache fresh for hit-tests that precede a render
+    this._ensureNoteCaches();  // keep the caches fresh for hit-tests that precede a render
     for (let j = this._drawOrder.length - 1; j >= 0; j--) {
       const i = this._drawOrder[j];
       const n = state.notes[i];
@@ -725,10 +760,10 @@ export class PianoRoll {
 
   _bindStateEvents() {
     // loaded/selectionchanged are the only events that add, remove,
-    // move, or resize notes — i.e. the only ones that can change the duration-sorted
-    // draw order. Flag it dirty here so _ensureDrawOrder rebuilds on the next render.
-    state.addEventListener('loaded',           () => { this.scrollX = 0; this._cancelRectSel(); this._drawOrderDirty = true; this.render(); });
-    state.addEventListener('selectionchanged', () => { this._drawOrderDirty = true; this.render(); });
+    // move, or resize notes — i.e. the only ones that can change the note caches (draw
+    // order, unplayable set). Flag them dirty here so _ensureNoteCaches rebuilds next render.
+    state.addEventListener('loaded',           () => { this.scrollX = 0; this._cancelRectSel(); this._notesDirty = true; this.render(); });
+    state.addEventListener('selectionchanged', () => { this._notesDirty = true; this.render(); });
     state.addEventListener('playheadmoved',    () => this.render());
     state.addEventListener('pedalchanged',     () => this.render());
     state.addEventListener('tempochanged',     () => this.render());
