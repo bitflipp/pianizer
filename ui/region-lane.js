@@ -250,6 +250,7 @@ export class RegionLane {
       this._dragStarted   = false;
       this._dragOrigStart = this._dragRegion.startTick;
       this._dragGrabTick  = this.roll.xToTick(pos.x);
+      if (edge === 'body') this.canvas.style.cursor = 'grabbing';
       return;
     }
 
@@ -297,6 +298,7 @@ export class RegionLane {
       if (this._dragStarted) state.endSoftPedalEdit();
       this._dragRegion  = null;
       this._dragStarted = false;
+      if (this._dragEdge === 'body') this.canvas.style.cursor = 'grab';
     }
   }
 
