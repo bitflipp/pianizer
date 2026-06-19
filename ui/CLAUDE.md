@@ -226,7 +226,8 @@ tempo's amber, clear of the red↔green axis) with the `U.C.` label in the key s
 - `Drag region edge` — resize start / end (snapped; `state.resizeSoftPedalRegion`). The
   hovered region draws left/right white **grip bars** (like a note's resize handles), their
   width matching the edge hit zone so the affordance shows exactly where a grab lands.
-- `Drag region body` — move the whole region (snapped; `state.moveSoftPedalRegion`)
+- `Drag region body` — move the whole region (snapped; `state.moveSoftPedalRegion`); the
+  cursor shows `grab` on hover and `grabbing` while dragging (an edge shows `ew-resize`)
 - `Right-click region` — delete it (`state.removeSoftPedalRegionAt`)
 - `Ctrl` — held during paint/resize/move, disables grid snapping (like the curve lanes)
 
