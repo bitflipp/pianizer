@@ -15,8 +15,8 @@
 //   Ctrl             — held during paint/resize/move, disables grid snapping
 //   Scroll / Ctrl+scroll — horizontal pan / zoom (forwarded to the roll)
 //
-// Overlapping or touching regions merge on commit (state.normalizeRegions), so the
-// set stays disjoint and playback emits one clean CC67 on/off pair per region.
+// Overlapping or touching regions merge on commit (normalizeRegions in state.js), so
+// the set stays disjoint and playback emits one clean CC67 on/off pair per region.
 
 import { state, snapGridTicks } from '../engine/state.js';
 import { KEY_WIDTH, canvasPos, forwardWheelToRoll } from './dom-utils.js';
