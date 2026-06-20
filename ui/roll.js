@@ -438,9 +438,16 @@ export class PianoRoll {
       handleSet = new Set([hi]);
     }
 
+    // Cull off-view notes before drawing. Horizontal: outside the visible tick window.
+    // Vertical: the note's pitch row sits entirely above/below the roll content area —
+    // such notes are clipped to nothing anyway (the roll clip set above), so this just
+    // skips the wasted fillRect/stroke/label calls (and noteHSL/labelColorFor) for a
+    // score whose pitch span exceeds the viewport.
     for (const i of this._drawOrder) {
       const n = state.notes[i];
       if (n.endTick < tickStart || n.startTick > tickEnd) continue;
+      const ny = this.pitchToY(n.pitch);
+      if (ny + this.noteHeight < HEADER_HEIGHT || ny > this.canvas.height) continue;
       this._drawNote(i, n, effective, hasSel, handleSet !== null && handleSet.has(i));
     }
 
