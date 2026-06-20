@@ -204,7 +204,9 @@ prevention), freeing the right button for gestures: roll pan, bookmark removal
 Linear sustain pedal curve. Control points are `{tick, value}` pairs (value 0–1).
 - Top of lane = CC64 127 (fully depressed), bottom = CC64 0 (fully released)
 - Curve is drawn as a connected teal polyline; control points shown as small squares
-- Hovering the lane shows a dashed vertical reticle in the roll at the cursor tick
+- Hovering the lane shows a dashed vertical reticle in the roll at the tick a click/drag
+  would land on — an existing point's tick when hovering one, else the grid-snapped tick
+  (raw under Ctrl) — not the raw cursor tick, so it previews where the point will go
 
 ---
 
@@ -329,8 +331,10 @@ edge does no work.
 
 The curve lane's own hover follows the same principle: `_updateHover`/`_onMouseLeave` repaint
 the **lane** canvas only when the hot control point (`_hoverPointIdx`) flips, and ask the
-**roll** to repaint only when the reticle (cursor tick or hot state) changes — so per-pixel
-cursor motion over a lane repaints just the roll for the reticle, not the lane canvas.
+**roll** to repaint only when the reticle (snapped tick or hot state) changes — so cursor
+motion over a lane repaints just the roll for the reticle, not the lane canvas. The reticle
+tick is snapped (point tick when hot, else grid), so it advances in grid steps rather than
+per pixel.
 
 ---
 
