@@ -101,7 +101,8 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Key / gesture | Action |
 |---|---|
 | Scroll | Pan horizontal |
-| Ctrl+scroll | Zoom horizontal |
+| Ctrl+scroll | Zoom horizontal (toward cursor) |
+| + / − | Zoom in / out (toward center) |
 | Right-drag | Pan (horizontal + vertical) |
 | Home / End | Scroll to start / end |
 
