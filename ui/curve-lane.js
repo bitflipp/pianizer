@@ -359,18 +359,29 @@ export class CurveLane {
 
   _onMouseMove(e) {
     if (this._dragPoint) return;
-    this._updateHover(this._canvasPos(e));
+    this._updateHover(this._canvasPos(e), e);
   }
 
-  // Two visuals depend on lane hover: the dashed reticle (drawn by the roll, follows
-  // the cursor tick pixel by pixel) and this lane's own hot-point square (drawn here,
-  // changes only when the nearest control point flips). They're repainted independently
-  // so per-pixel cursor motion repaints just the roll for the reticle — the lane canvas
-  // repaints only when the hot point actually changes. (The roll's onPostRender is view-
-  // gated, so it no longer drags the lane along on every reticle move.)
-  _updateHover(pos) {
-    const tick = pos.x > KEY_WIDTH ? this.roll.xToTick(pos.x) : null;
-    const idx  = tick !== null ? this._nearestPointIdx(pos) : -1;
+  // Two visuals depend on lane hover: the dashed reticle (drawn by the roll) and this
+  // lane's own hot-point square (drawn here, changes only when the nearest control point
+  // flips). They're repainted independently so cursor motion repaints just the roll for
+  // the reticle — the lane canvas repaints only when the hot point actually changes.
+  // (The roll's onPostRender is view-gated, so it no longer drags the lane along on every
+  // reticle move.) The reticle sits on the tick a click/drag would land on, not the raw
+  // cursor tick: an existing point's tick when hovering one, else the grid-snapped tick
+  // (raw when Ctrl disables snapping) — so it reads as a snap preview, not a free crosshair.
+  _updateHover(pos, e) {
+    const overLane = pos.x > KEY_WIDTH;
+    const idx  = overLane ? this._nearestPointIdx(pos) : -1;
+    let tick = null;
+    if (overLane) {
+      if (idx >= 0) {
+        tick = this._points[idx].tick;
+      } else {
+        const rawTick = Math.max(0, Math.round(this.roll.xToTick(pos.x)));
+        tick = e?.ctrlKey ? rawTick : state.snapTick(rawTick);
+      }
+    }
 
     const reticleChanged = !this._isHovered
       || this._hoverTick     !== tick
