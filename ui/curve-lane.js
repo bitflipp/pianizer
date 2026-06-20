@@ -241,6 +241,13 @@ export class CurveLane {
 
   _canvasPos(e) { return canvasPos(this.canvas, e); }
 
+  // The tick a click/drag/reticle lands on: grid-snapped, or raw when Ctrl
+  // disables snapping. Shared by add/move and the hover reticle so they agree.
+  _tickAtX(x, e) {
+    const rawTick = Math.max(0, Math.round(this.roll.xToTick(x)));
+    return e?.ctrlKey ? rawTick : state.snapTick(rawTick);
+  }
+
   // ── Snap ────────────────────────────────────────────────────────────
 
   // Returns the nearest snap target within Y_SNAP_RADIUS px as { value }, or
@@ -280,9 +287,8 @@ export class CurveLane {
   // tick from x (grid-snapped unless Ctrl), value from y (snapped to a candidate
   // unless Ctrl). `excludePoint` keeps a dragged point from snapping to itself.
   _snappedTickValue(pos, e, excludePoint = null) {
-    const rawTick = Math.max(0, Math.round(this.roll.xToTick(pos.x)));
-    const tick    = e.ctrlKey ? rawTick : state.snapTick(rawTick);
-    let   value   = this._yToValue(pos.y);
+    const tick  = this._tickAtX(pos.x, e);
+    let   value = this._yToValue(pos.y);
     if (!e.ctrlKey) {
       const { value: snapped } = this._snapCandidate(pos, tick, excludePoint);
       if (snapped !== null) value = snapped;
@@ -378,8 +384,7 @@ export class CurveLane {
       if (idx >= 0) {
         tick = this._points[idx].tick;
       } else {
-        const rawTick = Math.max(0, Math.round(this.roll.xToTick(pos.x)));
-        tick = e?.ctrlKey ? rawTick : state.snapTick(rawTick);
+        tick = this._tickAtX(pos.x, e);
       }
     }
 
