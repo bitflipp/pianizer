@@ -422,6 +422,13 @@ export class CurveLane {
     if (this._nearestPointIdx(pos) !== -1) return;
     const { tick, value } = this._snappedTickValue(pos, e);
     this.config.addPoint(tick, value);
+    // Pin hover to the just-created point so the roll reticle reads hot
+    // immediately, before any further cursor motion (mirrors the drag path).
+    this._isHovered     = true;
+    this._hoverTick     = tick;
+    this._hoverPointIdx = this._points.findIndex(p => p.tick === tick);
+    this.render();
+    this.roll.render();
   }
 
   _onContextMenu(e) {
@@ -429,7 +436,11 @@ export class CurveLane {
     if (!state.loaded || !this._points.length) return;
     const pos = this._canvasPos(e);
     const idx = this._nearestPointIdx(pos);
-    if (idx !== -1) this.config.removePoint(idx);
+    if (idx === -1) return;
+    this.config.removePoint(idx);
+    // The point under the cursor is gone — recompute hover so the reticle drops
+    // its hot color (and the hot-point square clears) instead of staying pinned.
+    this._updateHover(pos, e);
   }
 
 }
