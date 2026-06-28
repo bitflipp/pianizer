@@ -312,8 +312,10 @@
       return;
     }
     const sel = state.selectedNoteIndices.size;
+    const muted = state.notes.reduce((n, note) => n + (note.muted ? 1 : 0), 0);
     const tail = sel > 0 ? ` · ${sel} selected` : '';
-    statusEl.textContent = `${state.notes.length} notes${tail}${HELP_HINT}`;
+    const mutedTail = muted > 0 ? ` · ${muted} muted` : '';
+    statusEl.textContent = `${state.notes.length} notes${tail}${mutedTail}${HELP_HINT}`;
   }
 
   state.addEventListener('loaded',           updateStatus);
