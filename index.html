@@ -233,6 +233,7 @@
   const AUTOSAVE_KEY       = 'pianizer-autosave';
   const VELOCITY_CURVE_KEY = 'pianizer-velocity-curve';
   const RESTRIKE_GAP_KEY   = 'pianizer-restrike-gap';
+  const MIDI_PORT_KEY      = 'pianizer-midi-port';
   const viewKey = () => `pianizer-view-${state.pieceId}`;
 
   // ── Canvas setup ───────────────────────────────────────────────────
@@ -1040,7 +1041,33 @@
   });
 
   document.addEventListener('stop-playback', stopPlayback);
-  document.addEventListener('midi-connect',  () => midiOut.requestAccess());
+  // MIDI port persistence + auto-reconnect. The last-used port id is saved
+  // device-level (not per-score). midiportschanged covers auto-select and
+  // hot-plug; the dropdown's midi-port event covers a manual pick.
+  const savedMidiPort = () => {
+    try { return JSON.parse(localStorage.getItem(MIDI_PORT_KEY)); } catch (_) { return null; }
+  };
+  state.addEventListener('midiportschanged', () => {
+    if (midiOut.outputId) safeSet(MIDI_PORT_KEY, midiOut.outputId);
+  });
+  document.addEventListener('midi-connect', () => midiOut.requestAccess(savedMidiPort()));
+  document.addEventListener('midi-port', e => {
+    midiOut.outputId = e.detail.id;
+    safeSet(MIDI_PORT_KEY, midiOut.outputId);
+  });
+
+  // On load, reconnect silently if the origin's MIDI permission already persists.
+  // requestMIDIAccess needs no user gesture; gating on a 'granted' permission
+  // query keeps a fresh origin from getting an unsolicited prompt — the Connect
+  // button still triggers the prompting request explicitly.
+  (async () => {
+    if (!midiOut.available) return;
+    try {
+      const perm = await navigator.permissions.query({ name: 'midi' });
+      if (perm.state !== 'granted') return;
+    } catch (_) { return; }   // query unsupported → don't prompt unsolicited
+    midiOut.requestAccess(savedMidiPort());
+  })();
 
   const SPEED_VALUES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 

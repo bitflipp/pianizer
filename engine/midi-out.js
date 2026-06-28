@@ -20,15 +20,21 @@ export class MidiOut {
     return this._access?.outputs.get(this.outputId) ?? null;
   }
 
-  async requestAccess() {
+  // preferredId: the last-used port id (persisted by the app layer). Used for the
+  // initial pick and as the hot-plug fallback, so a remembered port wins over the
+  // first-available default — but a still-valid current selection is never yanked.
+  async requestAccess(preferredId = null) {
     this._access = await navigator.requestMIDIAccess({ sysex: false });
+    const pick = () => {
+      if (this.outputId && this._access.outputs.has(this.outputId)) return this.outputId;
+      if (preferredId  && this._access.outputs.has(preferredId))   return preferredId;
+      return this.outputs[0]?.id ?? null;
+    };
     this._access.onstatechange = () => {
-      if (this.outputId && !this._access.outputs.has(this.outputId)) {
-        this.outputId = this.outputs[0]?.id ?? null;
-      }
+      this.outputId = pick();
       state.dispatch('midiportschanged');
     };
-    if (!this.outputId) this.outputId = this.outputs[0]?.id ?? null;
+    this.outputId = pick();
     state.dispatch('midiportschanged');
   }
 
