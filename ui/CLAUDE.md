@@ -264,7 +264,7 @@ Driven by a single `updateStatus()` called on `loaded` and `selectionchanged`.
 ## Help Overlay
 
 Press `?` (Shift+/) to open a centered modal listing all keyboard and mouse shortcuts
-grouped by section (Selection / Editing / View / Playback / Curve lanes). Press `?`
+grouped by section (Selection / Editing / View / Playback / Curve lanes / Soft-pedal lane). Press `?`
 again, Escape, or click outside to dismiss. The shortcut table lives in `HELP_SECTIONS`
 in `index.html` — keep it in sync when adding or changing shortcuts.
 
@@ -356,7 +356,7 @@ Opened by the toolbar's "Vel. curve" button (no keyboard shortcut). An 88-column
 grid (one column per piano key, rows for delta −22…+22 with row 22 = 0). Left-click paints
 a cell; left-drag interpolates between cells across the drag path; right-click resets a
 column to 0. Closed by clicking outside, Escape, or the title-bar ✕. Values stored in
-`state.velocityCurve`, persisted under `pianizer-vel-curve` (device-level calibration,
+`state.velocityCurve`, persisted under `pianizer-velocity-curve` (device-level calibration,
 independent of the loaded project).
 
 ---

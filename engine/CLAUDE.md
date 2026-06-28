@@ -227,9 +227,12 @@ keeps the start tight. For the same reason, the mid-playback reschedule paths in
 `index.html` (`user-seek`, `play-speed`) do **not** call `stopPlayback()` before
 `scheduleFrom` — `schedulePlayback`'s own scoped reset is the only one on the pipe.
 
-**Port management:** `requestAccess()` opens MIDI access, auto-selects first port,
-dispatches `midiportschanged`. `onstatechange` handles hot-plug; if the selected port
-disappears, falls back to the first available.
+**Port management:** `requestAccess(preferredId)` opens MIDI access and dispatches
+`midiportschanged`. The port pick prefers a still-valid current selection, then
+`preferredId` (the persisted last-used port, passed by the app — see `pianizer-midi-port`
+below), then the first available. `onstatechange` handles hot-plug, re-running the same
+pick, so a remembered port wins over the first-available default but a still-valid current
+selection is never yanked.
 
 **Playback timing:** `getPieceTime()` in `index.html` uses `performance.now()` (not
 `AudioContext.currentTime`). `startPlayback()` is synchronous — no async needed.
@@ -270,14 +273,19 @@ natural end and the scrollable range both depend on them.
 
 ## Auto-save / view restore (localStorage)
 
-Four independent localStorage entries, all best-effort (errors swallowed):
+Five independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
   `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`/`softpedalchanged`, and flushed
   on `beforeunload`. Auto-loaded on page open.
 - `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
   on every load.
-- `pianizer-vel-curve` — the 88-element `state.velocityCurve` (clamped to −22…+22 on load),
+- `pianizer-velocity-curve` — the 88-element `state.velocityCurve` (clamped to −22…+22 on load),
   written on every edit. Device-scoped, not score-scoped.
 - `pianizer-restrike-gap` — `state.restrikeGapMs` (clamped 0–200 via `setRestrikeGap` on
   load), written on every `restrikegapchanged`. Device-scoped, not score-scoped.
+- `pianizer-midi-port` — the last-used MIDI output port id, written on every
+  `midiportschanged` (auto-select / hot-plug) and on a manual `midi-port` pick.
+  Device-scoped. On page load the app silently reconnects to it — but only when
+  `navigator.permissions.query({name:'midi'})` already reports `granted`, so a fresh
+  origin isn't hit with an unsolicited prompt; the Connect button still prompts explicitly.
