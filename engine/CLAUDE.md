@@ -30,10 +30,11 @@ custom element both listen to these events.
   track: int,
   channel: int,
   muted: bool,            // toggled via M (state.toggleNoteMutes); skipped at playback, drawn with a diagonal hatch
+  group: 0-4,             // 0/absent = ungrouped; 1-4 assigned via the [4] Group tool (state.setNoteGroups); shown as a badge on the note box
 }
 ```
 Notes are sorted by `startTick` on load (both MusicXML and project). Editing methods
-that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `toggleNoteMutes`,
+that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `setNoteGroups`, `toggleNoteMutes`,
 `addNote`, `deleteNotes`, `moveNotes`/`moveNotesStart`/`moveNotesLive`,
 `resizeNotesRight`/`resizeNotesLeft`/`resizeNoteStart`, `setSelection`) dispatch
 `selectionchanged` so the roll re-renders. (The single-note `resizeNote`/`resizeNoteLeft`
@@ -256,7 +257,7 @@ pauses (rather than stops) so the anchor survives.
 
 `state.saveProject()` / `state.loadProject(data)` — versioned JSON (version: 1).
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
-totalTime, notes (with `id`), pedalPoints, tempoPoints, softPedalRegions
+totalTime, notes (with `id` and `group`), pedalPoints, tempoPoints, softPedalRegions
 (re-normalized on load via `normalizeRegions`), bookmarks. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
 resets and re-renders. `totalTicks` and `totalTime` are written for forward

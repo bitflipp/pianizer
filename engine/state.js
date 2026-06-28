@@ -137,6 +137,20 @@ export class AppState extends EventTarget {
     this.dispatch('selectionchanged');
   }
 
+  // ── Note grouping ──────────────────────────────────────────────────
+
+  // Assigns the given notes to a group (1–4), or clears it with group 0. A note
+  // belongs to at most one group, so this is a plain overwrite — the latest
+  // assignment wins. Group membership is shown as a badge on the note box and
+  // used by the [4] Group tool to narrow a selection.
+  setNoteGroups(indices, group) {
+    this._pushUndo();
+    for (const i of indices) {
+      if (this.notes[i]) this.notes[i].group = group;
+    }
+    this.dispatch('selectionchanged');
+  }
+
   // Toggle mute on the given notes. Muted notes are skipped during playback and
   // marked with a diagonal hatch. If any target note is currently unmuted
   // they all mute; only when every target is already muted do they all unmute —
@@ -186,7 +200,7 @@ export class AppState extends EventTarget {
       timeSignatures: this.timeSignatures.map(s => ({ tick: s.tick, numerator: s.numerator, denominator: s.denominator })),
       totalTicks:     this.totalTicks,
       totalTime:      this.totalTime,
-      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, muted: !!n.muted })),
+      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, muted: !!n.muted, group: n.group ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
       softPedalRegions: this.softPedalRegions.map(r => ({ startTick: r.startTick, endTick: r.endTick })),

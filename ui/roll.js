@@ -55,6 +55,9 @@ export function labelColorFor(fill) {
   return color;
 }
 const NOTE_LABEL_FONT = '9px monospace'; // per-note velocity number
+const NOTE_TAG_FONT   = '7px monospace'; // per-note group badge digit (smaller than the velocity)
+const NOTE_TAG_BG     = '#e6e6e6';       // fixed light badge background — stands out from any velocity fill
+const NOTE_TAG_FG     = '#111';          // dark badge digit, always legible on the light background
 
 // Velocity-mapped note fill. `displayState`: 'normal' | 'hovered' | 'dimmed'
 // Viridis-style blue→green→yellow gradient (low → high velocity). Colorblind-safe:
@@ -493,18 +496,43 @@ export class PianoRoll {
   }
 
   // Draws a clipped, top-left label inside a note box. `y` is the box top
-  // (pitchToY + 1). Used for the per-note velocity number.
-  _drawNoteLabel(x, y, w, text, color, inset = 0) {
+  // (pitchToY + 1). Used for the per-note velocity number, optionally preceded
+  // by a rectangular group badge (group 1–4; 0/undefined draws none). The badge
+  // is drawn first so it's leftmost — on a note too narrow to fit both, the clip
+  // drops the velocity number while the group membership stays visible.
+  _drawNoteLabel(x, y, w, text, color, inset = 0, group = 0) {
     const { ctx } = this;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x + 1, y + 1, w - 2, this.noteHeight - 3);
     ctx.clip();
-    ctx.fillStyle    = color;
-    ctx.font         = NOTE_LABEL_FONT;
     ctx.textBaseline = 'top';
     ctx.textAlign    = 'left';
-    ctx.fillText(text, x + 3 + inset, y + 4);
+
+    let tx = x + 3 + inset;
+    if (group) {
+      // Fixed light chip with a 1px dark inset border and a dark digit, so a
+      // group reads clearly against any velocity fill. Sized to sit fully inside
+      // the clip with even top/bottom margins.
+      ctx.font = NOTE_TAG_FONT;
+      const digit = String(group);
+      const bw = Math.ceil(ctx.measureText(digit).width) + 5;
+      const bh = this.noteHeight - 5;
+      const bx = x + 2 + inset;
+      const by = y + 2;
+      ctx.fillStyle = NOTE_TAG_BG;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = NOTE_TAG_FG;
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      ctx.fillStyle = NOTE_TAG_FG;
+      ctx.fillText(digit, bx + 3, by + 2);
+      tx = bx + bw + 3;
+    }
+
+    ctx.font      = NOTE_LABEL_FONT;
+    ctx.fillStyle = color;
+    ctx.fillText(text, tx, y + 4);
     ctx.restore();
   }
 
@@ -583,7 +611,7 @@ export class PianoRoll {
     // When this note draws a resize grip, nudge the label right past the left handle so
     // the grip doesn't occlude the number.
     const labelInset = hasHandles ? Math.min(HANDLE_WIDTH, w / 2) : 0;
-    this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset);
+    this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset, n.group);
   }
 
   // Diagonal hatch (╱╱╱) over a muted note's box, clipped to it. The stripe color is
