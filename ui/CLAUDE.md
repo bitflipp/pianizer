@@ -16,6 +16,7 @@
 - `Home` — scroll to tick 0
 - `End` — scroll to show last note at right edge
 - `Space` — toggle playback
+- `A` — select all notes
 - `Escape` — clear selection (also cancels in-progress rect if one is active)
 - `Click ruler` / `drag ruler` — seek playhead
 - `Ctrl+click ruler` — add bookmark; `Ctrl+right-click bookmark` — remove

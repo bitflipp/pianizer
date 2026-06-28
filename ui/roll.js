@@ -865,6 +865,10 @@ export class PianoRoll {
     if (!state.loaded) return;
 
     const sel = state.selectedNoteIndices;
+    if ((e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && state.notes.length > 0) {
+      e.preventDefault();
+      state.setSelection(state.notes.map((_, i) => i));
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
       e.preventDefault();
       state.deleteNotes([...sel]);
