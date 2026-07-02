@@ -139,6 +139,14 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Ctrl+drag | Paint / resize / move without snapping |
 | Right-click region | Remove region |
 
+### Velocity curve editor
+
+| Key / gesture | Action |
+|---|---|
+| Click | Paint a cell (sets that key's velocity delta) |
+| Drag | Interpolate cells across the drag path |
+| Right-click | Reset a column to 0 |
+
 ---
 
 ## Project structure

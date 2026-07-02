@@ -48,7 +48,7 @@ pianizer/
     region-lane.js           ← RegionLane: soft-pedal (una corda) lane, binary CC67 regions
     minimap.js               ← Minimap lane: full-piece overview, viewport indicator, click-to-pan
     toolbar.js               ← <ph-toolbar> custom element
-    dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused/forwardWheelToRoll helpers
+    dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused/forwardWheelToRoll helpers + drawTickGrid/drawVerticalLine/drawLaneLabel canvas primitives (roll + lanes)
 ```
 
 ---

@@ -3,13 +3,10 @@ import { state, snapGridTicks } from '../engine/state.js';
 import {
   KEY_WIDTH, HEADER_HEIGHT,
   PITCH_MIN, PITCH_MAX, PITCH_RANGE,
-  canvasPos, isFormFocused,
+  canvasPos, isFormFocused, drawTickGrid, drawVerticalLine,
 } from './dom-utils.js';
 
 const COL_BG         = '#1a1a1a';
-const COL_GRID_BEAT  = '#343434';
-const COL_GRID_BAR   = '#525252';
-const COL_GRID_SUB   = '#212121';
 const COL_RULER_BG   = '#111111';
 const COL_RULER_STRIPE = '#1d1d1d';   // alternating (odd-bar) measure shade over the ruler base
 const COL_RULER_TEXT = '#888888';
@@ -289,33 +286,13 @@ export class PianoRoll {
 
   _drawGrid() {
     if (!state.tempoMap.length) return;
-    const { ctx } = this;
-    const tpb      = state.ticksPerBeat;
+    const tpb       = state.ticksPerBeat;
     const tickStart = this.scrollX;
     const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
-
-    // Lines at or before KEY_WIDTH are skipped — a bar line right at the boundary
-    // would render a light-grey sliver across the key strip.
-    const drawLine = x => {
-      if (x <= KEY_WIDTH) return;
-      ctx.beginPath(); ctx.moveTo(x, HEADER_HEIGHT); ctx.lineTo(x, this.canvas.height); ctx.stroke();
-    };
-
-    ctx.strokeStyle = COL_GRID_SUB; ctx.lineWidth = 0.5;
-    const subTicks = snapGridTicks(state.snapGrid, tpb);
-    for (let t = Math.floor(tickStart / subTicks) * subTicks; t <= tickEnd; t += subTicks) {
-      drawLine(this.tickToX(t));
-    }
-
-    ctx.strokeStyle = COL_GRID_BEAT; ctx.lineWidth = 1;
-    for (let t = Math.floor(tickStart / tpb) * tpb; t <= tickEnd; t += tpb) {
-      drawLine(this.tickToX(t));
-    }
-
-    ctx.strokeStyle = COL_GRID_BAR; ctx.lineWidth = 1.5;
-    for (const { tick } of state.barBoundaries(tickStart, tickEnd)) {
-      drawLine(this.tickToX(tick));
-    }
+    // Lines at or before KEY_WIDTH are skipped (inside drawTickGrid) — a bar line
+    // right at the boundary would render a light-grey sliver across the key strip.
+    drawTickGrid(this.ctx, t => this.tickToX(t), HEADER_HEIGHT, this.canvas.height,
+      tickStart, tickEnd, tpb, snapGridTicks(state.snapGrid, tpb), state.barBoundaries(tickStart, tickEnd));
   }
 
   _drawRuler() {
@@ -712,8 +689,7 @@ export class PianoRoll {
     const x = this.tickToX(state.timeToTick(state.playheadTime));
     if (x <= KEY_WIDTH) return;
     const { ctx } = this;
-    ctx.strokeStyle = COL_PLAYHEAD; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x, HEADER_HEIGHT); ctx.lineTo(x, this.canvas.height); ctx.stroke();
+    drawVerticalLine(ctx, x, HEADER_HEIGHT, this.canvas.height, COL_PLAYHEAD);
     ctx.fillStyle = COL_PLAYHEAD;
     ctx.beginPath(); ctx.moveTo(x-5,0); ctx.lineTo(x+5,0); ctx.lineTo(x,10); ctx.closePath(); ctx.fill();
   }
