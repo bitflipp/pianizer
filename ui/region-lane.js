@@ -19,7 +19,10 @@
 // the set stays disjoint and playback emits one clean CC67 on/off pair per region.
 
 import { state, snapGridTicks } from '../engine/state.js';
-import { KEY_WIDTH, canvasPos, forwardWheelToRoll } from './dom-utils.js';
+import {
+  KEY_WIDTH, canvasPos, forwardWheelToRoll,
+  drawTickGrid, drawVerticalLine, drawLaneLabel,
+} from './dom-utils.js';
 
 const PAD_V          = 5;   // vertical inset of the region bars within the strip
 const EDGE_PX        = 5;   // edge-grab zone width for resizing (px)
@@ -27,9 +30,6 @@ const DRAG_THRESHOLD = 4;   // px of motion before a press becomes a resize/move
 
 const COL_KEY_BG    = '#111';
 const COL_LANE_BG   = '#161616';
-const COL_GRID_SUB  = '#212121';
-const COL_GRID_BEAT = '#343434';
-const COL_GRID_BAR  = '#525252';
 
 // Una corda violet — distinct from the pedal lane's teal and the tempo lane's
 // amber, and clear of the red↔green axis. The hot shade brightens on hover.
@@ -87,27 +87,8 @@ export class RegionLane {
     const tpb       = state.ticksPerBeat;
     const tickStart = this.roll.scrollX;
     const tickEnd   = tickStart + (canvas.width - KEY_WIDTH) / this.roll.pixelsPerTick;
-
-    const drawLine = x => {
-      if (x <= KEY_WIDTH) return;
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    };
-
-    ctx.strokeStyle = COL_GRID_SUB; ctx.lineWidth = 0.5;
-    const subTicks = snapGridTicks(state.snapGrid, tpb);
-    for (let t = Math.floor(tickStart / subTicks) * subTicks; t <= tickEnd; t += subTicks) {
-      drawLine(this.roll.tickToX(t));
-    }
-
-    ctx.strokeStyle = COL_GRID_BEAT; ctx.lineWidth = 1;
-    for (let t = Math.floor(tickStart / tpb) * tpb; t <= tickEnd; t += tpb) {
-      drawLine(this.roll.tickToX(t));
-    }
-
-    ctx.strokeStyle = COL_GRID_BAR; ctx.lineWidth = 1.5;
-    for (const { tick } of state.barBoundaries(tickStart, tickEnd)) {
-      drawLine(this.roll.tickToX(tick));
-    }
+    drawTickGrid(ctx, t => this.roll.tickToX(t), 0, canvas.height,
+      tickStart, tickEnd, tpb, snapGridTicks(state.snapGrid, tpb), state.barBoundaries(tickStart, tickEnd));
   }
 
   _drawRegions() {
@@ -163,25 +144,14 @@ export class RegionLane {
   }
 
   _drawLabel() {
-    const { ctx, canvas } = this;
-    ctx.fillStyle = '#555';
-    ctx.font = '9px monospace';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-    ctx.fillText('U.C.', KEY_WIDTH / 2, canvas.height / 2);
+    drawLaneLabel(this.ctx, this.canvas, 'U.C.');
   }
 
   _drawPlayhead() {
     if (!state.loaded) return;
     const x = this.roll.tickToX(state.timeToTick(state.playheadTime));
     if (x <= KEY_WIDTH) return;
-    const { ctx, canvas } = this;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
+    drawVerticalLine(this.ctx, x, 0, this.canvas.height);
   }
 
   // ── Geometry / hit testing ───────────────────────────────────────────

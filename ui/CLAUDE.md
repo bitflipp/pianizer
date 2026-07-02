@@ -256,8 +256,9 @@ reticle (unlike the curve lanes); the strip's own bars are the indicator.
 
 ## Status Bar (20 px, bottom)
 
-Shows state only — note count, selection count, and a `Press [?] for help` prompt.
-Driven by a single `updateStatus()` called on `loaded` and `selectionchanged`.
+Shows state only — note count, selection count, muted count, and a `Press [?] for
+help` prompt. Driven by a single `updateStatus()` called on `loaded` and
+`selectionchanged`.
 
 ---
 
