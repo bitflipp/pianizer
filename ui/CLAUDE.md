@@ -311,7 +311,7 @@ The group caption replaces the old inline label for Snap/MIDI; only Re-strike ke
 
 ---
 
-## Mini-map (`minimap.js`, 75 px, below pedal lane)
+## Mini-map (`minimap.js`, 75 px, below soft-pedal lane)
 
 Full-piece overview. Shows all notes scaled to fit the canvas, the used pitch range as a
 faint band, bookmark verticals, the playhead, and a translucent viewport indicator that

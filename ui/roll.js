@@ -101,6 +101,14 @@ const MIN_NOTE_PX       = 2;
 const SCROLL_TAIL_BEATS = 16;
 const BOOKMARK_HIT_RADIUS = 8;
 
+// Zoom step, shared by Ctrl+wheel and the +/- keyboard shortcuts (_zoomBy). Asymmetric
+// on purpose: zooming in then out by these factors settles slightly wider than the start,
+// which reads as more natural than a perfectly reversible step.
+const ZOOM_IN_FACTOR  = 1.1;
+const ZOOM_OUT_FACTOR = 0.9;
+const MIN_PIXELS_PER_TICK = 0.01;
+const MAX_PIXELS_PER_TICK = 8;
+
 // Auto-pan during rect-selection drag
 const AUTO_PAN_ZONE = 40;   // px from content edge that triggers panning
 const AUTO_PAN_MAX  = 12;   // px/frame at the edge (speed scales linearly inward)
@@ -215,6 +223,12 @@ export class PianoRoll {
   pitchToY(pitch){ return HEADER_HEIGHT + (PITCH_MAX - pitch) * this.noteHeight - this.scrollY; }
   yToPitch(y)    { return PITCH_MAX - Math.floor((y - HEADER_HEIGHT + this.scrollY) / this.noteHeight); }
   _noteWidthPx(n){ return Math.max(MIN_NOTE_PX, (n.endTick - n.startTick) * this.pixelsPerTick); }
+  // Resize-grip width for a note of pixel width `w`: caps at HANDLE_WIDTH but never
+  // exceeds half the note, so the two grips (left + right) never overlap on a short note.
+  _gripWidth(w)   { return Math.min(HANDLE_WIDTH, w / 2); }
+  // Left-edge hit-zone width for a note of pixel width `w`: caps at HANDLE_WIDTH but
+  // never exceeds the full note (unlike _gripWidth, only one edge is tested here).
+  _leftZoneWidth(w) { return Math.min(HANDLE_WIDTH, w); }
 
   // Full canvas bounding box {x1,y1,x2,y2} of a note — no 1 px gap (that's applied
   // only when drawing). Used for rect-overlap hit-testing and off-screen markers.
@@ -590,7 +604,7 @@ export class PianoRoll {
     // Every note shows its velocity number (label color adapts to the fill via labelColorFor).
     // When this note draws a resize grip, nudge the label right past the left handle so
     // the grip doesn't occlude the number.
-    const labelInset = hasHandles ? Math.min(HANDLE_WIDTH, w / 2) : 0;
+    const labelInset = hasHandles ? this._gripWidth(w) : 0;
     this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset, n.group);
   }
 
@@ -623,7 +637,7 @@ export class PianoRoll {
     const w  = this._noteWidthPx(n);
     const y  = this.pitchToY(n.pitch) + 1;
     const h  = this.noteHeight - 1;
-    const hw = Math.min(HANDLE_WIDTH, w / 2);
+    const hw = this._gripWidth(w);
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.fillRect(x, y, hw, h);
     ctx.fillRect(x + w - hw, y, hw, h);
@@ -738,7 +752,7 @@ export class PianoRoll {
     return this._hitNote(pos, n => {
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
-      return pos.x >= nx && pos.x < nx + Math.min(HANDLE_WIDTH, w);
+      return pos.x >= nx && pos.x < nx + this._leftZoneWidth(w);
     });
   }
 
@@ -748,7 +762,7 @@ export class PianoRoll {
       const nx = this.tickToX(n.startTick);
       const w  = this._noteWidthPx(n);
       if (pos.x < nx || pos.x >= nx + w) return false;
-      if (pos.x < nx + Math.min(HANDLE_WIDTH, w)) return false;
+      if (pos.x < nx + this._leftZoneWidth(w)) return false;
       if (Math.abs(pos.x - (nx + w)) <= EDGE_THRESHOLD) return false;
       return true;
     });
@@ -866,8 +880,8 @@ export class PianoRoll {
 
     // Zoom toward the viewport center (no cursor to anchor on). '+' is typically
     // Shift+'='; accept both glyphs so the unshifted '=' works too.
-    if (e.key === '+' || e.key === '=') { e.preventDefault(); this._zoomBy(1.1, KEY_WIDTH + this.rollWidth / 2); }
-    if (e.key === '-' || e.key === '_') { e.preventDefault(); this._zoomBy(0.9, KEY_WIDTH + this.rollWidth / 2); }
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); this._zoomBy(ZOOM_IN_FACTOR,  KEY_WIDTH + this.rollWidth / 2); }
+    if (e.key === '-' || e.key === '_') { e.preventDefault(); this._zoomBy(ZOOM_OUT_FACTOR, KEY_WIDTH + this.rollWidth / 2); }
   }
 
   // Briefly surface a message in the status bar (handled in index.html).
@@ -1540,7 +1554,7 @@ export class PianoRoll {
   _onWheel(e) {
     e.preventDefault();
     const pos    = this._canvasPos(e);
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const factor = e.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
 
     if (e.ctrlKey || e.metaKey) {
       this._zoomBy(factor, pos.x);
@@ -1554,7 +1568,7 @@ export class PianoRoll {
   // coordinate) fixed. Shared by Ctrl+wheel and the +/- keyboard shortcuts.
   _zoomBy(factor, anchorX) {
     const anchorTick   = this.xToTick(anchorX);
-    this.pixelsPerTick = Math.max(0.01, Math.min(8, this.pixelsPerTick * factor));
+    this.pixelsPerTick = Math.max(MIN_PIXELS_PER_TICK, Math.min(MAX_PIXELS_PER_TICK, this.pixelsPerTick * factor));
     this.scrollX       = this._clampScrollX(anchorTick - (anchorX - KEY_WIDTH) / this.pixelsPerTick);
     this.render();
   }
