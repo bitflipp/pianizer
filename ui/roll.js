@@ -786,6 +786,7 @@ export class PianoRoll {
     c.addEventListener('mousedown',  e  => this._onMouseDown(e));
     c.addEventListener('wheel',      e  => this._onWheel(e), { passive: false });
     c.addEventListener('click',      e  => this._onClick(e));
+    c.addEventListener('dblclick',   e  => this._onDblClick(e));
     c.addEventListener('mouseleave', () => this._onMouseLeave());
     window.addEventListener('keyup', e => {
       if (e.key === 'Alt' && !this._panning) this._refreshCursor();
@@ -1499,6 +1500,34 @@ export class PianoRoll {
     this.canvas.dispatchEvent(new CustomEvent('user-seek', {
       bubbles: true, detail: { time }
     }));
+  }
+
+  // Double-clicking a grouped note selects every other member of that group
+  // currently in view (same cull as the draw loop: visible tick window + pitch
+  // row on screen), rather than the whole group regardless of scroll position.
+  _onDblClick(e) {
+    if (!state.loaded) return;
+    const pos = this._canvasPos(e);
+    if (pos.x < KEY_WIDTH || pos.y < HEADER_HEIGHT) return;
+
+    const ni = this._noteAtPos(pos);
+    if (ni === -1) return;
+    const group = state.notes[ni].group;
+    if (!group) return;
+    e.stopPropagation();
+
+    const tickStart = this.scrollX;
+    const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
+    const visible = [];
+    for (let i = 0; i < state.notes.length; i++) {
+      const n = state.notes[i];
+      if (n.group !== group) continue;
+      if (n.endTick < tickStart || n.startTick > tickEnd) continue;
+      const ny = this.pitchToY(n.pitch);
+      if (ny + this.noteHeight < HEADER_HEIGHT || ny > this.canvas.height) continue;
+      visible.push(i);
+    }
+    state.setSelection(visible);
   }
 
   _onWheel(e) {

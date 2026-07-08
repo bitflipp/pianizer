@@ -60,6 +60,7 @@ Single-click selection follows this matrix (the empty-space row always wins):
 | any | any | no  | `selection = []` |
 
 - **Left click note** — select just that note (Shift+click toggles it against an existing selection: adds it if absent, removes it if already selected)
+- **Double-click grouped note** — select every member of that note's group ([4] Group tool) that's currently **visible** (same on-screen cull as the draw loop), replacing the selection. Double-clicking an ungrouped note does nothing extra (falls through to the two plain clicks)
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
 - **Left drag empty** — draws a **teal** rubber-band; overlapping notes **replace** the selection on release
 - **Shift+left drag empty** — same teal rubber-band, but overlapping notes **extend** the selection (union)
