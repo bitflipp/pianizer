@@ -29,12 +29,13 @@ custom element both listen to these events.
   endTick: int,
   track: int,
   channel: int,
-  muted: bool,            // toggled via M (state.toggleNoteMutes); skipped at playback, drawn with a diagonal hatch
+  muted: bool,            // toggled via M (state.toggleNoteMutes); skipped at playback, drawn with a diagonal hatch. Mutually exclusive with soloed — setting one clears the other
+  soloed: bool,           // toggled via S (state.toggleNoteSolos); while any note is soloed, only soloed notes play. Mutually exclusive with muted
   group: 0-4,             // 0/absent = ungrouped; 1-4 assigned via the [4] Group tool (state.setNoteGroups); shown as a badge on the note box
 }
 ```
 Notes are sorted by `startTick` on load (both MusicXML and project). Editing methods
-that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `setNoteGroups`, `toggleNoteMutes`,
+that mutate notes (`setNoteVelocities`, `setNoteVelocitiesMap`, `setNoteGroups`, `toggleNoteMutes`, `toggleNoteSolos`,
 `addNote`, `deleteNotes`, `moveNotes`/`moveNotesStart`/`moveNotesLive`,
 `resizeNotesRight`/`resizeNotesLeft`/`resizeNoteStart`, `setSelection`) dispatch
 `selectionchanged` so the roll re-renders. (The single-note `resizeNote`/`resizeNoteLeft`
@@ -183,6 +184,7 @@ timestamps.
   to `nowMs+5`), so starting playback in the middle of a held note still sounds it —
   consistent with the pedal level, which is likewise chased (asserted) at the start
 - **Muted notes** (`n.muted`) are filtered out of `sortedNotes`, so they never sound; the flag is per-note, toggled with `M` (`state.toggleNoteMutes`), and persisted in project JSON
+- **Soloed notes** (`n.soloed`, toggled with `S` / `state.toggleNoteSolos`, persisted in project JSON): while any note in the piece is soloed, `sortedNotes`' filter flips from "not muted" to "is soloed" — every non-soloed note is excluded regardless of its own `muted` flag. Mutually exclusive with `muted` at the state layer (setting one on a note clears the other), so a soloed note is never also muted
 - **Re-strike gap** (`state.restrikeGapMs`, default 60 ms, `0` disables): each note's
   off is pulled in so the same key (pitch+channel) is released at least that many ms
   (wall-clock) before its next strike, giving a real grand's hammer/jack/damper time

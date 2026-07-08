@@ -91,6 +91,9 @@ export class MidiOut {
     // Notes are kept if they start after the start point — or started before it
     // but are still sounding (noteEnd > startTime): those are *chased*, scheduled
     // immediately at the start so beginning playback mid-held-note still sounds it.
+    // While any note is soloed, only soloed notes sound — solo overrides mute (the
+    // two are mutually exclusive per-note anyway, see toggleNoteSolos/toggleNoteMutes).
+    const hasSolo = state.notes.some(n => n.soloed);
     const sortedNotes = state.notes
       .map(n => ({
         n,
@@ -98,7 +101,7 @@ export class MidiOut {
         noteEnd:   state.tickToTime(n.endTick),
       }))
       .filter(({ n, noteStart, noteEnd }) =>
-        !n.muted && (noteStart >= startTime - 0.05 || noteEnd > startTime))
+        (hasSolo ? n.soloed : !n.muted) && (noteStart >= startTime - 0.05 || noteEnd > startTime))
       .sort((a, b) => a.noteStart - b.noteStart);
 
     // For each note, the onset (piece seconds) of the next note that re-strikes

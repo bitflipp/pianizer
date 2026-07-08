@@ -398,6 +398,7 @@ export class PianoRoll {
     const tickEnd   = tickStart + this.rollWidth / this.pixelsPerTick;
     const effective = this._effectiveSelection();
     const hasSel    = effective.set.size > 0;
+    const hasSolo   = state.notes.some(n => n.soloed);
 
     this._ensureNoteCaches();
 
@@ -428,7 +429,7 @@ export class PianoRoll {
       if (n.endTick < tickStart || n.startTick > tickEnd) continue;
       const ny = this.pitchToY(n.pitch);
       if (ny + this.noteHeight < HEADER_HEIGHT || ny > this.canvas.height) continue;
-      this._drawNote(i, n, effective, hasSel, handleSet !== null && handleSet.has(i));
+      this._drawNote(i, n, effective, hasSel, hasSolo, handleSet !== null && handleSet.has(i));
     }
 
     if (handleSet) {
@@ -534,7 +535,7 @@ export class PianoRoll {
     return { set, addingHits: this._rectHitSet, removingHits: removing, inDrag: true };
   }
 
-  _drawNote(i, n, effective, hasSel, hasHandles) {
+  _drawNote(i, n, effective, hasSel, hasSolo, hasHandles) {
     const { ctx } = this;
     const x = this.tickToX(n.startTick);
     const w = this._noteWidthPx(n);
@@ -560,8 +561,10 @@ export class PianoRoll {
     let colorState = 'normal';
     // willRemove dims explicitly (independent of hasSel — removing the whole
     // selection empties the effective set, but departing notes should still dim).
+    // hasSolo dims every non-soloed note the same way hasSel dims the unselected —
+    // "only the soloed notes will play" reads at a glance across the whole roll.
     if (willRemove) colorState = 'dimmed';
-    else if (hasSel && !selected && !willAdd && !hovered) colorState = 'dimmed';
+    else if ((hasSel && !selected || hasSolo && !n.soloed) && !willAdd && !hovered) colorState = 'dimmed';
     else if (hovered || willAdd) colorState = 'hovered';
 
     // A coincident (unplayable) note is painted red regardless of selection/dim state —
@@ -853,6 +856,10 @@ export class PianoRoll {
     if ((e.key === 'm' || e.key === 'M') && sel.size > 0) {
       e.preventDefault();
       state.toggleNoteMutes([...sel]);
+    }
+    if ((e.key === 's' || e.key === 'S') && sel.size > 0) {
+      e.preventDefault();
+      state.toggleNoteSolos([...sel]);
     }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); this._seekToBookmark(-1); }
     if (e.key === 'ArrowRight') { e.preventDefault(); this._seekToBookmark( 1); }

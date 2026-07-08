@@ -155,11 +155,30 @@ export class AppState extends EventTarget {
   // marked with a diagonal hatch. If any target note is currently unmuted
   // they all mute; only when every target is already muted do they all unmute —
   // so a mixed selection resolves to "all muted" first, matching DAW [M] behaviour.
+  // Muting a note clears its solo (the two are mutually exclusive).
   toggleNoteMutes(indices) {
     this._pushUndo();
     const targets = indices.map(i => this.notes[i]).filter(Boolean);
     const muteAll = targets.some(n => !n.muted);
-    for (const n of targets) n.muted = muteAll;
+    for (const n of targets) {
+      n.muted = muteAll;
+      if (muteAll) n.soloed = false;
+    }
+    this.dispatch('selectionchanged');
+  }
+
+  // Toggle solo on the given notes. While any note in the piece is soloed, playback
+  // skips every non-soloed note (soloed notes' own `muted` flag is moot — solo wins).
+  // Same "mixed selection resolves to all-on first" rule as toggleNoteMutes. Soloing
+  // a note clears its mute (the two are mutually exclusive).
+  toggleNoteSolos(indices) {
+    this._pushUndo();
+    const targets = indices.map(i => this.notes[i]).filter(Boolean);
+    const soloAll = targets.some(n => !n.soloed);
+    for (const n of targets) {
+      n.soloed = soloAll;
+      if (soloAll) n.muted = false;
+    }
     this.dispatch('selectionchanged');
   }
 
@@ -200,7 +219,7 @@ export class AppState extends EventTarget {
       timeSignatures: this.timeSignatures.map(s => ({ tick: s.tick, numerator: s.numerator, denominator: s.denominator })),
       totalTicks:     this.totalTicks,
       totalTime:      this.totalTime,
-      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, muted: !!n.muted, group: n.group ?? 0 })),
+      notes:          this.notes.map(n => ({ id: n.id, pitch: n.pitch, velocity: n.velocity, startTick: n.startTick, endTick: n.endTick, track: n.track ?? 0, channel: n.channel ?? 0, muted: !!n.muted, soloed: !!n.soloed, group: n.group ?? 0 })),
       pedalPoints:    this.pedalPoints.map(p => ({ tick: p.tick, value: p.value })),
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
       softPedalRegions: this.softPedalRegions.map(r => ({ startTick: r.startTick, endTick: r.endTick })),
