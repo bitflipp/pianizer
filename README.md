@@ -76,6 +76,8 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 |---|---|
 | Click note | Select just that note |
 | Shift+click note | Toggle note in the selection (add, or remove if already selected) |
+| Double-click grouped note | Select all visible members of that note's group |
+| A | Select all notes |
 | Drag empty | Rectangle select (replaces selection) |
 | Shift+drag empty | Rectangle select (extends selection) |
 | Click empty | Clear selection |
