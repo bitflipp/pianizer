@@ -29,7 +29,8 @@
 - `Left drag note left/right edge` — resize start / end (snapped to grid, **no modifier**); if the dragged note is selected, all selected notes resize together by the same tick delta. The note under the cursor draws explicit left/right grip bars on hover — and if that note is selected, every selected note draws them (they all resize as a unit). Resizing **selects** the resized note(s) (like move) and the trailing click is suppressed (`_didResize`), so a multi-note resize keeps its selection rather than collapsing onto the edge
 - Moving and resizing need **no modifier** — a press on a note's body moves it, on an edge resizes it; a press on empty space starts a rubber-band. **Alt** is reserved (insert), so an Alt-press over a note does *not* move it — it begins an insert drag.
 - `Delete` / `Backspace` — delete selected notes
-- `M` — mute / unmute selected notes. `state.toggleNoteMutes` flips the `muted` flag: a mixed selection mutes all first, and only unmutes once every selected note is already muted. Muted notes are skipped during playback (`midi-out.js`) and marked with a diagonal hatch over their velocity color (see Note Coloring)
+- `M` — mute / unmute selected notes. `state.toggleNoteMutes` flips the `muted` flag: a mixed selection mutes all first, and only unmutes once every selected note is already muted. Muted notes are skipped during playback (`midi-out.js`) and marked with a diagonal hatch over their velocity color (see Note Coloring). Muting a note clears its `soloed` flag
+- `S` — solo / unsolo selected notes. `state.toggleNoteSolos` mirrors `toggleNoteMutes` (mixed selection solos all first). While any note is soloed, every non-soloed note is skipped during playback and dimmed on the roll (see Note Coloring). Soloing a note clears its `muted` flag — the two are mutually exclusive
 - `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) — undo / redo
 
 **Canvas coordinate scaling:** `_canvasPos(e)` scales mouse CSS coordinates by
@@ -117,8 +118,8 @@ saturation 60–90% and lightness 32–65% both ramping with velocity. The palet
 encodes velocity as brightness, so don't flatten lightness to a constant. Three display
 states adjust the base lightness:
 - **Normal**: notes in the current selection, or all notes when nothing is selected
-- **Dimmed**: unselected notes when a selection exists (lightness × 0.55)
-- **Highlighted**: hovered note (or, when the hovered note is selected, the whole selection — they read as one unit), or notes being added by an in-progress rect drag (lightness + 16, capped at 80%)
+- **Dimmed**: unselected notes when a selection exists (lightness × 0.55); also every non-soloed note whenever any note in the piece is soloed (same × 0.55, see Soloed notes below) — the two dimming triggers are just OR'd, so a note can be dimmed by either or both
+- **Highlighted**: hovered note (or, when the hovered note is selected, the whole selection — they read as one unit), or notes being added by an in-progress rect drag (lightness + 16, capped at 80%); hovering overrides dimming from either trigger
 
 **Unplayable notes** are painted a flat **warning red** (`COL_UNPLAYABLE` /
 `COL_UNPLAYABLE_HOVERED` in `roll.js`) overriding the velocity fill — two (or more) notes on
@@ -139,6 +140,16 @@ desaturated teal-greys of the viridis ramp. The hatch stripe color is picked fro
 fill's luminance the same way the velocity label is (`labelColorFor`: white over dark
 low-velocity blues, black over bright yellows), so it always contrasts. Toggled with `M`
 (`state.toggleNoteMutes`); skipped by the MIDI scheduler.
+
+**Soloed notes** (`n.soloed`) keep their velocity-mapped fill and draw no marker of their
+own — the moment any note in the piece is soloed, every *non*-soloed note dims instead
+(the same dimmed display state unselected notes get — see above), so "only these will
+play" reads across the whole roll purely by leaving the soloed notes at normal brightness
+against a dimmed field; no separate border is needed since the untouched-vs-dimmed
+contrast is already hard to miss (unlike mute, which needs its own hatch because a muted
+note sits alone amid otherwise-normal notes). Toggled with `S` (`state.toggleNoteSolos`);
+mutually exclusive with `muted` (setting one on a note clears the other) and honored by
+the MIDI scheduler, which plays only soloed notes while any exist.
 
 Selected notes are distinguished by border weight: 2 px solid white vs 1 px semi-transparent
 white for others. Label text color is **luminance-adaptive** (`labelColorFor` in `roll.js`):
@@ -257,8 +268,8 @@ reticle (unlike the curve lanes); the strip's own bars are the indicator.
 
 ## Status Bar (20 px, bottom)
 
-Shows state only — note count, selection count, muted count, and a `Press [?] for
-help` prompt. Driven by a single `updateStatus()` called on `loaded` and
+Shows state only — note count, selection count, muted count, soloed count, and a
+`Press [?] for help` prompt. Driven by a single `updateStatus()` called on `loaded` and
 `selectionchanged`.
 
 ---

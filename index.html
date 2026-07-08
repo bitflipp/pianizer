@@ -314,9 +314,11 @@
     }
     const sel = state.selectedNoteIndices.size;
     const muted = state.notes.reduce((n, note) => n + (note.muted ? 1 : 0), 0);
+    const soloed = state.notes.reduce((n, note) => n + (note.soloed ? 1 : 0), 0);
     const tail = sel > 0 ? ` · ${sel} selected` : '';
     const mutedTail = muted > 0 ? ` · ${muted} muted` : '';
-    statusEl.textContent = `${state.notes.length} notes${tail}${mutedTail}${HELP_HINT}`;
+    const soloedTail = soloed > 0 ? ` · ${soloed} soloed` : '';
+    statusEl.textContent = `${state.notes.length} notes${tail}${mutedTail}${soloedTail}${HELP_HINT}`;
   }
 
   state.addEventListener('loaded',           updateStatus);
@@ -427,6 +429,7 @@
       ['Drag left / right edge',  'Resize note start / end (handles show on hover)'],
       ['Delete / Backspace',      'Delete selected notes'],
       ['M',                       'Mute / unmute selected notes'],
+      ['S',                       'Solo / unsolo selected notes (mutually exclusive with mute)'],
       ['Ctrl+Z / Ctrl+Y',         'Undo / redo'],
     ]],
     ['View', [
