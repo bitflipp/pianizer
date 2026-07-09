@@ -34,6 +34,11 @@ export class AppState extends EventTarget {
     // Bookmarks — [tick] sorted, navigation only (not part of undo)
     this.bookmarks = [];
 
+    // A/B loop markers — tick or null, navigation only (not part of undo). Cycled
+    // by L: unset → A set → both set (loop active once B > A) → unset.
+    this.loopA = null;
+    this.loopB = null;
+
     // Pedal curve — [{tick, value}] sorted by tick, value 0–1
     this.pedalPoints = [];
 
@@ -83,6 +88,8 @@ export class AppState extends EventTarget {
     this.tempoPoints    = [];
     this.softPedalRegions = [];
     this.bookmarks      = [];
+    this.loopA          = null;
+    this.loopB          = null;
     this.pieceId        = crypto.randomUUID();
     this._finishLoad();
   }
@@ -208,6 +215,26 @@ export class AppState extends EventTarget {
     this.dispatch('bookmarkschanged');
   }
 
+  // ── A/B loop ───────────────────────────────────────────────────────
+
+  // Advances the unset → A set → both set → unset cycle from the current
+  // playhead tick. A third press always clears, regardless of ordering. If the
+  // second press lands exactly on A, both stay set at the same tick (a
+  // zero-length loop plays as if inactive — see midi playback's loopB > loopA
+  // check) rather than silently discarding the press.
+  cycleLoopMarker(tick) {
+    if (this.loopA === null) {
+      this.loopA = tick;
+    } else if (this.loopB === null) {
+      this.loopB = Math.max(tick, this.loopA);
+      this.loopA = Math.min(tick, this.loopA);
+    } else {
+      this.loopA = null;
+      this.loopB = null;
+    }
+    this.dispatch('loopchanged');
+  }
+
   // ── Project save / load ────────────────────────────────────────────
 
   saveProject() {
@@ -224,6 +251,8 @@ export class AppState extends EventTarget {
       tempoPoints:    this.tempoPoints.map(p => ({ tick: p.tick, value: p.value })),
       softPedalRegions: this.softPedalRegions.map(r => ({ startTick: r.startTick, endTick: r.endTick })),
       bookmarks:      this.bookmarks.slice(),
+      loopA:          this.loopA,
+      loopB:          this.loopB,
     };
   }
 
@@ -238,6 +267,8 @@ export class AppState extends EventTarget {
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
     this.softPedalRegions = normalizeRegions(data.softPedalRegions ?? []);
     this.bookmarks      = (data.bookmarks  ?? []).map(Number).sort((a, b) => a - b);
+    this.loopA          = typeof data.loopA === 'number' ? data.loopA : null;
+    this.loopB          = typeof data.loopB === 'number' ? data.loopB : null;
     this.pieceId        = data.pieceId ?? crypto.randomUUID();
     this._finishLoad();
   }

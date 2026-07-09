@@ -220,6 +220,44 @@ describe('resizeNoteLeft', () => {
 
 // ── pedal / tempo curve CRUD ──────────────────────────────────────────────────
 
+describe('A/B loop', () => {
+  test('cycleLoopMarker sets A, then B, then clears', () => {
+    const s = mkState();
+    expect(s.loopA).toBeNull();
+    expect(s.loopB).toBeNull();
+
+    s.cycleLoopMarker(480);
+    expect(s.loopA).toBe(480);
+    expect(s.loopB).toBeNull();
+
+    s.cycleLoopMarker(1920);
+    expect(s.loopA).toBe(480);
+    expect(s.loopB).toBe(1920);
+
+    s.cycleLoopMarker(2400);
+    expect(s.loopA).toBeNull();
+    expect(s.loopB).toBeNull();
+  });
+
+  test('cycleLoopMarker orders A before B regardless of press order', () => {
+    const s = mkState();
+    s.cycleLoopMarker(1920);
+    s.cycleLoopMarker(480);
+    expect(s.loopA).toBe(480);
+    expect(s.loopB).toBe(1920);
+  });
+
+  test('cycleLoopMarker dispatches loopchanged', () => {
+    const s = mkState();
+    const seen = [];
+    s.addEventListener('loopchanged', () => seen.push([s.loopA, s.loopB]));
+    s.cycleLoopMarker(480);
+    s.cycleLoopMarker(1920);
+    s.cycleLoopMarker(2400);
+    expect(seen).toEqual([[480, null], [480, 1920], [null, null]]);
+  });
+});
+
 describe('pedal curve', () => {
   test('addPedalPoint inserts sorted', () => {
     const s = mkState();
@@ -320,6 +358,27 @@ describe('project round-trip', () => {
     const s2 = new AppState();
     s2.loadProject(s.saveProject());
     expect(s2.bookmarks).toEqual([960, 1920]);
+  });
+
+  test('round-trips A/B loop markers', () => {
+    const s = mkState();
+    s.cycleLoopMarker(480);
+    s.cycleLoopMarker(1920);
+    const s2 = new AppState();
+    s2.loadProject(s.saveProject());
+    expect(s2.loopA).toBe(480);
+    expect(s2.loopB).toBe(1920);
+  });
+
+  test('loop markers load as null when absent from an older project file', () => {
+    const s = mkState();
+    const proj = s.saveProject();
+    delete proj.loopA;
+    delete proj.loopB;
+    const s2 = new AppState();
+    s2.loadProject(proj);
+    expect(s2.loopA).toBeNull();
+    expect(s2.loopB).toBeNull();
   });
 
   test('loadProject recomputes totalTime from tempoMap', () => {

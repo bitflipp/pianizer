@@ -30,6 +30,8 @@ auto-humanization — the tool is an instrument.
   pedal on and off
 - **Minimap** — full-piece overview with viewport indicator; click or drag to pan
 - **Bookmarks** — ruler markers added with Ctrl+click; `←`/`→` seek between them
+- **A/B loop** — press `L` to cycle a loop start/end marker at the playhead; playback
+  wraps between them until cleared
 - **Web MIDI output** — lookahead scheduler (30 ms tick / 150 ms window) sends
   note on/off, CC64 (sustain) and CC67 (soft pedal) to any browser MIDI port
   (e.g. FluidSynth, hardware piano); an adjustable re-strike gap gives a repeated
@@ -121,6 +123,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Ctrl+click ruler | Add bookmark |
 | Ctrl+right-click bookmark | Remove bookmark |
 | ← / → | Seek to prev / next bookmark |
+| L | Cycle A/B loop marker at the playhead (unset → A → both → unset) |
 
 ### Curve lanes (pedal / tempo)
 

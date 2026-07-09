@@ -13,6 +13,10 @@ const COL_RULER_TEXT = '#888888';
 const COL_PLAYHEAD   = '#ffffff';
 const COL_BOOKMARK     = '#e08030';
 const COL_BOOKMARK_HOT = '#ffb060';
+// A/B loop — blue, kept distinct from bookmark orange, pedal teal, tempo amber and
+// soft-pedal violet, and clear of the red↔green axis.
+const COL_LOOP        = '#4ea6ff';
+const COL_LOOP_REGION = 'rgba(78,166,255,0.08)';
 
 // Relative luminance (WCAG) of an `hsl(h,s%,l%)` string, 0 (black) … 1 (white).
 // HSL lightness alone isn't perceptual — gold and blue at the same `l` differ
@@ -267,12 +271,14 @@ export class PianoRoll {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBackground();
     this._drawGrid();
+    this._drawLoopRegion();
     this._drawNotes();
     this._drawInsertPreview();
     this._drawRectSelection();
     this._drawOffscreenSelection();
     this._drawLaneReticles();
     this._drawPlayhead();
+    this._drawLoopBoundaries();
     this._drawRuler();
     this._drawKeys();
     this.onPostRender?.();
@@ -307,6 +313,33 @@ export class PianoRoll {
     // right at the boundary would render a light-grey sliver across the key strip.
     drawTickGrid(this.ctx, t => this.tickToX(t), HEADER_HEIGHT, this.canvas.height,
       tickStart, tickEnd, tpb, snapGridTicks(state.snapGrid, tpb), state.barBoundaries(tickStart, tickEnd));
+  }
+
+  // Translucent A/B loop tint over the roll content, between the two markers.
+  // Drawn right after the grid (before notes) so it reads as a background band
+  // rather than sitting on top of anything. No tint until both markers are set.
+  _drawLoopRegion() {
+    if (state.loopA === null || state.loopB === null) return;
+    const xa = this.tickToX(state.loopA);
+    const xb = this.tickToX(state.loopB);
+    const x0 = Math.max(Math.min(xa, xb), KEY_WIDTH);
+    const x1 = Math.min(Math.max(xa, xb), this.canvas.width);
+    if (x1 <= x0) return;
+    this.ctx.fillStyle = COL_LOOP_REGION;
+    this.ctx.fillRect(x0, HEADER_HEIGHT, x1 - x0, this.canvas.height - HEADER_HEIGHT);
+  }
+
+  // Solid A/B boundary lines, drawn alongside the playhead so they stay visible
+  // over notes. A lone A marker (B not yet set) still draws its line.
+  _drawLoopBoundaries() {
+    if (state.loopA !== null) this._drawLoopLine(state.loopA);
+    if (state.loopB !== null) this._drawLoopLine(state.loopB);
+  }
+
+  _drawLoopLine(tick) {
+    const x = this.tickToX(tick);
+    if (x <= KEY_WIDTH || x > this.canvas.width) return;
+    drawVerticalLine(this.ctx, x, HEADER_HEIGHT, this.canvas.height, COL_LOOP);
   }
 
   _drawRuler() {
@@ -363,6 +396,24 @@ export class PianoRoll {
       ctx.closePath();
       ctx.fill();
     }
+
+    // A/B loop markers — downward flags at the top edge of the ruler, distinct
+    // from the bookmark triangles (which point up from the bottom edge).
+    const drawLoopFlag = (tick, label) => {
+      const x = this.tickToX(tick);
+      if (x <= KEY_WIDTH || x > this.canvas.width) return;
+      ctx.fillStyle = COL_LOOP;
+      ctx.beginPath();
+      ctx.moveTo(x - 5, 0);
+      ctx.lineTo(x + 5, 0);
+      ctx.lineTo(x,      6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText(label, x - 3, HEADER_HEIGHT - 4);
+    };
+    if (state.loopA !== null) drawLoopFlag(state.loopA, 'A');
+    if (state.loopB !== null) drawLoopFlag(state.loopB, 'B');
   }
 
   _drawKeys() {
@@ -796,6 +847,7 @@ export class PianoRoll {
     state.addEventListener('pedalchanged',     () => this.render());
     state.addEventListener('tempochanged',     () => this.render());
     state.addEventListener('bookmarkschanged', () => this.render());
+    state.addEventListener('loopchanged',      () => this.render());
   }
 
   _bindEvents() {
@@ -843,6 +895,10 @@ export class PianoRoll {
     if (e.key === ' ' && state.loaded) {
       e.preventDefault();
       document.dispatchEvent(new CustomEvent('toggle-playback'));
+    }
+    if ((e.key === 'l' || e.key === 'L') && state.loaded) {
+      e.preventDefault();
+      state.cycleLoopMarker(state.timeToTick(state.playheadTime));
     }
     if (e.key === 'Home' && state.loaded) {
       e.preventDefault();

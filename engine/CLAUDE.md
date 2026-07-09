@@ -9,7 +9,7 @@ custom element both listen to these events.
 **Communication flow:**
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
   `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `softpedalchanged`,
-  `midiportschanged`, `undochanged`, `bookmarkschanged`, `playspeedchanged`,
+  `midiportschanged`, `undochanged`, `bookmarkschanged`, `loopchanged`, `playspeedchanged`,
   `restrikegapchanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle
@@ -53,6 +53,11 @@ undo, dispatches `selectionchanged`.
 - `state.pieceId` — UUID assigned per loaded score / project; used to key per-piece view state in localStorage
 - `state.selectedNoteIndices` — `Set<int>`, indices into `state.notes`
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
+- `state.loopA` / `state.loopB` — A/B loop tick markers, or `null`; cycled by `L`
+  (`state.cycleLoopMarker`: unset → A set → both set → unset, ordered low→high on the
+  second press). Loop playback is active once both are set and `loopB > loopA`
+  (equal ticks from a same-position second press play as inactive). Navigation-only,
+  like bookmarks — not part of undo, persisted in project JSON
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
 - `state.softPedalRegions` — `[{startTick, endTick}]` sorted by startTick, disjoint & merged; binary una corda, drives CC67. Edited via the region lane; `addSoftPedalRegion` (paint commit), `removeSoftPedalRegionAt`, and the drag trio `beginSoftPedalEdit` / `resizeSoftPedalRegion` / `moveSoftPedalRegion` / `endSoftPedalEdit` (the live resize/move may overlap; `normalizeRegions` merges on commit). Dispatches `softpedalchanged`
@@ -256,6 +261,15 @@ cleared by Stop (■) and on file load. Each Play snaps the playhead back to the
 anchor before scheduling so the same passage can be replayed. Natural end-of-piece
 pauses (rather than stops) so the anchor survives.
 
+**A/B loop:** `index.html`'s `tick()` checks `state.loopA`/`loopB` every frame during
+playback — once the piece time reaches `loopB` (and `loopB > loopA`), it calls
+`scheduleFrom(loopA time)` instead of running to the natural end, which rebases the
+clock and MIDI scheduling back to A the same way a manual seek does. This is a pure
+playback-time check: it doesn't touch `playAnchor`, so Pause/Stop still snap back to
+wherever the user last explicitly seeked, not to A — the loop only governs what
+happens at the B boundary while playing. A play-through that starts after B or never
+reaches it (loop set while paused, then seeked past B) simply never wraps.
+
 ---
 
 ## Project Save/Load
@@ -263,7 +277,7 @@ pauses (rather than stops) so the anchor survives.
 `state.saveProject()` / `state.loadProject(data)` — versioned JSON (version: 1).
 Includes: pieceId, ticksPerBeat, tempoMap, timeSignatures, totalTicks,
 totalTime, notes (with `id` and `group`), pedalPoints, tempoPoints, softPedalRegions
-(re-normalized on load via `normalizeRegions`), bookmarks. On
+(re-normalized on load via `normalizeRegions`), bookmarks, loopA/loopB. On
 load, notes are re-sorted by startTick and `loaded` is dispatched so the roll
 resets and re-renders. `totalTicks` and `totalTime` are written for forward
 compatibility but always recomputed from the notes / tempo curve on load (the
