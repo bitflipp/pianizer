@@ -21,6 +21,7 @@
 - `Click ruler` / `drag ruler` — seek playhead
 - `Ctrl+click ruler` — add bookmark; `Ctrl+right-click bookmark` — remove
 - `← / →` — seek to previous / next bookmark (wraps)
+- `L` — cycle the A/B loop marker at the current playhead position (unset → A set → both set → unset)
 - `Alt+left click` — insert new note (default duration = one snap step at the current grid, velocity 64, tick snapped, immediately selected)
 - `Alt+left drag` — insert a new note whose **duration is set by the drag** (a live dashed ghost previews it; onset snapped at press, the moving end snapped to grid like a resize; pitch fixed at the press row). A drag spanning at least one grid step uses that span; a shorter drag or a bare click falls back to the one-snap-step default. Committed on mouseup via `_insertSpan` (the same span the ghost shows), which `addNote`s and selects it; the trailing click is suppressed (`_didInsert`). Alt overrides move/resize, so it inserts even over an existing note.
 - `Left drag empty` — teal rubber-band rectangle; covered notes **replace** the selection on release
@@ -380,3 +381,29 @@ independent of the loaded project).
 that brighten on hover. Added/removed via Ctrl+click and Ctrl+right-click on the ruler;
 `← / →` seek to previous/next bookmark (wrapping). Bookmarks are persisted in project
 JSON but are **not** part of undo.
+
+---
+
+## A/B Loop
+
+`state.loopA`/`loopB` (tick or `null`) are cycled by `L` from the current playhead
+position — `state.cycleLoopMarker` advances unset → A set → both set → unset, ordering
+the pair low→high on the second press so pressing `L` before or after the first marker
+both work. There is no mouse editing; `L` and the playhead are the only inputs, so
+placing a marker means seeking or scrubbing there first (or just letting a marker land
+mid-playback, since the piece keeps advancing between presses).
+
+Drawn in `roll.js` distinctly from bookmarks (`COL_LOOP`, a blue kept clear of the
+red↔green axis): a translucent tint (`_drawLoopRegion`) fills the roll content between
+A and B, drawn early (right after the grid, before notes) so it reads as a background
+band rather than obscuring anything; solid boundary lines (`_drawLoopBoundaries`) span
+the full content height, drawn with the playhead so they stay visible over notes; small
+downward-pointing flags labeled `A`/`B` mark the ruler (`_drawRuler`, alongside the
+bookmark triangles — those point upward from the ruler's bottom edge, so the two marker
+kinds don't collide visually). A lone A marker (B not yet set) still draws its boundary
+line and ruler flag, with no region tint until B exists.
+
+Playback looping itself lives in `index.html`, not here — see engine/CLAUDE.md's
+"A/B loop" note under Web MIDI Output. Like bookmarks, loop markers are navigation/
+practice aids: not part of undo, reset to `null` on new-score load, persisted in
+project JSON on top of a loaded project.

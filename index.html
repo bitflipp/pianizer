@@ -446,6 +446,7 @@
       ['Ctrl+click ruler',            'Add bookmark'],
       ['Ctrl+right-click bookmark',   'Remove bookmark'],
       ['← / →',                       'Seek to prev / next bookmark'],
+      ['L',                           'Cycle A/B loop marker at the playhead (unset → A → both → unset)'],
     ]],
     ['Curve lanes (pedal / tempo)', [
       ['Click empty',          'Add control point (snaps to grid and Y to neighbours / baseline)'],
@@ -1131,8 +1132,20 @@
 
   function tick() {
     if (!state.playing) return;
-    const pieceTime = getPieceTime();
-    if (pieceTime >= state.totalTime) { pausePlayback(); return; }
+    let pieceTime = getPieceTime();
+
+    // A/B loop: once the loop end is reached, rebase the clock and MIDI
+    // scheduling back to the loop start instead of running to the piece's
+    // natural end. Pure playback-time check — doesn't touch playAnchor, so
+    // Pause/Stop still snap back to the last explicit seek, not to A.
+    if (state.loopA !== null && state.loopB !== null && state.loopB > state.loopA
+        && pieceTime >= state.tickToTime(state.loopB)) {
+      pieceTime = state.tickToTime(state.loopA);
+      scheduleFrom(pieceTime);
+    } else if (pieceTime >= state.totalTime) {
+      pausePlayback();
+      return;
+    }
     state.setPlayheadTime(pieceTime);
 
     const playTick = state.timeToTick(pieceTime);
