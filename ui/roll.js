@@ -896,10 +896,6 @@ export class PianoRoll {
       e.preventDefault();
       document.dispatchEvent(new CustomEvent('toggle-playback'));
     }
-    if ((e.key === 'l' || e.key === 'L') && state.loaded) {
-      e.preventDefault();
-      state.cycleLoopMarker(state.timeToTick(state.playheadTime));
-    }
     if (e.key === 'Home' && state.loaded) {
       e.preventDefault();
       this.scrollX = 0;
@@ -1213,6 +1209,11 @@ export class PianoRoll {
       if (e.ctrlKey) {
         state.addBookmark(state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x)))));
         return;
+      }
+      // Alt+click cycles the A/B loop marker at the clicked (grid-snapped) tick, while
+      // still seeking/scrubbing normally, so the click also moves the playhead there.
+      if (e.altKey) {
+        state.cycleLoopMarker(state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x)))));
       }
       this.draggingPlayhead = true;
       this._seekTime = state.tickToTime(Math.max(0, this.xToTick(pos.x)));

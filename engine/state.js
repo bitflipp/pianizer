@@ -35,7 +35,8 @@ export class AppState extends EventTarget {
     this.bookmarks = [];
 
     // A/B loop markers — tick or null, navigation only (not part of undo). Cycled
-    // by L: unset → A set → both set (loop active once B > A) → unset.
+    // by Alt+click on the ruler: unset → A set → both set (loop active once
+    // B > A) → unset.
     this.loopA = null;
     this.loopB = null;
 
@@ -217,11 +218,11 @@ export class AppState extends EventTarget {
 
   // ── A/B loop ───────────────────────────────────────────────────────
 
-  // Advances the unset → A set → both set → unset cycle from the current
-  // playhead tick. A third press always clears, regardless of ordering. If the
-  // second press lands exactly on A, both stay set at the same tick (a
-  // zero-length loop plays as if inactive — see midi playback's loopB > loopA
-  // check) rather than silently discarding the press.
+  // Advances the unset → A set → both set → unset cycle from the given tick
+  // (the Alt+click ruler position). A third press always clears, regardless
+  // of ordering. If the second press lands exactly on A, both stay set at
+  // the same tick (a zero-length loop plays as if inactive — see midi
+  // playback's loopB > loopA check) rather than silently discarding the press.
   cycleLoopMarker(tick) {
     if (this.loopA === null) {
       this.loopA = tick;
