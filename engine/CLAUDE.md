@@ -53,9 +53,9 @@ undo, dispatches `selectionchanged`.
 - `state.pieceId` — UUID assigned per loaded score / project; used to key per-piece view state in localStorage
 - `state.selectedNoteIndices` — `Set<int>`, indices into `state.notes`
 - `state.bookmarks` — `[tick]` sorted; ruler markers + `← / →` navigation; not part of undo
-- `state.loopA` / `state.loopB` — A/B loop tick markers, or `null`; cycled by `L`
-  (`state.cycleLoopMarker`: unset → A set → both set → unset, ordered low→high on the
-  second press). Loop playback is active once both are set and `loopB > loopA`
+- `state.loopA` / `state.loopB` — A/B loop tick markers, or `null`; cycled by
+  Alt+click on the ruler (`state.cycleLoopMarker`: unset → A set → both set → unset,
+  ordered low→high on the second press). Loop playback is active once both are set and `loopB > loopA`
   (equal ticks from a same-position second press play as inactive). Navigation-only,
   like bookmarks — not part of undo, persisted in project JSON
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
