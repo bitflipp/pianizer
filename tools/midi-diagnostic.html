@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pianizer MIDI Diagnostic</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #1a1a1a; color: #fff; font: 12px monospace;
+    margin: 0; padding: 12px;
+  }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  p.sub { color: #999; margin: 0 0 16px; }
+  section {
+    background: #111; border: 1px solid #666; padding: 5px;
+    margin-bottom: 12px;
+  }
+  section > h2 { font-size: 12px; margin: 0 0 8px; color: #ccc; }
+  button {
+    background: #222; color: #fff; border: 1px solid #666;
+    font: 12px monospace; padding: 4px 10px; cursor: pointer;
+  }
+  button:hover { background: #333; }
+  button:disabled { color: #666; cursor: default; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 4px; }
+  td, th { text-align: left; padding: 2px 8px 2px 0; border-bottom: 1px solid #222; }
+  th { color: #999; font-weight: normal; }
+  .state-connected { color: #8f8; }
+  .state-disconnected { color: #f88; }
+  label { display: inline-block; margin-right: 12px; }
+  input[type=number], input[type=range] { font: 12px monospace; background: #1a1a1a; color: #fff; border: 1px solid #666; }
+  #log {
+    height: 320px; overflow-y: auto; background: #000; border: 1px solid #333;
+    padding: 4px; white-space: pre;
+  }
+  .log-echo { color: #8f8; }
+  .log-sent { color: #ccc; }
+  .log-other { color: #999; }
+</style>
+</head>
+<body>
+
+<h1>Pianizer MIDI Diagnostic</h1>
+<p class="sub">
+  Lists every Web MIDI input/output port (not just what Pianizer's output picker shows),
+  sends test notes, and logs any incoming MIDI message with the elapsed time since the note
+  was sent — so you can see whether the Disklavier echoes hammer-sensor timing back on a
+  second port. Must be served over http://localhost (Web MIDI needs a secure context).
+</p>
+
+<section>
+  <h2>1. Connect</h2>
+  <button id="connectBtn">Request MIDI Access</button>
+  <span id="connectStatus"></span>
+</section>
+
+<section>
+  <h2>2. Ports</h2>
+  <table>
+    <thead><tr><th>Direction</th><th>Name</th><th>Manufacturer</th><th>State</th></tr></thead>
+    <tbody id="portTable"></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>3. Send a test note</h2>
+  <label>Output
+    <select id="outputSelect"></select>
+  </label>
+  <label>Pitch <input id="pitch" type="number" min="21" max="108" value="60" style="width:4em"></label>
+  <label>Velocity <input id="velocity" type="range" min="1" max="127" value="80"><span id="velocityVal">80</span></label>
+  <label>Length ms <input id="length" type="number" min="50" max="5000" value="500" style="width:5em"></label>
+  <button id="sendBtn" disabled>Send Note</button>
+  <button id="sweepBtn" disabled>Velocity Sweep (10→120, 1.5s apart)</button>
+</section>
+
+<section>
+  <h2>4. Event log</h2>
+  <button id="clearLogBtn">Clear</button>
+  <div id="log"></div>
+</section>
+
+<script type="module">
+  let access = null;
+  let lastNoteOnTime = null;
+  let lastNoteOnPitch = null;
+
+  const connectBtn     = document.getElementById('connectBtn');
+  const connectStatus  = document.getElementById('connectStatus');
+  const portTable      = document.getElementById('portTable');
+  const outputSelect   = document.getElementById('outputSelect');
+  const pitchInput     = document.getElementById('pitch');
+  const velocityInput  = document.getElementById('velocity');
+  const velocityVal    = document.getElementById('velocityVal');
+  const lengthInput    = document.getElementById('length');
+  const sendBtn        = document.getElementById('sendBtn');
+  const sweepBtn       = document.getElementById('sweepBtn');
+  const clearLogBtn    = document.getElementById('clearLogBtn');
+  const logEl          = document.getElementById('log');
+
+  velocityInput.addEventListener('input', () => { velocityVal.textContent = velocityInput.value; });
+
+  function log(text, cls = 'log-other') {
+    const line = document.createElement('div');
+    line.className = cls;
+    line.textContent = text;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  clearLogBtn.addEventListener('click', () => { logEl.textContent = ''; });
+
+  function renderPorts() {
+    portTable.textContent = '';
+    outputSelect.textContent = '';
+    if (!access) return;
+
+    for (const input of access.inputs.values()) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>in</td><td>${input.name ?? ''}</td><td>${input.manufacturer ?? ''}</td>` +
+        `<td class="state-${input.state}">${input.state}</td>`;
+      portTable.appendChild(tr);
+    }
+    for (const output of access.outputs.values()) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>out</td><td>${output.name ?? ''}</td><td>${output.manufacturer ?? ''}</td>` +
+        `<td class="state-${output.state}">${output.state}</td>`;
+      portTable.appendChild(tr);
+
+      const opt = document.createElement('option');
+      opt.value = output.id;
+      opt.textContent = output.name ?? output.id;
+      outputSelect.appendChild(opt);
+    }
+
+    sendBtn.disabled  = access.outputs.size === 0;
+    sweepBtn.disabled = access.outputs.size === 0;
+  }
+
+  function attachInputListeners() {
+    for (const input of access.inputs.values()) {
+      input.onmidimessage = (ev) => {
+        const now  = performance.now();
+        const hex  = [...ev.data].map(b => b.toString(16).padStart(2, '0')).join(' ');
+        const isEcho = lastNoteOnTime !== null && (now - lastNoteOnTime) < 3000;
+        const delta = lastNoteOnTime !== null ? `  Δ=${(now - lastNoteOnTime).toFixed(1)}ms since last sent note` : '';
+        log(`[${now.toFixed(1)}] IN  ${input.name}: ${hex}${delta}`, isEcho ? 'log-echo' : 'log-other');
+      };
+    }
+  }
+
+  connectBtn.addEventListener('click', async () => {
+    try {
+      access = await navigator.requestMIDIAccess({ sysex: false });
+      connectStatus.textContent = 'connected';
+      access.onstatechange = () => { renderPorts(); attachInputListeners(); };
+      renderPorts();
+      attachInputListeners();
+      log('MIDI access granted.');
+    } catch (err) {
+      connectStatus.textContent = `error: ${err.message}`;
+    }
+  });
+
+  function sendNote(pitch, velocity, lengthMs) {
+    const out = access?.outputs.get(outputSelect.value);
+    if (!out) return;
+    const sendTime = performance.now();
+    lastNoteOnTime  = sendTime;
+    lastNoteOnPitch = pitch;
+    out.send([0x90, pitch, velocity]);
+    log(`[${sendTime.toFixed(1)}] OUT note on  pitch=${pitch} vel=${velocity}`, 'log-sent');
+    setTimeout(() => {
+      out.send([0x80, pitch, 0]);
+      log(`[${performance.now().toFixed(1)}] OUT note off pitch=${pitch}`, 'log-sent');
+    }, lengthMs);
+  }
+
+  sendBtn.addEventListener('click', () => {
+    sendNote(Number(pitchInput.value), Number(velocityInput.value), Number(lengthInput.value));
+  });
+
+  sweepBtn.addEventListener('click', () => {
+    const pitch = Number(pitchInput.value);
+    const lengthMs = Number(lengthInput.value);
+    const velocities = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
+    velocities.forEach((vel, i) => {
+      setTimeout(() => sendNote(pitch, vel, lengthMs), i * 1500);
+    });
+  });
+</script>
+</body>
+</html>
