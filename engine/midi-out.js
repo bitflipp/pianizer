@@ -4,6 +4,11 @@
 
 import { state, interpolateCurveAtTick } from './state.js';
 
+// Minimum key-up before the same key (pitch+channel) is struck again, so an
+// acoustic action (or a wonky soft-synth voice-steal, e.g. FluidSynth) has time
+// to reset — a held-until-re-strike note otherwise yields a weak or dropped
+// repeat. Hardcoded rather than user-configurable; see schedulePlayback.
+const RESTRIKE_GAP_MS = 50;
 
 export class MidiOut {
   constructor() {
@@ -138,9 +143,6 @@ export class MidiOut {
       const pieceNow  = getPieceTime();
       const windowEnd = pieceNow + LOOKAHEAD;
       const toWallMs  = t => nowMs + (t - pieceNow) / state.playSpeed * 1000;
-      // Re-strike gap is wall-clock; read live so a toolbar change applies to
-      // notes scheduled from here on without restarting playback. 0 disables it.
-      const restrikeGapMs = state.restrikeGapMs;
 
       // Notes
       while (notePtr < sortedNotes.length && sortedNotes[notePtr].noteStart <= windowEnd) {
@@ -150,12 +152,12 @@ export class MidiOut {
         const onMs  = toWallMs(noteStart);
         let   offMs = toWallMs(noteEnd);
 
-        // Pull the off in so the same key is released at least restrikeGapMs
+        // Pull the off in so the same key is released at least RESTRIKE_GAP_MS
         // before its next strike. The safeOffMs floor below keeps the note from
         // collapsing to nothing when the repeat is very close (e.g. a tremolo).
         const nextSameKey = nextStartByEntry[idx];
-        if (restrikeGapMs > 0 && nextSameKey !== Infinity) {
-          offMs = Math.min(offMs, toWallMs(nextSameKey) - restrikeGapMs);
+        if (nextSameKey !== Infinity) {
+          offMs = Math.min(offMs, toWallMs(nextSameKey) - RESTRIKE_GAP_MS);
         }
 
         const safeOnMs  = Math.max(onMs,  nowMs + 5);
@@ -163,9 +165,8 @@ export class MidiOut {
 
         if (offMs + 200 <= nowMs) continue; // already ended
 
-        const ch       = (n.channel ?? 0) & 0xf;
-        const curveAdj = state.velocityCurve[n.pitch - 21] ?? 0;
-        const vel      = Math.max(1, Math.min(127, n.velocity + curveAdj));
+        const ch  = (n.channel ?? 0) & 0xf;
+        const vel = Math.max(1, Math.min(127, n.velocity));
 
         try {
           out.send([0x90 | ch, n.pitch, vel], safeOnMs);

@@ -7,7 +7,6 @@ const PITCH_LO = 21;
 const PITCH_HI = 108;
 const DEFAULT_BPM         = 120;  // assumed tempo before the first tempoMap entry
 const UNDO_STACK_LIMIT    = 100;  // oldest snapshots drop once the stack passes this
-const RESTRIKE_GAP_MAX_MS = 200;  // upper clamp for setRestrikeGap
 
 export class AppState extends EventTarget {
   constructor() {
@@ -62,19 +61,8 @@ export class AppState extends EventTarget {
     // Lazily built tick→time converter (see _timeline)
     this._tickToTimeFn = null;
 
-    // Per-pitch velocity offset (device calibration), pitch 21-108 → index 0-87
-    this.velocityCurve = new Array(88).fill(0);
-
     // Playback speed multiplier (piece-specific view setting, persisted separately)
     this.playSpeed = 1.0;
-
-    // Re-strike gap (ms): minimum key-up before the same key is struck again, so
-    // an acoustic grand's hammer/jack/damper can reset — a held-until-re-strike
-    // note otherwise yields a weak or dropped repeat. Applied at scheduling time
-    // in midi-out.js (wall-clock, independent of playSpeed and pedal state). A
-    // property of the output instrument, not the score: device-scoped, persisted
-    // separately. 0 disables it.
-    this.restrikeGapMs = 60;
   }
 
   // ── Notes ──────────────────────────────────────────────────────────
@@ -188,17 +176,6 @@ export class AppState extends EventTarget {
       if (soloAll) n.muted = false;
     }
     this.dispatch('selectionchanged');
-  }
-
-  // ── Device calibration ─────────────────────────────────────────────
-
-  setVelocityCurve(curve) {
-    this.velocityCurve = curve.slice();
-  }
-
-  setRestrikeGap(ms) {
-    this.restrikeGapMs = Math.max(0, Math.min(RESTRIKE_GAP_MAX_MS, Math.round(ms)));
-    this.dispatch('restrikegapchanged');
   }
 
   // ── Bookmarks ──────────────────────────────────────────────────────
