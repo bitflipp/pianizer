@@ -9,15 +9,13 @@ custom element both listen to these events.
 **Communication flow:**
 - State → Canvas/toolbar: custom events (`loaded`, `selectionchanged`, `playbackchanged`,
   `playheadmoved`, `snapchanged`, `pedalchanged`, `tempochanged`, `softpedalchanged`,
-  `midiportschanged`, `undochanged`, `bookmarkschanged`, `loopchanged`, `playspeedchanged`,
-  `restrikegapchanged`)
+  `midiportschanged`, `undochanged`, `bookmarkschanged`, `loopchanged`, `playspeedchanged`)
 - Keyboard shortcuts wired in `roll.js` `_bindEvents`; Space dispatches
   `toggle-playback` on `document` for the app layer to handle
 - `user-seek` bubbling event dispatched from roll canvas when playhead is dragged;
   caught in `index.html` to restart MIDI scheduling from the new position
-- Tool windows ([1]/[2]/[3]) and the velocity-curve editor are plain DOM elements
-  created in `index.html`; capture-phase keydown intercepts shortcuts before
-  roll.js handlers
+- Tool windows ([1]/[2]/[3]) are plain DOM elements created in `index.html`;
+  capture-phase keydown intercepts shortcuts before roll.js handlers
 
 **Note data shape:**
 ```js
@@ -61,9 +59,7 @@ undo, dispatches `selectionchanged`.
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
 - `state.softPedalRegions` — `[{startTick, endTick}]` sorted by startTick, disjoint & merged; binary una corda, drives CC67. Edited via the region lane; `addSoftPedalRegion` (paint commit), `removeSoftPedalRegionAt`, and the drag trio `beginSoftPedalEdit` / `resizeSoftPedalRegion` / `moveSoftPedalRegion` / `endSoftPedalEdit` (the live resize/move may overlap; `normalizeRegions` merges on commit). Dispatches `softpedalchanged`
-- `state.velocityCurve` — 88-entry `int[]` (pitch 21–108 → index 0–87), per-key MIDI velocity offset (range −22…+22) applied at scheduling time; persisted independent of project
 - `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`. Set via `setPlaySpeed()` (dispatches `playspeedchanged`); `snapGrid` likewise via `setSnapGrid()` (dispatches `snapchanged`)
-- `state.restrikeGapMs` — re-strike gap in ms (clamped 0–200 by `setRestrikeGap`, default 60, `0` = off); output-instrument property, persisted device-level in `pianizer-restrike-gap`; dispatches `restrikegapchanged`
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
 `render()`, but **gated on a view signature** so it only triggers `tempoLane.render()`,
@@ -90,7 +86,7 @@ time. Undo/redo banks a twin of the same shape (`_applyHistory`), so click-aroun
 selection churn never stacks up full copies of a large score. Drag interactions (note
 resize, note move, curve-point move, soft-pedal region resize/move) push undo **once**
 at drag start via `resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove` /
-`beginSoftPedalEdit`; per-frame updates mutate live without pushing. Bookmarks and the velocity curve are NOT part of undo.
+`beginSoftPedalEdit`; per-frame updates mutate live without pushing. Bookmarks are NOT part of undo.
 
 ---
 
@@ -138,15 +134,6 @@ rides the same cache.
 
 ---
 
-## Velocity Curve (applied at scheduling time only)
-
-Applied in `midi-out.js` at scheduling time — stored note data is never mutated.
-
-`vel = clamp(note.velocity + state.velocityCurve[pitch-21], 1, 127)`.
-Per-device calibration, not per-score.
-
----
-
 ## MusicXML Import (`musicxml.js`)
 
 Parses `score-partwise` documents using the browser `DOMParser`. Key decisions:
@@ -190,18 +177,15 @@ timestamps.
   consistent with the pedal level, which is likewise chased (asserted) at the start
 - **Muted notes** (`n.muted`) are filtered out of `sortedNotes`, so they never sound; the flag is per-note, toggled with `M` (`state.toggleNoteMutes`), and persisted in project JSON
 - **Soloed notes** (`n.soloed`, toggled with `S` / `state.toggleNoteSolos`, persisted in project JSON): while any note in the piece is soloed, `sortedNotes`' filter flips from "not muted" to "is soloed" — every non-soloed note is excluded regardless of its own `muted` flag. Mutually exclusive with `muted` at the state layer (setting one on a note clears the other), so a soloed note is never also muted
-- **Re-strike gap** (`state.restrikeGapMs`, default 60 ms, `0` disables): each note's
-  off is pulled in so the same key (pitch+channel) is released at least that many ms
-  (wall-clock) before its next strike, giving a real grand's hammer/jack/damper time
-  to reset — a held-until-re-strike note otherwise yields a weak or dropped repeat.
-  `nextStartByEntry` precomputes each note's next same-key onset once per
-  `schedulePlayback` (single backward pass); the gap value is read **live** inside the
-  schedule tick so a toolbar change applies to notes scheduled from then on without
-  restarting playback. Applied independent of pedal state (the hammer must fall back
-  regardless of the damper) and of playSpeed (gap is wall-clock). The `safeOffMs`
-  floor still guarantees a minimum note length when the repeat is very close.
-  Device-scoped (a property of the output instrument, not the score) — see persistence
-  below.
+- **Re-strike gap** (`RESTRIKE_GAP_MS`, hardcoded 50 ms — not user-configurable): each
+  note's off is pulled in so the same key (pitch+channel) is released at least that many
+  ms (wall-clock) before its next strike, giving a real grand's hammer/jack/damper — or a
+  soft-synth voice — time to reset; a held-until-re-strike note otherwise yields a weak,
+  dropped, or glitchy repeat (FluidSynth in particular). `nextStartByEntry` precomputes
+  each note's next same-key onset once per `schedulePlayback` (single backward pass).
+  Applied independent of pedal state (the hammer must fall back regardless of the damper)
+  and of playSpeed (gap is wall-clock). The `safeOffMs` floor still guarantees a minimum
+  note length when the repeat is very close.
 - CC64 sent on all channels that have notes. The held pedal value at the start point
   (interpolated from the curve) is asserted **immediately/untimed** in `schedulePlayback`,
   right after `stopPlayback`'s CC64=0 reset and on the same direct path — so the held
@@ -289,17 +273,13 @@ natural end and the scrollable range both depend on them.
 
 ## Auto-save / view restore (localStorage)
 
-Five independent localStorage entries, all best-effort (errors swallowed):
+Three independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
   `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`/`softpedalchanged`, and flushed
   on `beforeunload`. Auto-loaded on page open.
 - `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
   on every load.
-- `pianizer-velocity-curve` — the 88-element `state.velocityCurve` (clamped to −22…+22 on load),
-  written on every edit. Device-scoped, not score-scoped.
-- `pianizer-restrike-gap` — `state.restrikeGapMs` (clamped 0–200 via `setRestrikeGap` on
-  load), written on every `restrikegapchanged`. Device-scoped, not score-scoped.
 - `pianizer-midi-port` — the last-used MIDI output port id, written on every
   `midiportschanged` (auto-select / hot-plug) and on a manual `midi-port` pick.
   Device-scoped. On page load the app silently reconnects to it — but only when

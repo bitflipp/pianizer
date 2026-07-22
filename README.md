@@ -20,8 +20,7 @@ auto-humanization — the tool is an instrument.
   soloing, grouping (tag notes into four groups, then filter a selection to one),
   undo/redo
 - **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
-  Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10; per-key
-  velocity curve for device calibration
+  Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
   interpolated value is seeded correctly on mid-piece playback start
 - **Tempo lane** — draw a tempo ratio curve (×0.8–×1.2) as a monotone-cubic spline
@@ -34,8 +33,8 @@ auto-humanization — the tool is an instrument.
   wraps between them until cleared
 - **Web MIDI output** — lookahead scheduler (30 ms tick / 150 ms window) sends
   note on/off, CC64 (sustain) and CC67 (soft pedal) to any browser MIDI port
-  (e.g. FluidSynth, hardware piano); an adjustable re-strike gap gives a repeated
-  key's action time to reset
+  (e.g. FluidSynth, hardware piano); a fixed 50 ms re-strike gap gives a
+  repeated key's action time to reset
 - **Project save/load** — versioned JSON preserving all edits; auto-save to
   `localStorage` with per-piece view state restoration
 - **No build step, no dependencies** — vanilla JS ES modules, Canvas 2D, served
@@ -145,21 +144,13 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Ctrl+drag | Paint / resize / move without snapping |
 | Right-click region | Remove region |
 
-### Velocity curve editor
-
-| Key / gesture | Action |
-|---|---|
-| Click | Paint a cell (sets that key's velocity delta) |
-| Drag | Interpolate cells across the drag path |
-| Right-click | Reset a column to 0 |
-
 ---
 
 ## Project structure
 
 ```
 pianizer/
-  index.html          entry point, layout, tool windows, velocity curve editor, autosave
+  index.html          entry point, layout, tool windows, autosave
   engine/
     state.js          AppState (EventTarget) — single source of truth
     musicxml.js       MusicXML score-partwise parser

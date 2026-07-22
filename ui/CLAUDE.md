@@ -302,14 +302,10 @@ the bar runs out of width. The groups, left to right:
 - **Edit** — Undo, Redo
 - **Transport** — Stop, Play/Pause, Speed dropdown, Time readout
 - **Snap** — snap-grid dropdown (`SNAP_GRIDS`)
-- **Expression** — Vel. curve button, Re-strike (gap dropdown, `RESTRIKE_OPTIONS`
-  0–80 ms, default 60; 0 = Off; drives `state.setRestrikeGap`, device-scoped — see
-  engine/CLAUDE.md)
 - **MIDI out** — Connect button (hidden once connected) + port dropdown
 
-The group caption replaces the old inline label for Snap/MIDI; only Re-strike keeps an inline
-`.restrike-label` (it carries the explanatory tooltip). Buttons/selects keep their original
-`data-action`/`data-role` hooks, so the event wiring is unchanged by the regrouping.
+The group caption replaces the old inline label for Snap/MIDI. Buttons/selects keep their
+original `data-action`/`data-role` hooks, so the event wiring is unchanged by the regrouping.
 
 ---
 
@@ -362,17 +358,6 @@ the **lane** canvas only when the hot control point (`_hoverPointIdx`) flips, an
 motion over a lane repaints just the roll for the reticle, not the lane canvas. The reticle
 tick is snapped (point tick when hot, else grid), so it advances in grid steps rather than
 per pixel.
-
----
-
-## Velocity Curve Editor
-
-Opened by the toolbar's "Vel. curve" button (no keyboard shortcut). An 88-column × 45-row
-grid (one column per piano key, rows for delta −22…+22 with row 22 = 0). Left-click paints
-a cell; left-drag interpolates between cells across the drag path; right-click resets a
-column to 0. Closed by clicking outside, Escape, or the title-bar ✕. Values stored in
-`state.velocityCurve`, persisted under `pianizer-velocity-curve` (device-level calibration,
-independent of the loaded project).
 
 ---
 

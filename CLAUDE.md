@@ -35,7 +35,7 @@ There is no auto-humanization magic — the tool is an instrument, not an algori
 
 ```
 pianizer/
-  index.html                 ← entry point, layout, app wiring, tool windows, help overlay, velocity curve editor, autosave
+  index.html                 ← entry point, layout, app wiring, tool windows, help overlay, autosave
   engine/
     state.js                 ← AppState (EventTarget), single source of truth
     musicxml.js              ← MusicXML score-partwise parser
