@@ -63,7 +63,6 @@ Single-click selection follows this matrix (the empty-space row always wins):
 | any | any | no  | `selection = []` |
 
 - **Left click note** — select just that note (Shift+click toggles it against an existing selection: adds it if absent, removes it if already selected)
-- **Double-click grouped note** — select every member of that note's group ([4] Group tool) that's currently **visible** (same on-screen cull as the draw loop), replacing the selection. Double-clicking an ungrouped note does nothing extra (falls through to the two plain clicks)
 - **Left click empty** — clear the selection and seek the playhead to the click x-position
 - **Left drag empty** — draws a **teal** rubber-band; overlapping notes **replace** the selection on release
 - **Shift+left drag empty** — same teal rubber-band, but overlapping notes **extend** the selection (union)
@@ -160,12 +159,7 @@ actual fill — so darker low-velocity blues read white, bright high-velocity ye
 choice tracks hover/dim brightening. Each note has a 1 px top gap (`y+1`, `h = noteHeight−1`),
 visually separating adjacent pitches.
 
-Each note box shows its velocity number (top-left), clipped to the note interior. A note
-assigned to a group (1–4 via the [4] Group tool) draws a small **rectangular badge** with
-the group digit **before** the velocity number (`_drawNoteLabel`'s `group` arg), inset 2px
-from the box edges and stroked in the same luminance-adaptive `labelColorFor` color. The
-badge is drawn first (leftmost) so on a note too narrow to fit both, the clip drops the
-velocity number while the group membership stays visible — group is the prioritized cue.
+Each note box shows its velocity number (top-left), clipped to the note interior.
 
 Notes are drawn (and hit-tested) in `_drawOrder` — indices sorted by duration descending, so
 longer notes paint first (bottom) and shorter notes last (top). A short note fully contained
@@ -187,14 +181,8 @@ Keyboard shortcuts work when no `<input>`/`<select>` is focused.
   time — **a one-shot velocity edit, nothing persisted** (`state.applyVelocityCurve`).
 - **[3] Velocity delta** — `−10 / −5 / −1 / +1 / +5 / +10` buttons; offsets every
   selected note's velocity by the chosen amount (clamped 1–127)
-- **[4] Group** — two rows acting on the current selection. **Assign to group**:
-  `1 2 3 4` tags the selected notes with that group (a note is in **one group at most**;
-  re-assigning overwrites — latest wins), plus **Clear** (group 0) to ungroup them
-  (`state.setNoteGroups`). **Filter selection to group**: `1 2 3 4` narrows the selection
-  to just the selected notes in that group (intersect via `state.setSelection` — never
-  grows it). The group shows as a badge on the note box (see Note Coloring).
 
-Tools [1]–[4] require a non-empty selection (`requireSelection`) and silently refuse to
+Tools [1]–[3] require a non-empty selection (`requireSelection`) and silently refuse to
 open without one.
 
 ---
