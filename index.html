@@ -400,7 +400,6 @@
     ['Selection', [
       ['Click note',           'Select just that note'],
       ['Shift+click note',     'Toggle note in the selection (add, or remove if already selected)'],
-      ['Double-click grouped note', "Select all visible members of that note's group"],
       ['A',                    'Select all notes'],
       ['Drag empty',           'Rectangle select (replaces selection)'],
       ['Shift+drag empty',     'Rectangle select (extends selection)'],
@@ -412,7 +411,6 @@
       ['1',                       'Velocity tool'],
       ['2',                       'Curve tool (bake an eased velocity ramp over the selection)'],
       ['3',                       'Velocity delta tool'],
-      ['4',                       'Group tool (assign / clear group, or narrow selection to a group)'],
       ['Alt+click',               'Insert note at cursor (one snap-step long)'],
       ['Alt+drag',                'Insert note, dragging sets its duration'],
       ['Drag note body',          'Move selection (axis-locked: timing or pitch)'],
@@ -541,7 +539,6 @@
     if (e.key === '1' && state.loaded) { e.preventDefault(); openVelocityTool(); }
     if (e.key === '2' && state.loaded) { e.preventDefault(); openCurveTool(); }
     if (e.key === '3' && state.loaded) { e.preventDefault(); openDeltaTool(); }
-    if (e.key === '4' && state.loaded) { e.preventDefault(); openGroupTool(); }
   }, true);
 
   // Applies velocity-based background/border to a velocity grid button.
@@ -713,48 +710,6 @@
         grid.appendChild(btn);
       }
       body.appendChild(grid);
-    });
-  }
-
-  // ── Tool: Group [4] ──────────────────────────────────────────────
-  // Two rows acting on the current selection: Assign tags the selected notes with
-  // a group (or Clear removes it — latest assignment wins, a note is in one group
-  // at most), and Filter narrows the selection to just its members of a group
-  // (intersect, never grows it).
-  function openGroupTool() {
-    if (!requireSelection()) return;
-    openToolWindow('Group', (body, close) => {
-      const makeRow = (className, labels, onClick) => {
-        const grid = document.createElement('div');
-        grid.className = 'delta-grid';
-        for (const { text, value } of labels) {
-          const btn = document.createElement('button');
-          btn.className = className;
-          btn.textContent = text;
-          btn.addEventListener('click', ev => { ev.stopPropagation(); onClick(value); close(); });
-          grid.appendChild(btn);
-        }
-        return grid;
-      };
-
-      const groups = [1, 2, 3, 4].map(g => ({ text: String(g), value: g }));
-
-      const assignLabel = document.createElement('div');
-      assignLabel.className = 'tool-row-label';
-      assignLabel.textContent = 'Assign to group';
-      body.appendChild(assignLabel);
-      body.appendChild(makeRow('delta-btn', [...groups, { text: 'Clear', value: 0 }], g => {
-        state.setNoteGroups([...state.selectedNoteIndices], g);
-      }));
-
-      const filterLabel = document.createElement('div');
-      filterLabel.className = 'tool-row-label';
-      filterLabel.textContent = 'Filter selection to group';
-      body.appendChild(filterLabel);
-      body.appendChild(makeRow('delta-btn', groups, g => {
-        const sel = [...state.selectedNoteIndices];
-        state.setSelection(sel.filter(i => state.notes[i].group === g));
-      }));
     });
   }
 

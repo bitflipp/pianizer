@@ -17,8 +17,7 @@ auto-humanization — the tool is an instrument.
   rests, and tremolo expansion
 - **Piano roll canvas** — 88-key range (A0–C8), velocity-colored notes,
   snap-to-grid note placement and resizing, rect selection, note muting and
-  soloing, grouping (tag notes into four groups, then filter a selection to one),
-  undo/redo
+  soloing, undo/redo
 - **Velocity editing** — apply a shaped ramp across a selection (Linear / Ease in /
   Ease out / S-curve), set absolute values (5–120 grid), or nudge by ±1/5/10
 - **Sustain pedal lane** — draw a CC64 curve with snappable control points;
@@ -77,7 +76,6 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 |---|---|
 | Click note | Select just that note |
 | Shift+click note | Toggle note in the selection (add, or remove if already selected) |
-| Double-click grouped note | Select all visible members of that note's group |
 | A | Select all notes |
 | Drag empty | Rectangle select (replaces selection) |
 | Shift+drag empty | Rectangle select (extends selection) |
@@ -92,7 +90,6 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | 1 | Velocity tool |
 | 2 | Curve tool (bake an eased velocity ramp over the selection) |
 | 3 | Velocity delta tool |
-| 4 | Group tool (assign / clear group, or narrow selection to a group) |
 | Alt+click | Insert note at cursor (one snap-step long) |
 | Alt+drag | Insert note, dragging sets its duration |
 | Drag note body | Move selection (axis-locked: timing or pitch) |

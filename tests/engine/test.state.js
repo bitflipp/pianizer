@@ -108,39 +108,6 @@ describe('setNoteVelocitiesMap', () => {
   });
 });
 
-// ── setNoteGroups ─────────────────────────────────────────────────────────────
-
-describe('setNoteGroups', () => {
-  test('assigns the group to the given indices', () => {
-    const s = mkState([n(0, 480), n(480, 960), n(960, 1440)]);
-    s.setNoteGroups([0, 2], 2);
-    expect(s.notes[0].group).toBe(2);
-    expect(s.notes[1].group).toBeFalsy();
-    expect(s.notes[2].group).toBe(2);
-  });
-
-  test('reassigning overwrites — latest wins (one group per note)', () => {
-    const s = mkState([n(0, 480)]);
-    s.setNoteGroups([0], 1);
-    s.setNoteGroups([0], 3);
-    expect(s.notes[0].group).toBe(3);
-  });
-
-  test('group 0 clears the assignment', () => {
-    const s = mkState([n(0, 480)]);
-    s.setNoteGroups([0], 4);
-    s.setNoteGroups([0], 0);
-    expect(s.notes[0].group).toBe(0);
-  });
-
-  test('is undoable', () => {
-    const s = mkState([n(0, 480)]);
-    s.setNoteGroups([0], 2);
-    s.undo();
-    expect(s.notes[0].group).toBeFalsy();
-  });
-});
-
 // ── moveNotes ─────────────────────────────────────────────────────────────────
 
 describe('moveNotes', () => {
@@ -331,24 +298,6 @@ describe('project round-trip', () => {
     expect(s2.pedalPoints).toHaveLength(1);
     expect(s2.pedalPoints[0]).toMatchObject({ tick: 0, value: 0.5 });
     expect(s2.tempoPoints[0]).toMatchObject({ tick: 480, value: 1.1 });
-  });
-
-  test('round-trips note groups', () => {
-    const s = mkState([n(0, 480), n(480, 960)]);
-    s.setNoteGroups([0], 3);
-    const s2 = new AppState();
-    s2.loadProject(s.saveProject());
-    expect(s2.notes[0].group).toBe(3);
-    expect(s2.notes[1].group).toBe(0);
-  });
-
-  test('notes without a group field load as ungrouped', () => {
-    const s = mkState([n(0, 480)]);
-    const proj = s.saveProject();
-    delete proj.notes[0].group; // simulate an older project file
-    const s2 = new AppState();
-    s2.loadProject(proj);
-    expect(s2.notes[0].group).toBeFalsy();
   });
 
   test('round-trips bookmarks', () => {
