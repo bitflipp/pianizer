@@ -10,6 +10,15 @@ import { state, interpolateCurveAtTick } from './state.js';
 // repeat. Hardcoded rather than user-configurable; see schedulePlayback.
 const RESTRIKE_GAP_MS = 50;
 
+// Strips a trailing "(123)" / "[123]" / "(123:4)" instance suffix and case-folds,
+// so a saved port name still matches after that suffix changes between runs — e.g.
+// a bare PID (FluidSynth's ALSA client name) or an ALSA sequencer "client:port"
+// address (e.g. "Synth input port (14143:0)"), both of which are freshly minted
+// per run rather than part of the device's identity. See requestAccess.
+function normalizePortName(name) {
+  return (name ?? '').replace(/\s*[([]\d+(:\d+)?[)\]]\s*$/, '').trim().toLowerCase();
+}
+
 export class MidiOut {
   constructor() {
     this._access           = null;
@@ -25,14 +34,32 @@ export class MidiOut {
     return this._access?.outputs.get(this.outputId) ?? null;
   }
 
-  // preferredId: the last-used port id (persisted by the app layer). Used for the
-  // initial pick and as the hot-plug fallback, so a remembered port wins over the
-  // first-available default — but a still-valid current selection is never yanked.
-  async requestAccess(preferredId = null) {
+  // {id, name} of the current selection, for the app layer to persist. Saving name
+  // alongside id lets requestAccess fall back to a name match when id turns out to
+  // be unstable across sessions (see below).
+  get outputInfo() {
+    const o = this.selectedOutput;
+    return o ? { id: o.id, name: o.name } : null;
+  }
+
+  // preferred: {id, name} of the last-used port (persisted by the app layer). Used
+  // for the initial pick and as the hot-plug fallback, so a remembered port wins
+  // over the first-available default — but a still-valid current selection is
+  // never yanked. id is tried first (cheap exact match when the backend keeps it
+  // stable); name is a fallback for backends that don't (e.g. some ALSA/JACK
+  // clients mint a fresh id every run), matched after stripping a trailing
+  // "(123)"/"[123]"/"(123:4)" suffix since that's commonly a per-run PID or ALSA
+  // sequencer address rather than part of the device's identity.
+  async requestAccess(preferred = null) {
     this._access = await navigator.requestMIDIAccess({ sysex: false });
     const pick = () => {
       if (this.outputId && this._access.outputs.has(this.outputId)) return this.outputId;
-      if (preferredId  && this._access.outputs.has(preferredId))   return preferredId;
+      if (preferred?.id && this._access.outputs.has(preferred.id)) return preferred.id;
+      if (preferred?.name) {
+        const target = normalizePortName(preferred.name);
+        const match  = this.outputs.find(o => normalizePortName(o.name) === target);
+        if (match) return match.id;
+      }
       return this.outputs[0]?.id ?? null;
     };
     this._access.onstatechange = () => {
