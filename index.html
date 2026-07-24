@@ -829,19 +829,22 @@
   });
 
   document.addEventListener('stop-playback', stopPlayback);
-  // MIDI port persistence + auto-reconnect. The last-used port id is saved
-  // device-level (not per-score). midiportschanged covers auto-select and
-  // hot-plug; the dropdown's midi-port event covers a manual pick.
+  // MIDI port persistence + auto-reconnect. The last-used port's {id, name} is
+  // saved device-level (not per-score) — name backs up id because some backends
+  // (e.g. ALSA/JACK clients like FluidSynth) mint a fresh id every run; see
+  // requestAccess's normalized-name fallback in midi-out.js. midiportschanged
+  // covers auto-select and hot-plug; the dropdown's midi-port event covers a
+  // manual pick.
   const savedMidiPort = () => {
     try { return JSON.parse(localStorage.getItem(MIDI_PORT_KEY)); } catch (_) { return null; }
   };
   state.addEventListener('midiportschanged', () => {
-    if (midiOut.outputId) safeSet(MIDI_PORT_KEY, midiOut.outputId);
+    if (midiOut.outputId) safeSet(MIDI_PORT_KEY, midiOut.outputInfo);
   });
   document.addEventListener('midi-connect', () => midiOut.requestAccess(savedMidiPort()));
   document.addEventListener('midi-port', e => {
     midiOut.outputId = e.detail.id;
-    safeSet(MIDI_PORT_KEY, midiOut.outputId);
+    safeSet(MIDI_PORT_KEY, midiOut.outputInfo);
   });
 
   // On load, reconnect silently if the origin's MIDI permission already persists.

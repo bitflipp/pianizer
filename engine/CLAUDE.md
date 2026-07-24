@@ -217,12 +217,16 @@ keeps the start tight. For the same reason, the mid-playback reschedule paths in
 `index.html` (`user-seek`, `play-speed`) do **not** call `stopPlayback()` before
 `scheduleFrom` — `schedulePlayback`'s own scoped reset is the only one on the pipe.
 
-**Port management:** `requestAccess(preferredId)` opens MIDI access and dispatches
-`midiportschanged`. The port pick prefers a still-valid current selection, then
-`preferredId` (the persisted last-used port, passed by the app — see `pianizer-midi-port`
-below), then the first available. `onstatechange` handles hot-plug, re-running the same
-pick, so a remembered port wins over the first-available default but a still-valid current
-selection is never yanked.
+**Port management:** `requestAccess(preferred)` opens MIDI access and dispatches
+`midiportschanged`. `preferred` is `{id, name}` (the persisted last-used port, passed by
+the app — see `pianizer-midi-port` below). The port pick prefers a still-valid current
+selection, then `preferred.id`, then — since some backends (ALSA/JACK clients, notably
+FluidSynth) mint a fresh id every run, making id-matching unreliable across restarts — a
+fallback match on `preferred.name` with a trailing `"(123)"`/`"[123]"`/`"(123:4)"`
+instance/PID/ALSA-address suffix stripped (`normalizePortName`), then the first available. `onstatechange` handles
+hot-plug, re-running the same pick, so a remembered port wins over the first-available
+default but a still-valid current selection is never yanked. `outputInfo` getter returns
+`{id, name}` of the current selection for the app layer to persist.
 
 **Playback timing:** `getPieceTime()` in `index.html` uses `performance.now()` (not
 `AudioContext.currentTime`). `startPlayback()` is synchronous — no async needed.
@@ -279,8 +283,10 @@ Three independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-view-${pieceId}` — `{pixelsPerTick, scrollX, scrollY, snapGrid, playSpeed}`, debounced
   500 ms after each `roll.render()` via the `onPostRender` hook; restored after `fitView()`
   on every load.
-- `pianizer-midi-port` — the last-used MIDI output port id, written on every
-  `midiportschanged` (auto-select / hot-plug) and on a manual `midi-port` pick.
+- `pianizer-midi-port` — `{id, name}` of the last-used MIDI output port, written on
+  every `midiportschanged` (auto-select / hot-plug) and on a manual `midi-port` pick.
   Device-scoped. On page load the app silently reconnects to it — but only when
   `navigator.permissions.query({name:'midi'})` already reports `granted`, so a fresh
   origin isn't hit with an unsolicited prompt; the Connect button still prompts explicitly.
+  `name` backs up `id` for backends that don't keep ids stable across runs — see
+  `requestAccess` above.
