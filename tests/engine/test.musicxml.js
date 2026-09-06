@@ -19,7 +19,7 @@ function attrs({ divs = 480, beats = 4, beatType = 4 } = {}) {
 }
 
 function note(step, octave, dur, { alter = 0, chord = false, grace = false,
-    tieStop = false, tieStart = false, tremolo = null, voice = null } = {}) {
+    tieStop = false, tieStart = false, tremolo = null, voice = null, tupletActual = null } = {}) {
   let s = '<note>';
   if (grace) s += '<grace/>';
   if (chord) s += '<chord/>';
@@ -30,6 +30,9 @@ function note(step, octave, dur, { alter = 0, chord = false, grace = false,
   if (tieStart) s += '<tie type="start"/>';
   if (voice != null) s += `<voice>${voice}</voice>`;
   if (tremolo)  s += `<tremolo type="${tremolo.type}">${tremolo.slashes}</tremolo>`;
+  if (tupletActual != null) {
+    s += `<notations><tuplet type="start"><tuplet-actual><tuplet-number>${tupletActual}</tuplet-number></tuplet-actual></tuplet></notations>`;
+  }
   return s + '</note>';
 }
 
@@ -296,5 +299,23 @@ describe('tremolo', () => {
     const xml = sp(`<measure number="1">${attrs()}${note('C', 4, 480, { tremolo: { type: 'unmeasured', slashes: 0 } })}</measure>`);
     const { notes } = parseMusicXml(xml);
     expect(notes).toHaveLength(1);
+  });
+
+  test('tuplet-actual overrides slash-derived stroke count (sextuplet written as a 2-note tremolo)', () => {
+    // 2/4, divisions=120 → tpb scales to 480. Two notes of duration 60 (=1 beat combined),
+    // 2 slashes would naively compute 4 strokes/beat — but tuplet-actual=6 (MuseScore's
+    // idiom for a sextuplet written as two tremolo noteheads) overrides that to 6.
+    const xml = sp(
+      `<measure number="1">${attrs({ divs: 120, beats: 2, beatType: 4 })}` +
+      `${note('G', 3, 60, { alter: 1, tremolo: { type: 'start', slashes: 2 }, tupletActual: 6 })}` +
+      `${note('A', 3, 60, { tremolo: { type: 'stop', slashes: 2 } })}` +
+      `</measure>`
+    );
+    const { notes } = parseMusicXml(xml);
+    expect(notes).toHaveLength(6);
+    expect(notes[0].pitch).toBe(56); // G#3
+    expect(notes[1].pitch).toBe(57); // A3
+    expect(notes[0].startTick).toBe(0);
+    expect(notes[5].endTick).toBe(480); // full beat (tpb) spanned by all 6 strokes
   });
 });

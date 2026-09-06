@@ -152,7 +152,14 @@ Parses `score-partwise` documents using the browser `DOMParser`. Key decisions:
   `measureStartTick + N * ticksPerMeasure` if the rest duration didn't already cover it.
 - **Tremolo expansion** at parse time (notes appear in the piano roll and are fully editable):
   - Stroke speed is absolute: N slashes = stroke duration `tpb / 2^N` (1 slash = 8th,
-    2 = 16th, 3 = 32nd), regardless of written note value or time-modification tuplets.
+    2 = 16th, 3 = 32nd), regardless of written note value or time-modification tuplets —
+    **unless** the tremolo's start note carries a `<tuplet type="start">` with a
+    `<tuplet-actual><tuplet-number>` (MuseScore's idiom for e.g. a sextuplet written as
+    two tremolo noteheads), in which case that number is the stroke count directly,
+    overriding the slash/tpb math. Needed because the naive rule and the tuplet's own
+    declared ratio can disagree — a 6:4 sextuplet-of-16ths written as a 2-note tremolo
+    with 2 slashes computes 4 strokes/beat by slash math, but MuseScore plays 6 (the
+    slashes there only name the tuplet's base note type, not a further subdivision of it)
   - `type="single"`: `round(durTick / strokeDur)` rapid repetitions
   - `type="start"/"stop"`: two-note tremolo buffered across notes; `round(combinedDur / strokeDur)`
     alternating strokes, alternating pitch/velocity between the two written notes
