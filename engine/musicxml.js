@@ -136,8 +136,15 @@ export function parseMusicXml(xmlText) {
             // Measured tremolo expansion
             const tremoloEl = child.querySelector('tremolo');
             if (tremoloEl) {
+              // <tuplet-actual><tuplet-number> on a tuplet-start note overrides the
+              // slash-derived stroke count — see expandTremolo's doc comment.
+              const tupletActualText = child
+                .querySelector('tuplet[type="start"] > tuplet-actual > tuplet-number')
+                ?.textContent;
+              const tupletActual = tupletActualText ? parseInt(tupletActualText, 10) || null : null;
+
               const result = expandTremolo(tremoloEl, {
-                pitch, vel, noteTick, durTick, tpb, pi, channel, notes, pendingTremolo,
+                pitch, vel, noteTick, durTick, tpb, pi, channel, notes, pendingTremolo, tupletActual,
               });
               if (result.handled) {
                 pendingTremolo = result.pending;
@@ -207,7 +214,15 @@ export function parseMusicXml(xmlText) {
 // Expands a <tremolo> note into the explicit alternating strokes that we'll show
 // in the piano roll. Stroke speed is absolute: N slashes = 2^N strokes per
 // quarter note. We use tpb (not durTick) so a 2-slash tremolo always means
-// 16th-note speed regardless of the written note value or any tuplet.
+// 16th-note speed regardless of the written note value or any tuplet —
+// UNLESS the tremolo's start note carries a <tuplet type="start"> with a
+// <tuplet-actual><tuplet-number>: MuseScore's own idiom for "sextuplet written
+// as two tremolo noteheads" (and similar) declares the true audible slot count
+// there, and it can disagree with the naive slash/tpb math (a 6:4 sextuplet of
+// 16ths written as a 2-note tremolo with 2 slashes computes 4 strokes/beat by
+// the absolute-speed rule, but MuseScore plays 6 — the slashes only pick the
+// tuplet's own base note type here, not a further subdivision of it). When
+// present, that number overrides the computed stroke count for the bracket.
 //
 // Returns { handled: true, pending: <next pendingTremolo or null> } when the
 // tremolo was consumed (single, start, or matched stop). Returns { handled: false }
@@ -216,11 +231,11 @@ export function parseMusicXml(xmlText) {
 function expandTremolo(tremoloEl, ctx) {
   const type    = tremoloEl.getAttribute('type');
   const slashes = parseInt(tremoloEl.textContent, 10) || 0;
-  const { pitch, vel, noteTick, durTick, tpb, pi, channel, notes, pendingTremolo } = ctx;
+  const { pitch, vel, noteTick, durTick, tpb, pi, channel, notes, pendingTremolo, tupletActual } = ctx;
 
   if (type === 'single') {
     const strokeDur    = Math.round(tpb / Math.pow(2, slashes));
-    const totalStrokes = Math.max(1, Math.round(durTick / strokeDur));
+    const totalStrokes = tupletActual || Math.max(1, Math.round(durTick / strokeDur));
     for (let s = 0; s < totalStrokes; s++) {
       notes.push({
         pitch,
@@ -234,14 +249,14 @@ function expandTremolo(tremoloEl, ctx) {
   }
 
   if (type === 'start') {
-    return { handled: true, pending: { pitch, noteTick, durTick, slashes, vel } };
+    return { handled: true, pending: { pitch, noteTick, durTick, slashes, vel, tupletActual } };
   }
 
   if (type === 'stop' && pendingTremolo) {
     const combinedStart = pendingTremolo.noteTick;
     const combinedDur   = pendingTremolo.durTick + durTick;
     const strokeDur     = Math.round(tpb / Math.pow(2, pendingTremolo.slashes));
-    const totalStrokes  = Math.max(2, Math.round(combinedDur / strokeDur));
+    const totalStrokes  = pendingTremolo.tupletActual || Math.max(2, Math.round(combinedDur / strokeDur));
     for (let s = 0; s < totalStrokes; s++) {
       const first = s % 2 === 0;
       notes.push({
