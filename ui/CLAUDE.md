@@ -13,8 +13,8 @@
 - `Ctrl+scroll` — zoom horizontal (toward cursor tick); browser zoom is blocked
 - `+` / `-` — zoom in / out (toward viewport center); `=` and `_` accepted too, so the unshifted keys work
 - `Right drag` — pan (horizontal + vertical); cursor shows `grabbing`
-- `Home` — scroll to tick 0
-- `End` — scroll to show last note at right edge
+- `Home` — scroll to tick 0 and move the playhead there
+- `End` — scroll to show last note at right edge and move the playhead to the piece's end
 - `Space` — toggle playback
 - `A` — select all notes
 - `Escape` — clear selection (also cancels in-progress rect if one is active)

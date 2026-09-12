@@ -871,11 +871,17 @@ export class PianoRoll {
     if (e.key === 'Home' && state.loaded) {
       e.preventDefault();
       this.scrollX = 0;
+      const time = state.tickToTime(0);
+      state.setPlayheadTime(time);
+      this.canvas.dispatchEvent(new CustomEvent('user-seek', { bubbles: true, detail: { time } }));
       this.render();
     }
     if (e.key === 'End' && state.loaded) {
       e.preventDefault();
       this.scrollX = Math.max(0, state.totalTicks - this.rollWidth / this.pixelsPerTick);
+      const time = state.tickToTime(state.totalTicks);
+      state.setPlayheadTime(time);
+      this.canvas.dispatchEvent(new CustomEvent('user-seek', { bubbles: true, detail: { time } }));
       this.render();
     }
 
