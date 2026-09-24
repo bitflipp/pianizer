@@ -36,6 +36,11 @@ auto-humanization — the tool is an instrument.
   repeated key's action time to reset
 - **Project save/load** — versioned JSON preserving all edits; auto-save to
   `localStorage` with per-piece view state restoration
+- **Server-side project storage** *(optional)* — a single Go binary with an
+  embedded copy of the frontend, backed by MariaDB: every "Save to server"
+  writes a new, immutable revision of a named project, with a version-history
+  browser to load older revisions. No login of its own — it expects to sit
+  behind an already-authenticating reverse proxy
 - **No build step, no dependencies** — vanilla JS ES modules, Canvas 2D, served
   with any static HTTP server
 
@@ -49,7 +54,9 @@ auto-humanization — the tool is an instrument.
 - A MIDI output port the browser can see (e.g.
   [FluidSynth](https://www.fluidsynth.org/) via a virtual MIDI loopback, or a
   hardware instrument)
-- Python 3 (or any static file server) to serve the files over localhost
+- Python 3 (or any static file server) to serve the files over localhost —
+  or Go 1.22+ and MariaDB if you also want server-side project storage
+- [`just`](https://github.com/casey/just) to run the recipes below
 
 ---
 
@@ -58,11 +65,29 @@ auto-humanization — the tool is an instrument.
 ```sh
 git clone https://github.com/phinau/pianizer.git
 cd pianizer
-python3 -m http.server
+just run
 ```
 
 Open `http://localhost:8000` in Chrome or Edge, click **Connect** in the toolbar
-to pick a MIDI output port, then load a MusicXML file.
+to pick a MIDI output port, then load a MusicXML file. `just run` is
+static-only (no server, no database) — plain `python3 -m http.server` works
+too, if you'd rather not install `just`.
+
+### Server-side project storage (optional)
+
+```sh
+export PIANIZER_DB_DSN='user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true'
+just run-server
+```
+
+This runs the Go server (assets served live from disk, no rebuild needed
+while developing) against your MariaDB instance, bootstraps the schema on
+first connect, and opens the same desktop window as `just run` — now with
+"Save to server", "Projects…" and "Version history" enabled in the toolbar.
+For a production deployment, `just build` produces a single `pianizer`
+binary with the frontend embedded; run it directly with `PIANIZER_DB_DSN`
+set, behind a reverse proxy that handles authentication (the server itself
+has no login of its own).
 
 ---
 
@@ -160,8 +185,19 @@ pianizer/
     region-lane.js    RegionLane — soft-pedal (una corda) binary CC67 regions
     minimap.js        Minimap — full-piece overview, viewport indicator
     toolbar.js        <ph-toolbar> custom element
+    server-io.js      Server-side project storage client + tool windows
     dom-utils.js      Layout constants and shared helpers
+  justfile            run / run-server / build / test recipes
+  go.mod, assets.go   Go module root; embeds index.html/engine/ui for the server binary
+  cmd/server/         Go server entrypoint (main.go)
+  internal/
+    api/                HTTP handlers for /api/projects and revisions
+    store/              Store interface — MariaDB-backed + in-memory implementations
 ```
+
+The Go server is entirely optional and additive — `just run` (or plain
+`python3 -m http.server`) runs the client standalone with no server or
+database involved at all.
 
 ---
 
@@ -172,7 +208,10 @@ npm install          # installs Vitest + Playwright (dev only)
 npm test             # engine unit tests + Playwright UI smoke tests
 npm run test:engine  # unit tests only
 npm run test:ui      # UI tests only (starts a static server automatically)
+go test ./...        # Go store/API tests — no MariaDB needed (in-memory Store)
 ```
+
+Or via `just`: `just test`, `just test-engine`, `just test-ui`, `just test-go`.
 
 ---
 
