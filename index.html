@@ -222,6 +222,7 @@
   import { RegionLane }              from './ui/region-lane.js';
   import { Minimap }                 from './ui/minimap.js';
   import { isFormFocused, PITCH_MAX } from './ui/dom-utils.js';
+  import { saveRevision, openProjectsWindow, openHistoryWindow } from './ui/server-io.js';
   import './ui/toolbar.js';
 
   // Best-effort localStorage write — swallows quota / private-mode errors.
@@ -763,6 +764,12 @@
     a.click();
     URL.revokeObjectURL(url);
   });
+
+  // ── Server-side project storage (optional Go+MariaDB backend) ──────
+  const serverIoCtx = () => ({ state, openToolWindow, fitView, restoreView });
+  document.addEventListener('save-revision', () => saveRevision(serverIoCtx()));
+  document.addEventListener('open-projects', () => openProjectsWindow(serverIoCtx()));
+  document.addEventListener('open-history',  () => openHistoryWindow(serverIoCtx()));
 
   document.addEventListener('load-project', () => {
     const input = document.createElement('input');

@@ -23,11 +23,24 @@ There is no auto-humanization magic — the tool is an instrument, not an algori
   MIDI port (e.g. FluidSynth).
   Scheduling uses `performance.now()` timestamps with a 30ms/150ms lookahead interval.
 - **No build step** — ES modules loaded directly in the browser, served with
-  `python3 -m http.server`. Everything must work by opening index.html via localhost.
+  `python3 -m http.server` (or `just run`). Everything must work by opening
+  index.html via localhost.
 - **No runtime dependencies** — no CDN imports, nothing the browser fetches beyond
   the source tree. MusicXML parsed with browser `DOMParser`. The shipped app stays
   dep-free; the only npm presence is the test harness (Vitest + Playwright,
   devDependencies only).
+- **Server-side project storage (optional)** — a Go server (stdlib `net/http`
+  + `database/sql` + `github.com/go-sql-driver/mysql`) backed by MariaDB,
+  compiled to a single binary that embeds the frontend via `go:embed`. Every
+  "Save to server" writes a new immutable revision of a named project; a
+  version-history UI browses and restores old ones. No login of its own —
+  the app is single-user and trusts a reverse proxy for auth entirely; no
+  ORM, no migration framework (`CREATE TABLE IF NOT EXISTS` on boot). This is
+  the client's only server dependency and is fully additive: `just run` (or
+  plain `python3 -m http.server`) still runs the client standalone with no
+  server or database involved. `just` is the task runner for everything —
+  running the app, running the server, and running tests — replacing the old
+  standalone shell scripts.
 
 ---
 
@@ -48,7 +61,14 @@ pianizer/
     region-lane.js           ← RegionLane: soft-pedal (una corda) lane, binary CC67 regions
     minimap.js               ← Minimap lane: full-piece overview, viewport indicator, click-to-pan
     toolbar.js               ← <ph-toolbar> custom element
+    server-io.js             ← server-side project storage client + Projects/Version-history tool windows
     dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused/forwardWheelToRoll helpers + drawTickGrid/drawVerticalLine/drawLaneLabel canvas primitives (roll + lanes)
+  justfile                   ← task runner: run / run-server / build / test recipes
+  go.mod, assets.go          ← Go module root; assets.go embeds index.html/engine/ui for the server binary
+  cmd/server/main.go         ← Go server entrypoint: flags/env, DB connect + migrate, HTTP server
+  internal/
+    api/                     ← HTTP handlers for /api/projects and their revisions
+    store/                   ← Store interface; MariaDB-backed and in-memory implementations
 ```
 
 ---
