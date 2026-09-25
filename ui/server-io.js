@@ -57,9 +57,17 @@ function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
+// A vertical list of rows, spaced by gap alone — no separator lines, so the
+// list's edges stay flush with the tool-window body's own 5px padding.
+function makeList() {
+  const el = document.createElement('div');
+  el.style.cssText = 'display:flex; flex-direction:column; gap:5px;';
+  return el;
+}
+
 function makeRow(...cells) {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid #333;';
+  row.style.cssText = 'display:flex; align-items:center; gap:5px;';
   for (const cell of cells) row.appendChild(cell);
   return row;
 }
@@ -107,7 +115,7 @@ export function openServerWindow(ctx) {
 
   openToolWindow('Server', (body, closeWindow) => {
     const errorEl = makeErrorLine();
-    const listEl = document.createElement('div');
+    const listEl = makeList();
     listEl.textContent = 'Loading…';
 
     body.appendChild(listEl);
@@ -143,7 +151,7 @@ export function openServerWindow(ctx) {
       const nameInput = document.createElement('input');
       nameInput.type = 'text';
       nameInput.placeholder = 'New project name';
-      nameInput.style.cssText = 'width:100%; margin-top:8px; background:#222; color:#fff; border:1px solid #666; font:12px monospace; padding:4px;';
+      nameInput.style.cssText = 'width:100%; margin-top:5px; background:#222; color:#fff; border:1px solid #666; font:12px monospace; padding:4px;';
 
       const saveAsBtn = makeButton('Save as new project', async () => {
         const name = nameInput.value.trim();
@@ -168,7 +176,7 @@ function openHistoryWindowForProject(ctx, project) {
 
   openToolWindow('Version history — ' + project.name, (body, closeWindow) => {
     const errorEl = makeErrorLine();
-    const listEl = document.createElement('div');
+    const listEl = makeList();
     listEl.textContent = 'Loading…';
     body.appendChild(listEl);
     body.appendChild(errorEl);
@@ -185,7 +193,6 @@ function openHistoryWindowForProject(ctx, project) {
         });
         listEl.appendChild(makeRow(info, loadBtn));
       }
-      if (listEl.lastElementChild) listEl.lastElementChild.style.borderBottom = 'none';
     }).catch(err => {
       listEl.replaceChildren();
       showError(errorEl, err);
@@ -205,7 +212,7 @@ export function openHistoryWindow(ctx) {
         closeWindow();
         openServerWindow(ctx);
       });
-      btn.style.marginTop = '6px';
+      btn.style.marginTop = '5px';
       body.appendChild(btn);
     });
     return;

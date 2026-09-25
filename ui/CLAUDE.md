@@ -278,7 +278,8 @@ in `index.html` — keep it in sync when adding or changing shortcuts.
 `<ph-toolbar>` custom element. A **ribbon** of captioned groups, each styled as a mini
 **tool window** to match `.tool-window` in index.html: a `.group` is a `#111`/`#444`-border
 box (no bottom border — the toolbar host's own `border-bottom` is the delimiter) with a
-`.group-title` strip (`#222`, 11 px `#888`, `#333` bottom border) over a `.group-body`
+`.group-title` strip (`#222`, 11 px `#888`, `#333` bottom border, 4 px/8 px padding — same as
+`.tool-window-title`/`.help-overlay-title`) over a `.group-body`
 (5 px padding, flex row). Adjacent groups sit flush with collapsed borders
 (`.group + .group { margin-left: -1px }`, à la `border-collapse`), so the row reads as one
 segmented strip rather than spaced boxes. The `.inner` wrapper has **no** outer padding (the
