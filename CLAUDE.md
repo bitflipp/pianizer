@@ -61,7 +61,7 @@ pianizer/
     region-lane.js           ← RegionLane: soft-pedal (una corda) lane, binary CC67 regions
     minimap.js               ← Minimap lane: full-piece overview, viewport indicator, click-to-pan
     toolbar.js               ← <ph-toolbar> custom element
-    server-io.js             ← server-side project storage client + Projects/Version-history tool windows
+    server-io.js             ← server-side project storage client + Server/Version-history tool windows
     dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused/forwardWheelToRoll helpers + drawTickGrid/drawVerticalLine/drawLaneLabel canvas primitives (roll + lanes)
   justfile                   ← task runner: run / run-server / build / test recipes
   go.mod, assets.go          ← Go module root; assets.go embeds index.html/engine/ui for the server binary

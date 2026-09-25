@@ -81,12 +81,13 @@ function makeButton(text, onClick) {
 
 function makeErrorLine() {
   const el = document.createElement('div');
-  el.style.cssText = 'color:#e88; font-size:11px; margin:4px 0; display:none;';
+  el.style.cssText = 'color:#e88; font-size:11px; margin:4px 0 0; display:none;';
   return el;
 }
 
 function showError(el, err) {
-  el.textContent = err.message || String(err);
+  const message = err.message || String(err);
+  el.textContent = message.charAt(0).toUpperCase() + message.slice(1);
   el.style.display = 'block';
 }
 
@@ -99,12 +100,12 @@ async function loadRevisionInto(ctx, projectId, revisionNo, linkedName) {
   setLinkedProject(state.pieceId, { id: projectId, name: linkedName });
 }
 
-// "Projects…" window: browse existing server projects, or save the
+// "Server…" window: browse existing server projects, or save the
 // currently-loaded piece as a brand-new one.
-export function openProjectsWindow(ctx) {
+export function openServerWindow(ctx) {
   const { state, openToolWindow } = ctx;
 
-  openToolWindow('Projects', (body, closeWindow) => {
+  openToolWindow('Server', (body, closeWindow) => {
     const errorEl = makeErrorLine();
     const listEl = document.createElement('div');
     listEl.textContent = 'Loading…';
@@ -184,6 +185,7 @@ function openHistoryWindowForProject(ctx, project) {
         });
         listEl.appendChild(makeRow(info, loadBtn));
       }
+      if (listEl.lastElementChild) listEl.lastElementChild.style.borderBottom = 'none';
     }).catch(err => {
       listEl.replaceChildren();
       showError(errorEl, err);
@@ -201,7 +203,7 @@ export function openHistoryWindow(ctx) {
       body.appendChild(makeLabel('Save this piece to a project first.'));
       const btn = makeButton('Save to server…', () => {
         closeWindow();
-        openProjectsWindow(ctx);
+        openServerWindow(ctx);
       });
       btn.style.marginTop = '6px';
       body.appendChild(btn);
@@ -212,14 +214,14 @@ export function openHistoryWindow(ctx) {
 }
 
 // "Save to server" toolbar action: saves straight to the linked project if
-// one exists, otherwise opens the Projects window to name/create one.
+// one exists, otherwise opens the Server window to name/create one.
 export async function saveRevision(ctx) {
   const { state } = ctx;
   if (!state.loaded) return;
 
   const linked = getLinkedProject(state.pieceId);
   if (!linked) {
-    openProjectsWindow(ctx);
+    openServerWindow(ctx);
     return;
   }
 

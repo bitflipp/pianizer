@@ -83,7 +83,7 @@ just run-server
 This runs the Go server (assets served live from disk, no rebuild needed
 while developing) against your MariaDB instance, bootstraps the schema on
 first connect, and opens the same desktop window as `just run` — now with
-"Save to server", "Projects…" and "Version history" enabled in the toolbar.
+"Save to server", "Server…" and "Version history" enabled in the toolbar.
 For a production deployment, `just build` produces a single `pianizer`
 binary with the frontend embedded; run it directly with `PIANIZER_DB_DSN`
 set, behind a reverse proxy that handles authentication (the server itself

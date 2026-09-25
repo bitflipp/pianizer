@@ -287,9 +287,9 @@ a deliberate exception to the project-wide 5 px panel padding. Groups wrap (`fle
 the bar runs out of width. The groups, left to right:
 
 - **File** — Load MusicXML, Load project, Save project
-- **Projects** — Save to server (disabled until a piece is loaded, like Save
-  project), Projects…, Version history. See `ui/server-io.js` for the fetch
-  client and the tool-window content these open — Projects lists/creates
+- **Server** — Save to server (disabled until a piece is loaded, like Save
+  project), Server…, Version history. See `ui/server-io.js` for the fetch
+  client and the tool-window content these open — Server lists/creates
   server-side projects (browsable even with nothing loaded locally), Version
   history lists and loads the current piece's linked project's revisions
 - **Edit** — Undo, Redo
