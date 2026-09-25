@@ -47,14 +47,24 @@ run port="8000":
 # (a MariaDB DSN, e.g. user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true).
 # Serves frontend assets live from disk (-dev-assets), so editing index.html
 # or ui/*.js needs no rebuild — just a browser refresh.
+#
+# Built to a temp binary and exec'd directly rather than `go run`'d: `go run`
+# execs the compiled binary as a *child* process of itself, so `server_pid=$!`
+# would be the `go run` wrapper, not the server — killing it on exit leaves
+# the real server orphaned and still holding the port, silently serving
+# stale code next time this recipe runs (`_wait-for-port` sees the orphan
+# and thinks the new instance is up).
 run-server port="8000":
     #!/usr/bin/env bash
     set -euo pipefail
     : "${PIANIZER_DB_DSN:?set PIANIZER_DB_DSN to a MariaDB DSN, e.g. user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true}"
     cd "{{ justfile_directory() }}"
-    go run ./cmd/server -addr "localhost:{{ port }}" -dev-assets . &
+    bin_dir="$(mktemp -d)"
+    trap 'rm -rf "$bin_dir"' EXIT
+    go build -o "$bin_dir/pianizer-server" ./cmd/server
+    "$bin_dir/pianizer-server" -addr "localhost:{{ port }}" -dev-assets . &
     server_pid=$!
-    trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+    trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$bin_dir"' EXIT
     just _wait-for-port {{ port }}
     just _launch "http://localhost:{{ port }}"
 
