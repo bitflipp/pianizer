@@ -117,3 +117,26 @@ func handleGetRevision(st store.Store) http.HandlerFunc {
 		}
 	}
 }
+
+func handleDeleteRevision(st store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		projectID, ok := pathInt64(w, r, "id")
+		if !ok {
+			return
+		}
+		revisionNo, ok := pathInt(w, r, "no")
+		if !ok {
+			return
+		}
+
+		err := st.DeleteRevision(r.Context(), projectID, revisionNo)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "no such project or revision")
+		case err != nil:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		default:
+			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+		}
+	}
+}

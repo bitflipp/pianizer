@@ -24,6 +24,7 @@ func NewMux(st store.Store, assets fs.FS) *http.ServeMux {
 	mux.HandleFunc("GET /api/projects/{id}/revisions", handleListRevisions(st))
 	mux.HandleFunc("POST /api/projects/{id}/revisions", handleCreateRevision(st))
 	mux.HandleFunc("GET /api/projects/{id}/revisions/{no}", handleGetRevision(st))
+	mux.HandleFunc("DELETE /api/projects/{id}/revisions/{no}", handleDeleteRevision(st))
 
 	mux.Handle("/", http.FileServerFS(assets))
 
