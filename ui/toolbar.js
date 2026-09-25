@@ -86,10 +86,10 @@ export class Toolbar extends HTMLElement {
         </div>
       </div>
       <div class="group">
-        <div class="group-title">Projects</div>
+        <div class="group-title">Server</div>
         <div class="group-body">
           <button data-action="save-revision" disabled>Save to server</button>
-          <button data-action="open-projects">Projects…</button>
+          <button data-action="open-server">Server…</button>
           <button data-action="open-history">Version history</button>
         </div>
       </div>
@@ -154,7 +154,7 @@ export class Toolbar extends HTMLElement {
     shadow.querySelector('[data-action="load-project"]').addEventListener('click', emit('load-project'));
     this._saveBtn.addEventListener('click', emit('save-project'));
     this._saveRevisionBtn.addEventListener('click', emit('save-revision'));
-    shadow.querySelector('[data-action="open-projects"]').addEventListener('click', emit('open-projects'));
+    shadow.querySelector('[data-action="open-server"]').addEventListener('click', emit('open-server'));
     shadow.querySelector('[data-action="open-history"]').addEventListener('click', emit('open-history'));
     this._undoBtn.addEventListener('click', () => state.undo());
     this._redoBtn.addEventListener('click', () => state.redo());
