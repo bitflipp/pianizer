@@ -322,14 +322,18 @@
   state.addEventListener('selectionchanged', updateStatus);
   updateStatus();
 
-  // Transient status message (e.g. a blocked edit on locked notes), reverts after a beat.
+  // Transient status message (e.g. a blocked edit on locked notes, or a
+  // server-storage result — see ui/server-io.js), reverts after a beat.
+  // Errors are shown in red and linger a bit longer, since they tend to run
+  // longer than a short blocked-edit phrase and are worth actually reading.
   let _flashTimer = null;
-  function flashStatus(message) {
+  function flashStatus(message, isError) {
     statusEl.textContent = message;
+    statusEl.style.color = isError ? '#e88' : '';
     clearTimeout(_flashTimer);
-    _flashTimer = setTimeout(updateStatus, 2000);
+    _flashTimer = setTimeout(() => { statusEl.style.color = ''; updateStatus(); }, isError ? 3500 : 2000);
   }
-  document.addEventListener('roll-flash', e => flashStatus(e.detail.message));
+  document.addEventListener('roll-flash', e => flashStatus(e.detail.message, e.detail.isError));
 
   // Guard shared by the curve / velocity / delta tools: they need a
   // non-empty selection. Returns false (and the tool aborts) when nothing is selected.

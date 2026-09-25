@@ -126,6 +126,55 @@ func TestRevisionLifecycle(t *testing.T) {
 	res.Body.Close()
 }
 
+func TestDeleteRevision(t *testing.T) {
+	srv := newTestServer()
+	defer srv.Close()
+
+	res := postJSON(t, srv.URL+"/api/projects", `{"name":"Ballade"}`)
+	var proj projectJSON
+	decode(t, res, &proj)
+	base := srv.URL + "/api/projects/" + itoa(proj.ID)
+
+	postJSON(t, base+"/revisions", `{"v":1}`).Body.Close()
+	postJSON(t, base+"/revisions", `{"v":2}`).Body.Close()
+
+	req, _ := http.NewRequest(http.MethodDelete, base+"/revisions/1", nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete revision 1: %v", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete revision 1: got status %d, want 200", res.StatusCode)
+	}
+	res.Body.Close()
+
+	res, _ = http.Get(base + "/revisions/1")
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("get deleted revision: got status %d, want 404", res.StatusCode)
+	}
+	res.Body.Close()
+
+	req, _ = http.NewRequest(http.MethodDelete, base+"/revisions/1", nil)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete already-deleted revision: %v", err)
+	}
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete already-deleted revision: got status %d, want 404", res.StatusCode)
+	}
+	res.Body.Close()
+
+	req, _ = http.NewRequest(http.MethodDelete, srv.URL+"/api/projects/999/revisions/1", nil)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete revision of unknown project: %v", err)
+	}
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete revision of unknown project: got status %d, want 404", res.StatusCode)
+	}
+	res.Body.Close()
+}
+
 func TestUnknownProjectIs404(t *testing.T) {
 	srv := newTestServer()
 	defer srv.Close()

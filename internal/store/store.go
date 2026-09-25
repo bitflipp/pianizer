@@ -38,11 +38,16 @@ type Revision struct {
 }
 
 // Store is the persistence contract. Revisions are immutable and numbered
-// per-project starting at 1; there is no update or delete — only append.
+// per-project starting at 1, and are never renumbered — there is no update,
+// only append and delete-by-number. A deleted revision's number is not
+// reused while sibling revisions remain, since CreateRevision always numbers
+// off the current max; it can only be reused once every revision of a
+// project has been deleted.
 type Store interface {
 	ListProjects(ctx context.Context) ([]Project, error)
 	CreateProject(ctx context.Context, name string) (Project, error)
 	ListRevisions(ctx context.Context, projectID int64) ([]RevisionMeta, error)
 	GetRevision(ctx context.Context, projectID int64, revisionNo int) (Revision, error)
 	CreateRevision(ctx context.Context, projectID int64, data string) (RevisionMeta, error)
+	DeleteRevision(ctx context.Context, projectID int64, revisionNo int) error
 }

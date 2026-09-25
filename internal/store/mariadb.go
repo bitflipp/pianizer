@@ -183,3 +183,19 @@ func (m *MariaDB) CreateRevision(ctx context.Context, projectID int64, data stri
 	}
 	return RevisionMeta{RevisionNo: next, CreatedAt: createdAt, SizeBytes: size}, nil
 }
+
+func (m *MariaDB) DeleteRevision(ctx context.Context, projectID int64, revisionNo int) error {
+	res, err := m.db.ExecContext(ctx,
+		`DELETE FROM project_revisions WHERE project_id=? AND revision_no=?`, projectID, revisionNo)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

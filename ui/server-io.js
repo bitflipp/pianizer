@@ -52,6 +52,7 @@ export const createProject  = name                  => request('POST', '/api/pro
 export const listRevisions  = projectId              => request('GET',  `/api/projects/${projectId}/revisions`).then(r => r.revisions);
 export const getRevision    = (projectId, revNo)     => request('GET',  `/api/projects/${projectId}/revisions/${revNo}`);
 export const createRevision = (projectId, projectJson) => request('POST', `/api/projects/${projectId}/revisions`, projectJson);
+export const deleteRevision = (projectId, revNo)     => request('DELETE', `/api/projects/${projectId}/revisions/${revNo}`);
 
 function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
@@ -87,16 +88,60 @@ function makeButton(text, onClick) {
   return btn;
 }
 
-function makeErrorLine() {
-  const el = document.createElement('div');
-  el.style.cssText = 'color:#e88; font-size:11px; margin:4px 0 0; display:none;';
-  return el;
+// A two-step confirm button: the first click arms it — disabled for 3s
+// while a red bar drains left-to-right — then it re-enables with a red
+// background (primed) and a second click fires `onConfirm`. Guards against
+// an accidental double-click immediately performing something destructive.
+function makeDeleteButton(onConfirm) {
+  const btn = document.createElement('button');
+  btn.className = 'delta-btn';
+  btn.textContent = 'Delete';
+  btn.style.cssText = 'position:relative; overflow:hidden;';
+
+  let armed = false;
+
+  function reset() {
+    armed = false;
+    btn.style.background = '';
+    btn.style.borderColor = '';
+  }
+
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    if (armed) {
+      reset();
+      onConfirm();
+      return;
+    }
+
+    btn.disabled = true;
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:absolute; left:0; bottom:0; height:2px; width:100%; background:#e55; transform-origin:left; transition:transform 3s linear;';
+    btn.appendChild(bar);
+    requestAnimationFrame(() => { bar.style.transform = 'scaleX(0)'; });
+
+    setTimeout(() => {
+      bar.remove();
+      btn.disabled = false;
+      armed = true;
+      btn.style.background = '#5c1c1c';
+      btn.style.borderColor = '#e55';
+    }, 3000);
+  });
+
+  return btn;
 }
 
-function showError(el, err) {
+// User-facing feedback surfaces in the status bar (index.html), not in the
+// tool window itself — same 'roll-flash' event ui/roll.js uses for its own
+// transient messages (e.g. a blocked edit on locked notes).
+function flash(message, isError) {
+  document.dispatchEvent(new CustomEvent('roll-flash', { detail: { message, isError } }));
+}
+
+function flashError(err) {
   const message = err.message || String(err);
-  el.textContent = message.charAt(0).toUpperCase() + message.slice(1);
-  el.style.display = 'block';
+  flash(message.charAt(0).toUpperCase() + message.slice(1), true);
 }
 
 async function loadRevisionInto(ctx, projectId, revisionNo, linkedName) {
@@ -114,12 +159,10 @@ export function openServerWindow(ctx) {
   const { state, openToolWindow } = ctx;
 
   openToolWindow('Server', (body, closeWindow) => {
-    const errorEl = makeErrorLine();
     const listEl = makeList();
     listEl.textContent = 'Loading…';
 
     body.appendChild(listEl);
-    body.appendChild(errorEl);
 
     listProjects().then(projects => {
       listEl.replaceChildren();
@@ -132,9 +175,11 @@ export function openServerWindow(ctx) {
         const loadBtn = makeButton('Load latest', async () => {
           if (p.revisionCount === 0) return;
           try {
-            await loadRevisionInto(ctx, p.id, p.revisionCount, p.name);
+            const revisions = await listRevisions(p.id);
+            if (revisions.length === 0) return;
+            await loadRevisionInto(ctx, p.id, revisions[0].revisionNo, p.name); // newest first
             closeWindow();
-          } catch (err) { showError(errorEl, err); }
+          } catch (err) { flashError(err); }
         });
         const historyBtn = makeButton('History', () => {
           closeWindow();
@@ -144,7 +189,7 @@ export function openServerWindow(ctx) {
       }
     }).catch(err => {
       listEl.replaceChildren();
-      showError(errorEl, err);
+      flashError(err);
     });
 
     if (state.loaded) {
@@ -161,7 +206,8 @@ export function openServerWindow(ctx) {
           await createRevision(project.id, state.saveProject());
           setLinkedProject(state.pieceId, project);
           closeWindow();
-        } catch (err) { showError(errorEl, err); }
+          flash('Saved to server · ' + name);
+        } catch (err) { flashError(err); }
       });
       saveAsBtn.style.marginTop = '4px';
 
@@ -175,11 +221,9 @@ function openHistoryWindowForProject(ctx, project) {
   const { openToolWindow } = ctx;
 
   openToolWindow('Version history — ' + project.name, (body, closeWindow) => {
-    const errorEl = makeErrorLine();
     const listEl = makeList();
     listEl.textContent = 'Loading…';
     body.appendChild(listEl);
-    body.appendChild(errorEl);
 
     listRevisions(project.id).then(revisions => {
       listEl.replaceChildren();
@@ -189,13 +233,21 @@ function openHistoryWindowForProject(ctx, project) {
           try {
             await loadRevisionInto(ctx, project.id, r.revisionNo, project.name);
             closeWindow();
-          } catch (err) { showError(errorEl, err); }
+          } catch (err) { flashError(err); }
         });
-        listEl.appendChild(makeRow(info, loadBtn));
+        const row = makeRow(info, loadBtn);
+        const deleteBtn = makeDeleteButton(async () => {
+          try {
+            await deleteRevision(project.id, r.revisionNo);
+            row.remove();
+          } catch (err) { flashError(err); }
+        });
+        row.appendChild(deleteBtn);
+        listEl.appendChild(row);
       }
     }).catch(err => {
       listEl.replaceChildren();
-      showError(errorEl, err);
+      flashError(err);
     });
   });
 }
@@ -234,7 +286,8 @@ export async function saveRevision(ctx) {
 
   try {
     await createRevision(linked.id, state.saveProject());
+    flash('Saved to server · ' + linked.name);
   } catch (err) {
-    alert('Could not save to server: ' + err.message);
+    flashError(err);
   }
 }

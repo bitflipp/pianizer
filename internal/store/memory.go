@@ -104,7 +104,15 @@ func (m *Memory) CreateRevision(ctx context.Context, projectID int64, data strin
 		return RevisionMeta{}, ErrNotFound
 	}
 
-	next := len(m.revisions[projectID]) + 1
+	// Numbered off the current max, not the count, so a number is never
+	// reused while sibling revisions remain (mirrors the MariaDB store's
+	// MAX(revision_no)+1, which likewise doesn't reuse numbers around a gap).
+	next := 1
+	for _, r := range m.revisions[projectID] {
+		if r.RevisionNo >= next {
+			next = r.RevisionNo + 1
+		}
+	}
 	rev := Revision{
 		RevisionMeta: RevisionMeta{
 			RevisionNo: next,
@@ -115,9 +123,47 @@ func (m *Memory) CreateRevision(ctx context.Context, projectID int64, data strin
 	}
 	m.revisions[projectID] = append(m.revisions[projectID], rev)
 
-	p.RevisionCount = next
+	p.RevisionCount = len(m.revisions[projectID])
 	t := rev.CreatedAt
 	p.LastSavedAt = &t
 
 	return rev.RevisionMeta, nil
+}
+
+func (m *Memory) DeleteRevision(ctx context.Context, projectID int64, revisionNo int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[projectID]
+	if !ok {
+		return ErrNotFound
+	}
+
+	revs := m.revisions[projectID]
+	idx := -1
+	for i, r := range revs {
+		if r.RevisionNo == revisionNo {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return ErrNotFound
+	}
+	revs = append(revs[:idx], revs[idx+1:]...)
+	m.revisions[projectID] = revs
+
+	p.RevisionCount = len(revs)
+	if len(revs) == 0 {
+		p.LastSavedAt = nil
+	} else {
+		latest := revs[0].CreatedAt
+		for _, r := range revs[1:] {
+			if r.CreatedAt.After(latest) {
+				latest = r.CreatedAt
+			}
+		}
+		p.LastSavedAt = &latest
+	}
+	return nil
 }
