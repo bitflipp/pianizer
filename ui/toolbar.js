@@ -30,7 +30,7 @@ const STYLE = `
   .group + .group { margin-left: -1px; }
   .group-title {
     background: #222;
-    padding: 3px 8px;
+    padding: 4px 8px;
     font-size: 11px;
     color: #888;
     border-bottom: 1px solid #333;
