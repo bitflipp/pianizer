@@ -20,16 +20,13 @@
 
 import { state, snapGridTicks } from '../engine/state.js';
 import {
-  KEY_WIDTH, canvasPos, forwardWheelToRoll,
-  drawTickGrid, drawVerticalLine, drawLaneLabel,
+  KEY_WIDTH, COL_KEY_BG, COL_LANE_BG, canvasPos, forwardWheelToRoll,
+  drawLaneGrid, drawLanePlayhead, drawLaneLabel,
 } from './dom-utils.js';
 
 const PAD_V          = 5;   // vertical inset of the region bars within the strip
 const EDGE_PX        = 5;   // edge-grab zone width for resizing (px)
 const DRAG_THRESHOLD = 4;   // px of motion before a press becomes a resize/move drag
-
-const COL_KEY_BG    = '#111';
-const COL_LANE_BG   = '#161616';
 
 // Una corda violet — distinct from the pedal lane's teal and the tempo lane's
 // amber, and clear of the red↔green axis. The hot shade brightens on hover.
@@ -68,10 +65,10 @@ export class RegionLane {
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBackground();
-    if (state.tempoMap.length) this._drawGrid();
+    if (state.tempoMap.length) drawLaneGrid(this.ctx, this.canvas, this.roll);
     this._drawRegions();
-    this._drawPlayhead();
-    this._drawLabel();
+    drawLanePlayhead(this.ctx, this.canvas, this.roll);
+    drawLaneLabel(this.ctx, this.canvas, 'U.C.');
   }
 
   _drawBackground() {
@@ -80,15 +77,6 @@ export class RegionLane {
     ctx.fillRect(0, 0, KEY_WIDTH, canvas.height);
     ctx.fillStyle = COL_LANE_BG;
     ctx.fillRect(KEY_WIDTH, 0, canvas.width - KEY_WIDTH, canvas.height);
-  }
-
-  _drawGrid() {
-    const { ctx, canvas } = this;
-    const tpb       = state.ticksPerBeat;
-    const tickStart = this.roll.scrollX;
-    const tickEnd   = tickStart + (canvas.width - KEY_WIDTH) / this.roll.pixelsPerTick;
-    drawTickGrid(ctx, t => this.roll.tickToX(t), 0, canvas.height,
-      tickStart, tickEnd, tpb, snapGridTicks(state.snapGrid, tpb), state.barBoundaries(tickStart, tickEnd));
   }
 
   _drawRegions() {
@@ -141,17 +129,6 @@ export class RegionLane {
     }
 
     ctx.restore();
-  }
-
-  _drawLabel() {
-    drawLaneLabel(this.ctx, this.canvas, 'U.C.');
-  }
-
-  _drawPlayhead() {
-    if (!state.loaded) return;
-    const x = this.roll.tickToX(state.timeToTick(state.playheadTime));
-    if (x <= KEY_WIDTH) return;
-    drawVerticalLine(this.ctx, x, 0, this.canvas.height);
   }
 
   // ── Geometry / hit testing ───────────────────────────────────────────

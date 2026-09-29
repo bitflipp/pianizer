@@ -6,11 +6,12 @@
 // gzip save/load and localStorage autosave in index.html are untouched and
 // keep working with no server involved.
 
+import { safeSet } from './dom-utils.js';
+
 const linkKey = pieceId => `pianizer-server-project-${pieceId}`;
 
-function safeSet(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
-}
+// How long the Delete button stays disabled after the first click before it can be confirmed.
+const DELETE_ARM_MS = 3000;
 
 function safeGet(key) {
   try {
@@ -88,7 +89,7 @@ function makeButton(text, onClick) {
   return btn;
 }
 
-// A two-step confirm button: the first click arms it — disabled for 3s
+// A two-step confirm button: the first click arms it — disabled for DELETE_ARM_MS
 // while a red bar drains left-to-right — then it re-enables with a red
 // background (primed) and a second click fires `onConfirm`. Guards against
 // an accidental double-click immediately performing something destructive.
@@ -116,7 +117,7 @@ function makeDeleteButton(onConfirm) {
 
     btn.disabled = true;
     const bar = document.createElement('div');
-    bar.style.cssText = 'position:absolute; left:0; bottom:0; height:2px; width:100%; background:#e55; transform-origin:left; transition:transform 3s linear;';
+    bar.style.cssText = 'position:absolute; left:0; bottom:0; height:2px; width:100%; background:#e55; transform-origin:left; transition:transform ' + DELETE_ARM_MS + 'ms linear;';
     btn.appendChild(bar);
     requestAnimationFrame(() => { bar.style.transform = 'scaleX(0)'; });
 
@@ -126,7 +127,7 @@ function makeDeleteButton(onConfirm) {
       armed = true;
       btn.style.background = '#5c1c1c';
       btn.style.borderColor = '#e55';
-    }, 3000);
+    }, DELETE_ARM_MS);
   });
 
   return btn;
@@ -134,7 +135,7 @@ function makeDeleteButton(onConfirm) {
 
 // User-facing feedback surfaces in the status bar (index.html), not in the
 // tool window itself — same 'roll-flash' event ui/roll.js uses for its own
-// transient messages (e.g. a blocked edit on locked notes).
+// transient messages.
 function flash(message, isError) {
   document.dispatchEvent(new CustomEvent('roll-flash', { detail: { message, isError } }));
 }

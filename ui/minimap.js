@@ -5,7 +5,7 @@
 
 import { state } from '../engine/state.js';
 import { KEY_WIDTH, PITCH_MIN, PITCH_MAX, PITCH_RANGE, canvasPos } from './dom-utils.js';
-import { noteHSL } from './roll.js';
+import { noteHSL, COL_BOOKMARK } from './roll.js';
 
 // Velocity-colored notes, batched into bands so the per-render cost stays
 // flat. Setting ctx.fillStyle to a fresh hsl() string re-parses a CSS color
@@ -147,7 +147,7 @@ export class Minimap {
       }
 
       // Bookmarks
-      ctx.strokeStyle = '#e08030';
+      ctx.strokeStyle = COL_BOOKMARK;
       ctx.lineWidth = 1;
       for (const tick of state.bookmarks) {
         const x = this._tickToX(tick);

@@ -10,6 +10,26 @@ import { state, interpolateCurveAtTick } from './state.js';
 // repeat. Hardcoded rather than user-configurable; see schedulePlayback.
 const RESTRIKE_GAP_MS = 50;
 
+// Lookahead scheduler: every SCHEDULE_INTERVAL_MS, schedule events up to LOOKAHEAD_S ahead.
+const LOOKAHEAD_S          = 0.15;
+const SCHEDULE_INTERVAL_MS = 30;
+
+// Scheduling slack, so a send is never stamped in the past and a note never collapses.
+const MIN_LEAD_NOTE_MS     = 5;    // earliest a note-on may fire after "now"
+const MIN_LEAD_CC_MS       = 2;    // same, for pedal CCs
+const MIN_NOTE_LENGTH_MS   = 10;   // floor on note-on → note-off spacing
+const NOTE_GRACE_MS        = 200;  // a note this long past its off is skipped, not sent
+const CC_GRACE_S           = 0.1;  // a pedal event this far in the past is skipped
+const NOTE_CHASE_GRACE_S   = 0.05; // notes starting this far before the start point still play
+
+// MIDI control-change numbers
+const CC_SUSTAIN         = 64;
+const CC_SOFT_PEDAL      = 67;
+const CC_ALL_SOUND_OFF   = 120;
+const CC_ALL_NOTES_OFF   = 123;
+
+const channelOf = n => (n.channel ?? 0) & 0xf;
+
 // Strips a trailing "(123)" / "[123]" / "(123:4)" instance suffix and case-folds,
 // so a saved port name still matches after that suffix changes between runs — e.g.
 // a bare PID (FluidSynth's ALSA client name) or an ALSA sequencer "client:port"
@@ -86,7 +106,7 @@ export class MidiOut {
   // at the start of playback. Baselining here keeps prep cost off the clock.
   schedulePlayback(startTime, getPieceTime, onReady = null) {
     // Collect unique MIDI channels used by notes (for CC64 broadcast + reset).
-    const channels = [...new Set(state.notes.map(n => (n.channel ?? 0) & 0xf))];
+    const channels = [...new Set(state.notes.map(channelOf))];
     if (channels.length === 0) channels.push(0);
 
     // Reset only the channels we're about to play on. A full 16-channel reset
@@ -112,8 +132,8 @@ export class MidiOut {
       const cc64 = Math.round(interpolateCurveAtTick(state.pedalPoints, startTick, 0) * 127);
       const cc67 = state.softPedalRegions.some(r => startTick >= r.startTick && startTick < r.endTick) ? 127 : 0;
       for (const ch of channels) {
-        try { startOut.send([0xb0 | ch, 64, cc64]); } catch {}
-        try { startOut.send([0xb0 | ch, 67, cc67]); } catch {}
+        try { startOut.send([0xb0 | ch, CC_SUSTAIN,    cc64]); } catch {}
+        try { startOut.send([0xb0 | ch, CC_SOFT_PEDAL, cc67]); } catch {}
       }
     }
 
@@ -133,7 +153,7 @@ export class MidiOut {
         noteEnd:   state.tickToTime(n.endTick),
       }))
       .filter(({ n, noteStart, noteEnd }) =>
-        (hasSolo ? n.soloed : !n.muted) && (noteStart >= startTime - 0.05 || noteEnd > startTime))
+        (hasSolo ? n.soloed : !n.muted) && (noteStart >= startTime - NOTE_CHASE_GRACE_S || noteEnd > startTime))
       .sort((a, b) => a.noteStart - b.noteStart);
 
     // For each note, the onset (piece seconds) of the next note that re-strikes
@@ -142,7 +162,7 @@ export class MidiOut {
     const lastStartForKey  = new Map();
     for (let i = sortedNotes.length - 1; i >= 0; i--) {
       const { n, noteStart } = sortedNotes[i];
-      const key = (n.pitch << 4) | ((n.channel ?? 0) & 0xf);
+      const key = (n.pitch << 4) | channelOf(n);
       nextStartByEntry[i] = lastStartForKey.has(key) ? lastStartForKey.get(key) : Infinity;
       lastStartForKey.set(key, noteStart);
     }
@@ -159,8 +179,6 @@ export class MidiOut {
     let notePtr      = 0;
     let pedalPtr     = 0;
     let softPedalPtr = 0;
-    const LOOKAHEAD            = 0.15; // seconds
-    const SCHEDULE_INTERVAL_MS = 30;
 
     const schedule = () => {
       const out = this.selectedOutput;
@@ -168,7 +186,7 @@ export class MidiOut {
 
       const nowMs     = performance.now();
       const pieceNow  = getPieceTime();
-      const windowEnd = pieceNow + LOOKAHEAD;
+      const windowEnd = pieceNow + LOOKAHEAD_S;
       const toWallMs  = t => nowMs + (t - pieceNow) / state.playSpeed * 1000;
 
       // Notes
@@ -187,12 +205,12 @@ export class MidiOut {
           offMs = Math.min(offMs, toWallMs(nextSameKey) - RESTRIKE_GAP_MS);
         }
 
-        const safeOnMs  = Math.max(onMs,  nowMs + 5);
-        const safeOffMs = Math.max(offMs, safeOnMs + 10);
+        const safeOnMs  = Math.max(onMs,  nowMs + MIN_LEAD_NOTE_MS);
+        const safeOffMs = Math.max(offMs, safeOnMs + MIN_NOTE_LENGTH_MS);
 
-        if (offMs + 200 <= nowMs) continue; // already ended
+        if (offMs + NOTE_GRACE_MS <= nowMs) continue; // already ended
 
-        const ch  = (n.channel ?? 0) & 0xf;
+        const ch  = channelOf(n);
         const vel = Math.max(1, Math.min(127, n.velocity));
 
         try {
@@ -201,33 +219,24 @@ export class MidiOut {
         } catch {}
       }
 
-      // Pedal CC64 — sent on all active channels
+      // Sends one due pedal event on all active channels (skipping stale ones).
+      const sendPedalEvent = (cc, { time, value }) => {
+        if (time + CC_GRACE_S < pieceNow) return; // already past
+        const safeMs = Math.max(toWallMs(time), nowMs + MIN_LEAD_CC_MS);
+        for (const ch of channels) {
+          try { out.send([0xb0 | ch, cc, value], safeMs); } catch {}
+        }
+      };
+
+      // Pedal CC64 — value is 0–1, sent as 0–127
       while (pedalPtr < pedalEvents.length && pedalEvents[pedalPtr].time <= windowEnd) {
         const { time, value } = pedalEvents[pedalPtr++];
-
-        if (time + 0.1 < pieceNow) continue; // already past
-
-        const evMs   = toWallMs(time);
-        const safeMs = Math.max(evMs, nowMs + 2);
-        const cc64   = Math.round(value * 127);
-
-        for (const ch of channels) {
-          try { out.send([0xb0 | ch, 64, cc64], safeMs); } catch {}
-        }
+        sendPedalEvent(CC_SUSTAIN, { time, value: Math.round(value * 127) });
       }
 
-      // Soft pedal CC67 — on/off transitions, sent on all active channels
+      // Soft pedal CC67 — on/off transitions, value already 0 / 127
       while (softPedalPtr < softPedalEvents.length && softPedalEvents[softPedalPtr].time <= windowEnd) {
-        const { time, value } = softPedalEvents[softPedalPtr++];
-
-        if (time + 0.1 < pieceNow) continue; // already past
-
-        const evMs   = toWallMs(time);
-        const safeMs = Math.max(evMs, nowMs + 2);
-
-        for (const ch of channels) {
-          try { out.send([0xb0 | ch, 67, value], safeMs); } catch {}
-        }
+        sendPedalEvent(CC_SOFT_PEDAL, softPedalEvents[softPedalPtr++]);
       }
     };
 
@@ -250,10 +259,10 @@ export class MidiOut {
     const chans = channels ?? [...Array(16).keys()];
     for (const ch of chans) {
       try {
-        out.send([0xb0 | ch, 64,  0]); // CC64 sustain pedal release
-        out.send([0xb0 | ch, 67,  0]); // CC67 soft pedal release
-        out.send([0xb0 | ch, 123, 0]); // All Notes Off
-        out.send([0xb0 | ch, 120, 0]); // All Sound Off
+        out.send([0xb0 | ch, CC_SUSTAIN,       0]); // sustain pedal release
+        out.send([0xb0 | ch, CC_SOFT_PEDAL,    0]); // soft pedal release
+        out.send([0xb0 | ch, CC_ALL_NOTES_OFF, 0]);
+        out.send([0xb0 | ch, CC_ALL_SOUND_OFF, 0]);
       } catch {}
     }
   }

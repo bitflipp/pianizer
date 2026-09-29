@@ -62,13 +62,16 @@ pianizer/
     minimap.js               ← Minimap lane: full-piece overview, viewport indicator, click-to-pan
     toolbar.js               ← <ph-toolbar> custom element
     server-io.js             ← server-side project storage client + Server/Version-history tool windows
-    dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused/forwardWheelToRoll helpers + drawTickGrid/drawVerticalLine/drawLaneLabel canvas primitives (roll + lanes)
+    dom-utils.js             ← shared layout constants (KEY_WIDTH, HEADER_HEIGHT, PITCH_MIN/MAX/RANGE) + canvasPos/isFormFocused/forwardWheelToRoll/safeSet helpers + drawTickGrid/drawVerticalLine/drawLaneLabel canvas primitives and the drawLaneGrid/drawLanePlayhead lane wrappers (roll + lanes)
   justfile                   ← task runner: run / run-server / build / test recipes
   go.mod, assets.go          ← Go module root; assets.go embeds index.html/engine/ui for the server binary
   cmd/server/main.go         ← Go server entrypoint: flags/env, DB connect + migrate, HTTP server
   internal/
     api/                     ← HTTP handlers for /api/projects and their revisions
     store/                   ← Store interface; MariaDB-backed and in-memory implementations
+  tests/                     ← engine (Vitest) and ui (Playwright) suites; Go tests sit beside their packages
+  tools/midi-diagnostic.html ← standalone MIDI diagnostic page (not part of the app)
+  icon.svg                   ← favicon
 ```
 
 ---
@@ -93,14 +96,15 @@ pianizer/
 
 ## Testing
 
-Two suites, both run by `npm test`:
+Two JS suites, both run by `npm test` (the Go store/API tests run separately via
+`go test ./...` / `just test-go`, against an in-memory Store — no MariaDB needed):
 
 - **Vitest engine tests** (`tests/engine/test.js`, `test.state.js`,
   `test.musicxml.js`) cover `engine/state.js` and `engine/musicxml.js` in
   isolation — pure JS, no DOM beyond `DOMParser`. Coverage is collected for
   those two files only (`vitest.config.js`). Run alone with `npm run test:engine`.
 - **Playwright UI tests** (`tests/ui/smoke.test.js`, `notes.test.js`,
-  `project-io.test.js`, helpers in `helpers.js`, fixture in
+  `project-io.test.js`, `server-projects.test.js`, helpers in `helpers.js`, fixture in
   `fixtures/project.json`) drive the real page via
   a `python3 -m http.server` web server started by `playwright.config.js`. Run
   alone with `npm run test:ui`. Single worker, serial — these tests share the

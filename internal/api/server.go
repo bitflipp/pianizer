@@ -14,6 +14,9 @@ import (
 // maxRevisionBytes caps the size of a single POSTed revision body.
 const maxRevisionBytes = 32 << 20 // 32 MiB
 
+// maxProjectBodyBytes caps the size of a POSTed create-project body (just a name).
+const maxProjectBodyBytes = 4 << 10 // 4 KiB
+
 // NewMux builds the full HTTP handler: the JSON API under /api/, and the
 // frontend (assets) for everything else.
 func NewMux(st store.Store, assets fs.FS) *http.ServeMux {
