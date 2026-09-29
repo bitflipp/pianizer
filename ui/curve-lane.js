@@ -20,10 +20,10 @@
 //   removePoint     (index)=>void
 //   movePoint       (point, tick, value)=>void
 
-import { state, snapGridTicks } from '../engine/state.js';
+import { state } from '../engine/state.js';
 import {
-  KEY_WIDTH, canvasPos, forwardWheelToRoll,
-  drawTickGrid, drawVerticalLine, drawLaneLabel,
+  KEY_WIDTH, COL_KEY_BG, COL_LANE_BG, canvasPos, forwardWheelToRoll,
+  drawLaneGrid, drawLanePlayhead, drawLaneLabel,
 } from './dom-utils.js';
 
 const PAD_V           = 6;
@@ -75,19 +75,19 @@ export class CurveLane {
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBackground();
-    if (state.tempoMap.length) this._drawGrid();
+    if (state.tempoMap.length) drawLaneGrid(this.ctx, this.canvas, this.roll);
     this._drawCurve();
-    this._drawPlayhead();
-    this._drawLabel();
+    drawLanePlayhead(this.ctx, this.canvas, this.roll);
+    drawLaneLabel(this.ctx, this.canvas, this.config.label);
   }
 
   // ── Drawing ──────────────────────────────────────────────────────────
 
   _drawBackground() {
     const { ctx, canvas } = this;
-    ctx.fillStyle = '#111';
+    ctx.fillStyle = COL_KEY_BG;
     ctx.fillRect(0, 0, KEY_WIDTH, canvas.height);
-    ctx.fillStyle = '#161616';
+    ctx.fillStyle = COL_LANE_BG;
     ctx.fillRect(KEY_WIDTH, 0, canvas.width - KEY_WIDTH, canvas.height);
     const { valueMin, valueMax } = this.config;
     ctx.lineWidth = 1;
@@ -99,19 +99,6 @@ export class CurveLane {
       ctx.lineTo(canvas.width, y);
       ctx.stroke();
     }
-  }
-
-  _drawLabel() {
-    drawLaneLabel(this.ctx, this.canvas, this.config.label);
-  }
-
-  _drawGrid() {
-    const { ctx, canvas } = this;
-    const tpb       = state.ticksPerBeat;
-    const tickStart = this.roll.scrollX;
-    const tickEnd   = tickStart + (canvas.width - KEY_WIDTH) / this.roll.pixelsPerTick;
-    drawTickGrid(ctx, t => this.roll.tickToX(t), 0, canvas.height,
-      tickStart, tickEnd, tpb, snapGridTicks(state.snapGrid, tpb), state.barBoundaries(tickStart, tickEnd));
   }
 
   _drawCurve() {
@@ -185,13 +172,6 @@ export class CurveLane {
     }
     ctx.lineTo(lastX, yN);
     ctx.lineTo(canvas.width, yN);
-  }
-
-  _drawPlayhead() {
-    if (!state.loaded) return;
-    const x = this.roll.tickToX(state.timeToTick(state.playheadTime));
-    if (x <= KEY_WIDTH) return;
-    drawVerticalLine(this.ctx, x, 0, this.canvas.height);
   }
 
   // ── Coordinate mapping ───────────────────────────────────────────────

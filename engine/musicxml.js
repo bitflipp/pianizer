@@ -5,6 +5,11 @@
 
 import { state } from './state.js';
 
+// Floor for ticks-per-beat; low-divisions files are scaled up to at least this.
+const MIN_TICKS_PER_BEAT = 480;
+const DEFAULT_BPM        = 120;  // used when the score declares no tempo at tick 0
+const DEFAULT_VELOCITY   = 64;   // until the first <sound dynamics="...">
+
 // ── Parser ────────────────────────────────────────────────────────────────
 
 export function parseMusicXml(xmlText) {
@@ -21,11 +26,11 @@ export function parseMusicXml(xmlText) {
   // The first <divisions> value seeds our global ticks-per-beat; all other
   // divisions values are scaled relative to it. Low-divisions files (some tools
   // export 1–24, vs MuseScore's 480) are scaled up by an integer factor to at
-  // least 480 — durations stay exact integers, and snap grids, triplets, and
-  // tremolo strokes keep a usable tick resolution.
+  // least MIN_TICKS_PER_BEAT — durations stay exact integers, and snap grids,
+  // triplets, and tremolo strokes keep a usable tick resolution.
   const firstDivEl = doc.querySelector('divisions');
-  const rawTpb = firstDivEl ? parseInt(firstDivEl.textContent, 10) : 480;
-  const tpb = rawTpb > 0 ? rawTpb * Math.ceil(480 / rawTpb) : 480;
+  const rawTpb = firstDivEl ? parseInt(firstDivEl.textContent, 10) : MIN_TICKS_PER_BEAT;
+  const tpb = rawTpb > 0 ? rawTpb * Math.ceil(MIN_TICKS_PER_BEAT / rawTpb) : MIN_TICKS_PER_BEAT;
 
   const tempoMap = [];
   const timeSigs = [];
@@ -40,13 +45,13 @@ export function parseMusicXml(xmlText) {
   // Direct children of root that are <part> elements (skips <part-list>)
   const parts = [...root.children].filter(el => el.tagName === 'part');
 
-  for (let pi = 0; pi < parts.length; pi++) {
+  for (let partIdx = 0; partIdx < parts.length; partIdx++) {
     // Map part index to MIDI channel, skipping channel 9 (GM drums)
-    const channel = pi < 9 ? pi : pi + 1;
+    const channel = partIdx < 9 ? partIdx : partIdx + 1;
 
     let tick = 0;   // absolute position in tpb-scaled ticks
     divs = tpb;     // reset per part (each part declares its own <divisions>)
-    let vel  = 64;  // running velocity from <sound dynamics="...">
+    let vel  = DEFAULT_VELOCITY;  // running velocity from <sound dynamics="...">
     let curNumerator = 4, curDenominator = 4; // current time sig for multiple-rest math
     let pendingTremolo = null; // buffered start-note of a two-note tremolo
 
@@ -54,7 +59,7 @@ export function parseMusicXml(xmlText) {
     // Keyed per voice so two voices holding ties on the same pitch don't collide.
     const ties = new Map();
 
-    const measures = [...parts[pi].children].filter(el => el.tagName === 'measure');
+    const measures = [...parts[partIdx].children].filter(el => el.tagName === 'measure');
 
     for (const measure of measures) {
       let noteTick = tick; // onset shared by chord notes
@@ -74,7 +79,7 @@ export function parseMusicXml(xmlText) {
               const num = parseInt(t.querySelector('beats').textContent, 10);
               const den = parseInt(t.querySelector('beat-type').textContent, 10);
               curNumerator = num; curDenominator = den;
-              if (pi === 0) {
+              if (partIdx === 0) {
                 const last = timeSigs[timeSigs.length - 1];
                 if (!last || last.numerator !== num || last.denominator !== den) {
                   timeSigs.push({ tick, numerator: num, denominator: den });
@@ -94,7 +99,7 @@ export function parseMusicXml(xmlText) {
             if (!sound) break;
 
             // Tempo — first part only (acts as conductor)
-            if (pi === 0) {
+            if (partIdx === 0) {
               const t = sound.getAttribute('tempo');
               if (t) {
                 const bpm = parseFloat(t);
@@ -144,7 +149,7 @@ export function parseMusicXml(xmlText) {
               const tupletActual = tupletActualText ? parseInt(tupletActualText, 10) || null : null;
 
               const result = expandTremolo(tremoloEl, {
-                pitch, vel, noteTick, durTick, tpb, pi, channel, notes, pendingTremolo, tupletActual,
+                pitch, vel, noteTick, durTick, tpb, partIdx, channel, notes, pendingTremolo, tupletActual,
               });
               if (result.handled) {
                 pendingTremolo = result.pending;
@@ -171,7 +176,7 @@ export function parseMusicXml(xmlText) {
                 velocity:  vel,
                 startTick: noteTick,
                 endTick:   noteTick + durTick,
-                track:     pi,
+                track:     partIdx,
                 channel,
               });
               if (tieStart) ties.set(tieKey, ni);
@@ -202,7 +207,7 @@ export function parseMusicXml(xmlText) {
     }
   }
 
-  if (!tempoMap.length || tempoMap[0].tick > 0) tempoMap.unshift({ tick: 0, bpm: 120 });
+  if (!tempoMap.length || tempoMap[0].tick > 0) tempoMap.unshift({ tick: 0, bpm: DEFAULT_BPM });
   if (!timeSigs.length) timeSigs.push({ tick: 0, numerator: 4, denominator: 4 });
   tempoMap.sort((a, b) => a.tick - b.tick);
   timeSigs.sort((a, b) => a.tick - b.tick);
@@ -231,7 +236,7 @@ export function parseMusicXml(xmlText) {
 function expandTremolo(tremoloEl, ctx) {
   const type    = tremoloEl.getAttribute('type');
   const slashes = parseInt(tremoloEl.textContent, 10) || 0;
-  const { pitch, vel, noteTick, durTick, tpb, pi, channel, notes, pendingTremolo, tupletActual } = ctx;
+  const { pitch, vel, noteTick, durTick, tpb, partIdx, channel, notes, pendingTremolo, tupletActual } = ctx;
 
   if (type === 'single') {
     const strokeDur    = Math.round(tpb / Math.pow(2, slashes));
@@ -242,7 +247,7 @@ function expandTremolo(tremoloEl, ctx) {
         velocity:  vel,
         startTick: noteTick + Math.round(s * durTick / totalStrokes),
         endTick:   noteTick + Math.round((s + 1) * durTick / totalStrokes),
-        track: pi, channel,
+        track: partIdx, channel,
       });
     }
     return { handled: true, pending: pendingTremolo };
@@ -264,7 +269,7 @@ function expandTremolo(tremoloEl, ctx) {
         velocity:  first ? pendingTremolo.vel   : vel,
         startTick: combinedStart + Math.round(s * combinedDur / totalStrokes),
         endTick:   combinedStart + Math.round((s + 1) * combinedDur / totalStrokes),
-        track: pi, channel,
+        track: partIdx, channel,
       });
     }
     return { handled: true, pending: null };

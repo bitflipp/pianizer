@@ -11,7 +11,7 @@ const COL_RULER_BG   = '#111111';
 const COL_RULER_STRIPE = '#1d1d1d';   // alternating (odd-bar) measure shade over the ruler base
 const COL_RULER_TEXT = '#888888';
 const COL_PLAYHEAD   = '#ffffff';
-const COL_BOOKMARK     = '#e08030';
+export const COL_BOOKMARK = '#e08030';
 const COL_BOOKMARK_HOT = '#ffb060';
 // A/B loop — blue, kept distinct from bookmark orange, pedal teal, tempo amber and
 // soft-pedal violet, and clear of the red↔green axis.
@@ -91,10 +91,23 @@ const COL_OFFSCREEN        = '#ffffff';
 const COL_OFFSCREEN_STROKE = 'rgba(0,0,0,0.7)';  // outline so markers read against light notes
 const OFFSCREEN_SIZE    = 9;  // triangle depth (px, perpendicular to the edge)
 const OFFSCREEN_HALF    = 6;  // triangle base half-width (px, along the edge)
+const OFFSCREEN_BUCKET  = 4;  // markers within this many px along an edge collapse to one
 
 const DRAG_THRESHOLD    = 6;
 const EDGE_THRESHOLD    = 6;
-const HANDLE_WIDTH      = 6;
+const GRIP_WIDTH        = 6;
+// Velocity of a freshly inserted (Alt+click/drag) note, and of its ghost preview.
+const INSERT_VELOCITY   = 64;
+
+// Ruler markers: bookmark triangles (upward, normal / hovered) and A/B loop flags (downward).
+const BOOKMARK_HALF_W     = 6,  BOOKMARK_HEIGHT     = 10;
+const BOOKMARK_HALF_W_HOT = 8,  BOOKMARK_HEIGHT_HOT = 13;
+const LOOP_FLAG_HALF_W    = 5,  LOOP_FLAG_HEIGHT    = 6;
+// Ticks of slack when picking the previous/next bookmark, so a playhead sitting
+// (after rounding) on a bookmark seeks past it rather than to it again.
+const BOOKMARK_SEEK_TOLERANCE = 0.5;
+// Horizontal wheel-pan speed, as a fraction of deltaY converted to ticks.
+const WHEEL_PAN_FACTOR = 0.5;
 // Floor on the drawn/hit-tested width of a note (px), so zero-length and very
 // short notes remain visible and clickable.
 const MIN_NOTE_PX       = 2;
@@ -193,9 +206,9 @@ export class PianoRoll {
     this._dragAxis          = null;  // axis lock during a note-body move: 'h' | 'v' | null (set once at activation)
     this._dragDidMove       = false;
     this._didNoteDrag       = false;
-    this._pendingNoteHandle = -1;
+    this._pendingNoteBody   = -1;
     this._pendingDragStart  = null;
-    this._hoverNoteHandle   = -1;
+    this._hoverNoteBody     = -1;
     this._hoverNoteLeftEdge = -1;
     this._hoverBookmarkIdx  = -1;
     this._hoverPitch        = -1;
@@ -224,12 +237,19 @@ export class PianoRoll {
   pitchToY(pitch){ return HEADER_HEIGHT + (PITCH_MAX - pitch) * this.noteHeight - this.scrollY; }
   yToPitch(y)    { return PITCH_MAX - Math.floor((y - HEADER_HEIGHT + this.scrollY) / this.noteHeight); }
   _noteWidthPx(n){ return Math.max(MIN_NOTE_PX, (n.endTick - n.startTick) * this.pixelsPerTick); }
-  // Resize-grip width for a note of pixel width `w`: caps at HANDLE_WIDTH but never
+  // Resize-grip width for a note of pixel width `w`: caps at GRIP_WIDTH but never
   // exceeds half the note, so the two grips (left + right) never overlap on a short note.
-  _gripWidth(w)   { return Math.min(HANDLE_WIDTH, w / 2); }
-  // Left-edge hit-zone width for a note of pixel width `w`: caps at HANDLE_WIDTH but
+  _gripWidth(w)   { return Math.min(GRIP_WIDTH, w / 2); }
+  // Left-edge hit-zone width for a note of pixel width `w`: caps at GRIP_WIDTH but
   // never exceeds the full note (unlike _gripWidth, only one edge is tested here).
-  _leftZoneWidth(w) { return Math.min(HANDLE_WIDTH, w); }
+  _leftZoneWidth(w) { return Math.min(GRIP_WIDTH, w); }
+
+  // Tick under canvas x, floored at 0 and snapped to the grid — where an insert,
+  // bookmark or loop marker lands.
+  _snappedTickAtX(x) { return state.snapTick(Math.max(0, Math.round(this.xToTick(x)))); }
+
+  // Piece time under canvas x (floored at tick 0), for seeking.
+  _timeAtX(x) { return state.tickToTime(Math.max(0, this.xToTick(x))); }
 
   // Full canvas bounding box {x1,y1,x2,y2} of a note — no 1 px gap (that's applied
   // only when drawing). Used for rect-overlap hit-testing and off-screen markers.
@@ -383,8 +403,8 @@ export class PianoRoll {
       const x = this.tickToX(state.bookmarks[i]);
       if (x <= KEY_WIDTH || x > this.canvas.width) continue;
       const hot = i === this._hoverBookmarkIdx;
-      const hw  = hot ? 8  : 6;
-      const h   = hot ? 13 : 10;
+      const hw  = hot ? BOOKMARK_HALF_W_HOT : BOOKMARK_HALF_W;
+      const h   = hot ? BOOKMARK_HEIGHT_HOT : BOOKMARK_HEIGHT;
       ctx.fillStyle = hot ? COL_BOOKMARK_HOT : COL_BOOKMARK;
       ctx.beginPath();
       ctx.moveTo(x - hw, HEADER_HEIGHT);
@@ -401,9 +421,9 @@ export class PianoRoll {
       if (x <= KEY_WIDTH || x > this.canvas.width) return;
       ctx.fillStyle = COL_LOOP;
       ctx.beginPath();
-      ctx.moveTo(x - 5, 0);
-      ctx.lineTo(x + 5, 0);
-      ctx.lineTo(x,      6);
+      ctx.moveTo(x - LOOP_FLAG_HALF_W, 0);
+      ctx.lineTo(x + LOOP_FLAG_HALF_W, 0);
+      ctx.lineTo(x,                    LOOP_FLAG_HEIGHT);
       ctx.closePath();
       ctx.fill();
       ctx.font = 'bold 9px monospace';
@@ -464,21 +484,21 @@ export class PianoRoll {
 
     this._ensureNoteCaches();
 
-    // Notes that will have resize handles drawn over them this frame. The left grip
+    // Notes that will have resize grips drawn over them this frame. The left grip
     // overlaps the top-left velocity label, so these notes shift their label right by
-    // the handle width (see _drawNote) to keep the number legible.
+    // the grip width (see _drawNote) to keep the number legible.
     //
     // The set of grippable notes: the note under the cursor — and, if that note is
     // selected, every selected note (a resize on a selected note carries the whole
     // selection by the same tick delta, see _beginEdgeResize), so all show grips.
-    const hi = this._hoverNoteHandle    >= 0 ? this._hoverNoteHandle
+    const hi = this._hoverNoteBody      >= 0 ? this._hoverNoteBody
              : this._hoverNoteRightEdge >= 0 ? this._hoverNoteRightEdge
              : this._hoverNoteLeftEdge;
-    let handleSet = null;
+    let gripSet = null;
     if (hi >= 0 && state.selectedNoteIndices.has(hi)) {
-      handleSet = state.selectedNoteIndices;
+      gripSet = state.selectedNoteIndices;
     } else if (hi >= 0) {
-      handleSet = new Set([hi]);
+      gripSet = new Set([hi]);
     }
 
     // Cull off-view notes before drawing. Horizontal: outside the visible tick window.
@@ -491,13 +511,13 @@ export class PianoRoll {
       if (n.endTick < tickStart || n.startTick > tickEnd) continue;
       const ny = this.pitchToY(n.pitch);
       if (ny + this.noteHeight < HEADER_HEIGHT || ny > this.canvas.height) continue;
-      this._drawNote(i, n, effective, hasSel, hasSolo, handleSet !== null && handleSet.has(i));
+      this._drawNote(i, n, effective, hasSel, hasSolo, gripSet !== null && gripSet.has(i));
     }
 
-    if (handleSet) {
-      for (const i of handleSet) {
+    if (gripSet) {
+      for (const i of gripSet) {
         const n = state.notes[i];
-        if (n) this._drawResizeHandles(n);
+        if (n) this._drawResizeGrips(n);
       }
     }
 
@@ -573,7 +593,7 @@ export class PianoRoll {
     return { set, addingHits: this._rectHitSet, removingHits: removing, inDrag: true };
   }
 
-  _drawNote(i, n, effective, hasSel, hasSolo, hasHandles) {
+  _drawNote(i, n, effective, hasSel, hasSolo, hasGrips) {
     const { ctx } = this;
     const x = this.tickToX(n.startTick);
     const w = this._noteWidthPx(n);
@@ -585,7 +605,7 @@ export class PianoRoll {
     const willAdd  = effective.inDrag && effective.addingHits
                      && effective.addingHits.has(i)
                      && !state.selectedNoteIndices.has(i);
-    // willRemove: leaving the selection via a red deselect rect (currently committed)
+    // willRemove: leaving the selection via a replace-mode rect (currently committed, not in the rect)
     const willRemove = effective.inDrag && effective.removingHits
                        && effective.removingHits.has(i)
                        && state.selectedNoteIndices.has(i);
@@ -626,9 +646,9 @@ export class PianoRoll {
     ctx.strokeRect(x + bOff, y + bOff, w - bw, h - bw);
 
     // Every note shows its velocity number (label color adapts to the fill via labelColorFor).
-    // When this note draws a resize grip, nudge the label right past the left handle so
-    // the grip doesn't occlude the number.
-    const labelInset = hasHandles ? this._gripWidth(w) : 0;
+    // When this note draws resize grips, nudge the label right past the left grip so
+    // it doesn't occlude the number.
+    const labelInset = hasGrips ? this._gripWidth(w) : 0;
     this._drawNoteLabel(x, y, w, String(n.velocity), labelColorFor(fill), labelInset);
   }
 
@@ -655,7 +675,7 @@ export class PianoRoll {
 
   // Left/right grip bars on a note, shown while it's hovered. Drawn within
   // _drawNotes' roll clip. Width caps at half the note so short notes still show two grips.
-  _drawResizeHandles(n) {
+  _drawResizeGrips(n) {
     const { ctx } = this;
     const x  = this.tickToX(n.startTick);
     const w  = this._noteWidthPx(n);
@@ -680,7 +700,7 @@ export class PianoRoll {
   }
 
   // Ghost of the note being drawn during an Alt insert drag — dashed white outline over
-  // a translucent fill in the note's eventual velocity color (insert velocity is 64).
+  // a translucent fill in the note's eventual velocity color.
   _drawInsertPreview() {
     if (!this._insertActive) return;
     const { startTick, endTick } = this._insertSpan();
@@ -694,7 +714,7 @@ export class PianoRoll {
     ctx.rect(KEY_WIDTH, HEADER_HEIGHT, this.rollWidth, this.rollHeight);
     ctx.clip();
     ctx.globalAlpha = 0.4;
-    ctx.fillStyle   = noteHSL(64, 'normal');
+    ctx.fillStyle   = noteHSL(INSERT_VELOCITY, 'normal');
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = 1;
     ctx.setLineDash([4, 3]);
@@ -871,17 +891,13 @@ export class PianoRoll {
     if (e.key === 'Home' && state.loaded) {
       e.preventDefault();
       this.scrollX = 0;
-      const time = state.tickToTime(0);
-      state.setPlayheadTime(time);
-      this.canvas.dispatchEvent(new CustomEvent('user-seek', { bubbles: true, detail: { time } }));
+      this._seekTo(state.tickToTime(0));
       this.render();
     }
     if (e.key === 'End' && state.loaded) {
       e.preventDefault();
       this.scrollX = Math.max(0, state.totalTicks - this.rollWidth / this.pixelsPerTick);
-      const time = state.tickToTime(state.totalTicks);
-      state.setPlayheadTime(time);
-      this.canvas.dispatchEvent(new CustomEvent('user-seek', { bubbles: true, detail: { time } }));
+      this._seekTo(state.tickToTime(state.totalTicks));
       this.render();
     }
 
@@ -914,9 +930,11 @@ export class PianoRoll {
     if (e.key === '-' || e.key === '_') { e.preventDefault(); this._zoomBy(ZOOM_OUT_FACTOR, KEY_WIDTH + this.rollWidth / 2); }
   }
 
-  // Briefly surface a message in the status bar (handled in index.html).
-  _flash(message) {
-    document.dispatchEvent(new CustomEvent('roll-flash', { detail: { message } }));
+  // Moves the playhead and tells the app layer (index.html) the user did it, so it
+  // resets the play-from anchor and reschedules MIDI if playing.
+  _seekTo(time) {
+    state.setPlayheadTime(time);
+    this.canvas.dispatchEvent(new CustomEvent('user-seek', { bubbles: true, detail: { time } }));
   }
 
   _seekToBookmark(dir) {
@@ -925,14 +943,12 @@ export class PianoRoll {
     const cur = state.timeToTick(state.playheadTime);
     let target;
     if (dir < 0) {
-      const prev = bm.filter(t => t < cur - 0.5);
+      const prev = bm.filter(t => t < cur - BOOKMARK_SEEK_TOLERANCE);
       target = prev.length ? prev[prev.length - 1] : bm[bm.length - 1];
     } else {
-      target = bm.find(t => t > cur + 0.5) ?? bm[0];
+      target = bm.find(t => t > cur + BOOKMARK_SEEK_TOLERANCE) ?? bm[0];
     }
-    const time = state.tickToTime(target);
-    state.setPlayheadTime(time);
-    this.canvas.dispatchEvent(new CustomEvent('user-seek', { bubbles: true, detail: { time } }));
+    this._seekTo(state.tickToTime(target));
     this.scrollX = this._clampScrollX(target - this.rollWidth / this.pixelsPerTick / 2);
     this.render();
   }
@@ -943,7 +959,7 @@ export class PianoRoll {
     } else if (this._resizingNoteRightIdx >= 0 || this._resizingNoteLeftIdx >= 0
                || this._hoverNoteRightEdge >= 0 || this._hoverNoteLeftEdge >= 0) {
       this.canvas.style.cursor = 'ew-resize';
-    } else if (this._hoverNoteHandle >= 0) {
+    } else if (this._hoverNoteBody >= 0) {
       this.canvas.style.cursor = 'grab';
     } else {
       this.canvas.style.cursor = '';
@@ -1006,7 +1022,7 @@ export class PianoRoll {
   _onMouseLeave() {
     this._hoverNoteIdx       = -1;
     this._hoverNoteRightEdge = -1;
-    this._hoverNoteHandle    = -1;
+    this._hoverNoteBody      = -1;
     this._hoverNoteLeftEdge  = -1;
     this._hoverBookmarkIdx   = -1;
     this._hoverPitch         = -1;
@@ -1073,7 +1089,7 @@ export class PianoRoll {
       pos = (edge === 'L' || edge === 'R')
         ? Math.max(top + OFFSCREEN_HALF,  Math.min(bottom - OFFSCREEN_HALF, pos))
         : Math.max(left + OFFSCREEN_HALF, Math.min(right - OFFSCREEN_HALF,  pos));
-      const bucket = edge + Math.round(pos / 4);
+      const bucket = edge + Math.round(pos / OFFSCREEN_BUCKET);
       if (seen.has(bucket)) continue;
       seen.add(bucket);
       marks.push({ edge, pos });
@@ -1139,7 +1155,7 @@ export class PianoRoll {
   // insert, playhead seek), or null when idle.
   _gestureButton() {
     if (this._panning) return 2;
-    if (this._rectSelActive || this._draggingNotes || this._pendingNoteHandle >= 0
+    if (this._rectSelActive || this._draggingNotes || this._pendingNoteBody >= 0
       || this._resizingNoteRightIdx >= 0 || this._resizingNoteLeftIdx >= 0
       || this._insertActive || this.draggingPlayhead) return 0;
     return null;
@@ -1185,16 +1201,16 @@ export class PianoRoll {
 
     if (pos.y < HEADER_HEIGHT && pos.x > KEY_WIDTH) {
       if (e.ctrlKey) {
-        state.addBookmark(state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x)))));
+        state.addBookmark(this._snappedTickAtX(pos.x));
         return;
       }
       // Alt+click cycles the A/B loop marker at the clicked (grid-snapped) tick, while
       // still seeking/scrubbing normally, so the click also moves the playhead there.
       if (e.altKey) {
-        state.cycleLoopMarker(state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x)))));
+        state.cycleLoopMarker(this._snappedTickAtX(pos.x));
       }
       this.draggingPlayhead = true;
-      this._seekTime = state.tickToTime(Math.max(0, this.xToTick(pos.x)));
+      this._seekTime = this._timeAtX(pos.x);
       state.setPlayheadTime(this._seekTime);
       return;
     }
@@ -1206,7 +1222,7 @@ export class PianoRoll {
     if (e.altKey) {
       this._insertActive    = true;
       this._insertPitch     = Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.yToPitch(pos.y)));
-      this._insertStartTick = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
+      this._insertStartTick = this._snappedTickAtX(pos.x);
       this._insertEndTick   = this._insertStartTick;
       this.render();
       return;
@@ -1216,8 +1232,8 @@ export class PianoRoll {
     // on its body begins a move; a press on empty space starts a rubber-band.
     if (this._hoverNoteRightEdge >= 0) { this._beginEdgeResize(this._hoverNoteRightEdge, 'right'); return; }
     if (this._hoverNoteLeftEdge  >= 0) { this._beginEdgeResize(this._hoverNoteLeftEdge,  'left');  return; }
-    if (this._hoverNoteHandle    >= 0) {
-      this._pendingNoteHandle = this._hoverNoteHandle;
+    if (this._hoverNoteBody      >= 0) {
+      this._pendingNoteBody   = this._hoverNoteBody;
       this._pendingDragStart  = pos;
       this.canvas.style.cursor = 'grabbing';  // commit to grab on press, before the drag threshold
       return;
@@ -1283,7 +1299,7 @@ export class PianoRoll {
     }
 
     // Activate pending note drag once movement exceeds threshold
-    if (this._pendingNoteHandle >= 0) {
+    if (this._pendingNoteBody >= 0) {
       const dx = pos.x - this._pendingDragStart.x;
       const dy = pos.y - this._pendingDragStart.y;
       if (Math.hypot(dx, dy) > DRAG_THRESHOLD) this._activateNoteDrag(pos);
@@ -1298,7 +1314,7 @@ export class PianoRoll {
     // Insert drag — extend the ghost note's duration live (horizontal only; pitch is
     // fixed at the press row), snapped to the grid like a resize.
     if (this._insertActive) {
-      const tick = state.snapTick(Math.max(0, Math.round(this.xToTick(pos.x))));
+      const tick = this._snappedTickAtX(pos.x);
       if (tick !== this._insertEndTick) { this._insertEndTick = tick; this.render(); }
       return;
     }
@@ -1318,12 +1334,12 @@ export class PianoRoll {
     this._hoverNoteIdx = hoverNi;
 
     if (this.draggingPlayhead) {
-      this._seekTime = state.tickToTime(Math.max(0, this.xToTick(pos.x)));
+      this._seekTime = this._timeAtX(pos.x);
       state.setPlayheadTime(this._seekTime); // dispatches playheadmoved → render
       return;
     }
 
-    const { edgeNi, leftEdgeNi, handleNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
+    const { edgeNi, leftEdgeNi, bodyNi, changed: edgeHoverChanged } = this._trackEdgeHover(pos, inRoll);
 
     if (this._rectSelActive) {
       this._rectSelCurrent = pos;
@@ -1342,7 +1358,7 @@ export class PianoRoll {
       return;
     }
 
-    this._setHoverCursor(e.altKey, inRoll, edgeNi, leftEdgeNi, handleNi);
+    this._setHoverCursor(e.altKey, inRoll, edgeNi, leftEdgeNi, bodyNi);
     if (hoverChanged || edgeHoverChanged || hoverPitchChanged) this.render();
   }
 
@@ -1354,22 +1370,22 @@ export class PianoRoll {
     const active     = inRoll && !this._rectSelActive;
     let   edgeNi     = active ? this._noteRightEdgeAt(pos) : -1;
     let   leftEdgeNi = (active && edgeNi < 0) ? this._noteLeftEdgeAt(pos) : -1;
-    let   handleNi   = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
+    let   bodyNi     = (active && edgeNi < 0 && leftEdgeNi < 0) ? this._noteBodyAt(pos) : -1;
     const changed    = edgeNi     !== this._hoverNoteRightEdge
                     || leftEdgeNi !== this._hoverNoteLeftEdge
-                    || handleNi   !== this._hoverNoteHandle;
+                    || bodyNi     !== this._hoverNoteBody;
     this._hoverNoteRightEdge = edgeNi;
     this._hoverNoteLeftEdge  = leftEdgeNi;
-    this._hoverNoteHandle    = handleNi;
-    return { edgeNi, leftEdgeNi, handleNi, changed };
+    this._hoverNoteBody      = bodyNi;
+    return { edgeNi, leftEdgeNi, bodyNi, changed };
   }
 
-  _setHoverCursor(altKey, inRoll, edgeNi, leftEdgeNi, handleNi) {
+  _setHoverCursor(altKey, inRoll, edgeNi, leftEdgeNi, bodyNi) {
     if (altKey && inRoll) {
       this.canvas.style.cursor = 'cell';        // Alt = insert, overrides move/resize
     } else if (edgeNi >= 0 || leftEdgeNi >= 0) {
       this.canvas.style.cursor = 'ew-resize';
-    } else if (handleNi >= 0) {
+    } else if (bodyNi >= 0) {
       this.canvas.style.cursor = 'grab';
     } else {
       this.canvas.style.cursor = '';
@@ -1377,9 +1393,9 @@ export class PianoRoll {
   }
 
   _activateNoteDrag(pos) {
-    const ni    = this._pendingNoteHandle;
+    const ni    = this._pendingNoteBody;
     const press = this._pendingDragStart;  // press point — seeds the irrevocable axis lock
-    this._pendingNoteHandle = -1;
+    this._pendingNoteBody   = -1;
     this._pendingDragStart  = null;
 
     const dragIndices = state.selectedNoteIndices.has(ni)
@@ -1388,7 +1404,7 @@ export class PianoRoll {
 
     // Clear hover state before mutation so no ghost highlights appear during drag
     this._hoverNoteIdx       = -1;
-    this._hoverNoteHandle    = -1;
+    this._hoverNoteBody      = -1;
     this._hoverNoteRightEdge = -1;
     this._hoverNoteLeftEdge  = -1;
 
@@ -1465,8 +1481,8 @@ export class PianoRoll {
       return;
     }
 
-    if (this._pendingNoteHandle >= 0) {
-      this._pendingNoteHandle = -1;
+    if (this._pendingNoteBody >= 0) {
+      this._pendingNoteBody   = -1;
       this._pendingDragStart  = null;
       this._refreshCursor();  // restore grab/idle cursor: the grabbing was committed on press
       // No threshold crossed — let click event handle selection normally
@@ -1488,7 +1504,7 @@ export class PianoRoll {
     if (this._insertActive && e.button === 0) {
       this._insertActive = false;
       const { startTick, endTick } = this._insertSpan();
-      state.addNote(this._insertPitch, startTick, endTick, 64);  // dispatches → render
+      state.addNote(this._insertPitch, startTick, endTick, INSERT_VELOCITY);  // dispatches → render
       this._didInsert = true;  // suppress the trailing click (incl. a bare Alt+click)
       return;
     }
@@ -1497,9 +1513,7 @@ export class PianoRoll {
     this.draggingPlayhead = false;
 
     if (wasDraggingPlayhead) {
-      this.canvas.dispatchEvent(new CustomEvent('user-seek', {
-        bubbles: true, detail: { time: this._seekTime }
-      }));
+      this._seekTo(this._seekTime);
       return;
     }
 
@@ -1551,22 +1565,21 @@ export class PianoRoll {
 
     // Click on empty space: clear the selection and seek the playhead.
     if (state.selectedNoteIndices.size > 0) state.setSelection([]);
-    const time = state.tickToTime(Math.max(0, this.xToTick(pos.x)));
-    state.setPlayheadTime(time);
-    this.canvas.dispatchEvent(new CustomEvent('user-seek', {
-      bubbles: true, detail: { time }
-    }));
+    this._seekTo(this._timeAtX(pos.x));
   }
 
   _onWheel(e) {
-    e.preventDefault();
-    const pos    = this._canvasPos(e);
-    const factor = e.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
+    this.applyWheel(e, this._canvasPos(e).x);
+  }
 
+  // Ctrl/Cmd+wheel zooms toward `anchorX` (a canvas x), a plain wheel pans horizontally.
+  // Public because the lanes forward their own wheel events here (forwardWheelToRoll).
+  applyWheel(e, anchorX) {
+    e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
-      this._zoomBy(factor, pos.x);
+      this._zoomBy(e.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR, anchorX);
     } else {
-      this.scrollX = this._clampScrollX(this.scrollX + e.deltaY / this.pixelsPerTick * 0.5);
+      this.scrollX = this._clampScrollX(this.scrollX + e.deltaY / this.pixelsPerTick * WHEEL_PAN_FACTOR);
       this.render();
     }
   }

@@ -58,7 +58,7 @@ undo, dispatches `selectionchanged`.
 - `state.pedalPoints` — `[{tick, value}]` sorted by tick, value 0–1; drives CC64
 - `state.tempoPoints` — `[{tick, value}]` sorted by tick, value 0.8–1.2; tempo ratio curve
 - `state.softPedalRegions` — `[{startTick, endTick}]` sorted by startTick, disjoint & merged; binary una corda, drives CC67. Edited via the region lane; `addSoftPedalRegion` (paint commit), `removeSoftPedalRegionAt`, and the drag trio `beginSoftPedalEdit` / `resizeSoftPedalRegion` / `moveSoftPedalRegion` / `endSoftPedalEdit` (the live resize/move may overlap; `normalizeRegions` merges on commit). Dispatches `softpedalchanged`
-- `state.playSpeed` — playback speed multiplier (0.25–2.0); piece-specific view setting, persisted in `pianizer-view-${pieceId}`. Set via `setPlaySpeed()` (dispatches `playspeedchanged`); `snapGrid` likewise via `setSnapGrid()` (dispatches `snapchanged`)
+- `state.playSpeed` — playback speed multiplier (one of `PLAY_SPEEDS`, 0.25–2.0; the toolbar dropdown is built from it); piece-specific view setting, persisted in `pianizer-view-${pieceId}`. Set via `setPlaySpeed()` (dispatches `playspeedchanged`); `snapGrid` likewise via `setSnapGrid()` (dispatches `snapchanged`)
 
 **Lane ↔ roll sync:** `roll.onPostRender` hook — the roll calls it at the end of every
 `render()`, but **gated on a view signature** so it only triggers `tempoLane.render()`,
@@ -70,7 +70,7 @@ to the state events they each draw, so the hook covers only the roll-internal vi
 **Bar boundaries:** `state.barBoundaries(tickStart, tickEnd)` returns `[{tick, bar}]` for
 every bar line in the visible tick range, walking `state.timeSignatures` segments and
 accumulating 1-based bar numbers across changes. Used by `_drawGrid` and `_drawRuler` in
-`roll.js` and `_drawGrid` in `curve-lane.js`.
+`roll.js` and, via `drawLaneGrid` in `dom-utils.js`, by the curve and soft-pedal lanes.
 
 ---
 
@@ -94,7 +94,7 @@ at drag start via `resizeNoteStart` / `moveNotesStart` / `beginCurvePointMove` /
 Snap resolutions: `1/1`, `1/2`, `1/4`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`, `1/64T`
 Triplet grids (`T`) are `tpb * 2/3` (`1/8T`), `tpb / 3` (`1/16T`), `tpb / 6` (`1/32T`), and `tpb / 12` (`1/64T`).
 `state.snapTick(tick)` returns the nearest snapped tick for a given value.
-Grid renders: sub-beat lines (faint `#222`), beat lines (`#2a2a2a`), bar lines (`#3a3a3a`).
+Grid renders: sub-beat, beat and bar lines in increasing brightness (`COL_GRID_SUB/BEAT/BAR` in `ui/dom-utils.js`).
 
 ---
 
@@ -174,7 +174,7 @@ CC64 (sustain) and CC67 (soft pedal / una corda) messages using `performance.now
 timestamps.
 
 **Lookahead scheduler:**
-- `setInterval(tick, 30)` — every 30ms, schedule events up to 150ms ahead
+- `setInterval(schedule, 30)` — every 30ms, schedule events up to 150ms ahead
 - `safeOnMs = Math.max(onMs, nowMs + 5)` — prevents scheduling in the past
 - Notes already ended (offMs + 200 ≤ nowMs) are skipped
 - **Note chasing**: notes that started before the start point but are still sounding
@@ -283,7 +283,7 @@ natural end and the scrollable range both depend on them.
 
 ## Auto-save / view restore (localStorage)
 
-Three independent localStorage entries, all best-effort (errors swallowed):
+Four independent localStorage entries, all best-effort (errors swallowed):
 - `pianizer-autosave` — full project JSON, debounced 1 s after any
   `loaded`/`selectionchanged`/`pedalchanged`/`tempochanged`/`softpedalchanged`, and flushed
   on `beforeunload`. Auto-loaded on page open.
@@ -297,3 +297,6 @@ Three independent localStorage entries, all best-effort (errors swallowed):
   origin isn't hit with an unsolicited prompt; the Connect button still prompts explicitly.
   `name` backs up `id` for backends that don't keep ids stable across runs — see
   `requestAccess` above.
+- `pianizer-server-project-${pieceId}` — `{id, name}` of the server-side project a piece
+  was saved to / loaded from, so a repeat "Save to server" needn't ask again. Owned by
+  `ui/server-io.js`, not the autosave path.

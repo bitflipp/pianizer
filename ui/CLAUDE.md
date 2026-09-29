@@ -171,7 +171,8 @@ to front so the topmost note wins.
 ## Tool Windows
 
 Floating DOM panels spawned at the cursor position, closed by clicking outside or Escape.
-Keyboard shortcuts work when no `<input>`/`<select>` is focused.
+Keyboard shortcuts work when no `<input>`/`<select>` is focused. The Server / Version-history
+windows (`ui/server-io.js`) reuse the same `openToolWindow` shell.
 
 - **[1] Note velocity** — 5–120 grid in steps of 5; click sets all selected notes
 - **[2] Curve** — pick a ramp shape (Linear / Ease in / Ease out / S-curve;
@@ -194,7 +195,7 @@ colors, value range, data accessors, add/remove/move callbacks). Lane-specific r
 colors are read from `lane.config.reticleColor/reticleHotColor` by `roll.js`.
 
 **Controls (identical for both lanes):**
-- `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to roll)
+- `Scroll` / `Ctrl+scroll` — horizontal pan / zoom (forwarded to `roll.applyWheel`, so the roll and every lane share one implementation)
 - `Left-click empty` — add control point (tick snapped to grid; Y snapped to nearest neighbor within ±11 px, or to the lane's top/bottom edges, the range reference lines (`config.refFracs`: eighths for tempo, coarser quarters for pedal), and the lane baseline)
 - `Left-drag point` — move an existing control point (same tick + Y snap; hold Ctrl to disable both)
 - `Right-click` — remove nearest control point
@@ -258,9 +259,11 @@ reticle (unlike the curve lanes); the strip's own bars are the indicator.
 
 ## Status Bar (20 px, bottom)
 
-Shows state only — note count, selection count, muted count, soloed count, and a
+Shows note count, selection count, muted count, soloed count, and a
 `Press [?] for help` prompt. Driven by a single `updateStatus()` called on `loaded` and
-`selectionchanged`.
+`selectionchanged`. Server-storage results (`ui/server-io.js`) surface here too, as a transient
+message via the `roll-flash` document event (`flashStatus` in `index.html`); errors show in red
+and linger longer, then the bar reverts to `updateStatus()`.
 
 ---
 

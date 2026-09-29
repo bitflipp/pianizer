@@ -3,10 +3,20 @@
 // The toolbar custom element reads via events dispatched from here.
 
 // Piano key range — MIDI note numbers for A0…C8; note edits clamp pitch here.
-const PITCH_LO = 21;
-const PITCH_HI = 108;
-const DEFAULT_BPM         = 120;  // assumed tempo before the first tempoMap entry
-const UNDO_STACK_LIMIT    = 100;  // oldest snapshots drop once the stack passes this
+export const PITCH_MIN = 21;
+export const PITCH_MAX = 108;
+const DEFAULT_BPM            = 120;  // assumed tempo before the first tempoMap entry
+const DEFAULT_TICKS_PER_BEAT = 480;
+const DEFAULT_TIME_SIGNATURE = { tick: 0, numerator: 4, denominator: 4 };
+const UNDO_STACK_LIMIT       = 100;  // oldest snapshots drop once the stack passes this
+
+// timeToTick's binary search over the (monotonic) tick→time mapping: the upper
+// bound is the piece length plus headroom, floored so an empty piece still searches.
+const TIME_SEARCH_HEADROOM_FACTOR = 1.1;
+const TIME_SEARCH_HEADROOM_TICKS  = 960;
+const TIME_SEARCH_MIN_HI_TICKS    = 1e5;
+const TIME_SEARCH_MAX_ITERATIONS  = 64;
+const TIME_SEARCH_TOLERANCE_TICKS = 0.5;
 
 export class AppState extends EventTarget {
   constructor() {
@@ -17,7 +27,7 @@ export class AppState extends EventTarget {
     this._nextId = 0;          // monotonic source of stable note ids
     this.tempoMap = [];        // [{tick, bpm, time}]
     this.timeSignatures = [];  // [{tick, numerator, denominator}]
-    this.ticksPerBeat = 480;
+    this.ticksPerBeat = DEFAULT_TICKS_PER_BEAT;
     this.totalTicks = 0;
     this.totalTime = 0;        // seconds
 
@@ -139,14 +149,7 @@ export class AppState extends EventTarget {
   // so a mixed selection resolves to "all muted" first, matching DAW [M] behaviour.
   // Muting a note clears its solo (the two are mutually exclusive).
   toggleNoteMutes(indices) {
-    this._pushUndo();
-    const targets = indices.map(i => this.notes[i]).filter(Boolean);
-    const muteAll = targets.some(n => !n.muted);
-    for (const n of targets) {
-      n.muted = muteAll;
-      if (muteAll) n.soloed = false;
-    }
-    this.dispatch('selectionchanged');
+    this._toggleExclusiveFlag(indices, 'muted', 'soloed');
   }
 
   // Toggle solo on the given notes. While any note in the piece is soloed, playback
@@ -154,14 +157,25 @@ export class AppState extends EventTarget {
   // Same "mixed selection resolves to all-on first" rule as toggleNoteMutes. Soloing
   // a note clears its mute (the two are mutually exclusive).
   toggleNoteSolos(indices) {
+    this._toggleExclusiveFlag(indices, 'soloed', 'muted');
+  }
+
+  // Shared body of the mute/solo toggles: sets `flag` on every target (or clears it
+  // once all already have it), clearing the mutually exclusive `rival` when setting.
+  _toggleExclusiveFlag(indices, flag, rival) {
     this._pushUndo();
-    const targets = indices.map(i => this.notes[i]).filter(Boolean);
-    const soloAll = targets.some(n => !n.soloed);
+    const targets = this._notesAt(indices);
+    const setAll = targets.some(n => !n[flag]);
     for (const n of targets) {
-      n.soloed = soloAll;
-      if (soloAll) n.muted = false;
+      n[flag] = setAll;
+      if (setAll) n[rival] = false;
     }
     this.dispatch('selectionchanged');
+  }
+
+  // The note objects for `indices`, skipping any that no longer exist.
+  _notesAt(indices) {
+    return indices.map(i => this.notes[i]).filter(Boolean);
   }
 
   // ── Bookmarks ──────────────────────────────────────────────────────
@@ -224,9 +238,9 @@ export class AppState extends EventTarget {
     if (!data || typeof data.version !== 'number') throw new Error('Invalid project file');
     this.notes          = (data.notes ?? []).map(n => ({ ...n })).sort((a, b) => a.startTick - b.startTick);
     this._assignIds(this.notes);
-    this.tempoMap       = (data.tempoMap ?? [{ tick: 0, bpm: 120, time: 0 }]).map(s => ({ ...s }));
-    this.timeSignatures = (data.timeSignatures ?? [{ tick: 0, numerator: 4, denominator: 4 }]).map(s => ({ ...s }));
-    this.ticksPerBeat   = data.ticksPerBeat ?? 480;
+    this.tempoMap       = (data.tempoMap ?? [{ tick: 0, bpm: DEFAULT_BPM, time: 0 }]).map(s => ({ ...s }));
+    this.timeSignatures = (data.timeSignatures ?? [DEFAULT_TIME_SIGNATURE]).map(s => ({ ...s }));
+    this.ticksPerBeat   = data.ticksPerBeat ?? DEFAULT_TICKS_PER_BEAT;
     this.pedalPoints    = (data.pedalPoints ?? []).map(p => ({ ...p }));
     this.tempoPoints    = (data.tempoPoints ?? []).map(p => ({ ...p }));
     this.softPedalRegions = normalizeRegions(data.softPedalRegions ?? []);
@@ -270,11 +284,13 @@ export class AppState extends EventTarget {
     if (this.tempoPoints.length === 0) return this._baseTimeToTick(time);
     // Binary search on the curved mapping
     const tickToTime = this._timeline();
-    let lo = 0, hi = Math.max(this.totalTicks * 1.1 + 960, 1e5);
-    for (let i = 0; i < 64; i++) {
+    let lo = 0, hi = Math.max(
+      this.totalTicks * TIME_SEARCH_HEADROOM_FACTOR + TIME_SEARCH_HEADROOM_TICKS,
+      TIME_SEARCH_MIN_HI_TICKS);
+    for (let i = 0; i < TIME_SEARCH_MAX_ITERATIONS; i++) {
       const mid = (lo + hi) / 2;
       if (tickToTime(mid) < time) lo = mid; else hi = mid;
-      if (hi - lo < 0.5) break;
+      if (hi - lo < TIME_SEARCH_TOLERANCE_TICKS) break;
     }
     return Math.round((lo + hi) / 2);
   }
@@ -421,9 +437,9 @@ export class AppState extends EventTarget {
   // deltaPitch and deltaTick may each be 0.
   moveNotes(indices, deltaPitch, deltaTick) {
     this._pushUndo();
-    const moved = indices.map(i => this.notes[i]).filter(Boolean);
+    const moved = this._notesAt(indices);
     for (const n of moved) {
-      if (deltaPitch) n.pitch = Math.max(PITCH_LO, Math.min(PITCH_HI, n.pitch + deltaPitch));
+      if (deltaPitch) n.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, n.pitch + deltaPitch));
       if (deltaTick) {
         const dur = n.endTick - n.startTick;
         n.startTick = Math.max(0, n.startTick + deltaTick);
@@ -507,7 +523,7 @@ export class AppState extends EventTarget {
       note.startTick = Math.max(0, startTick);
       const dur = endTick - startTick;
       note.endTick = note.startTick + dur;
-      note.pitch = Math.max(PITCH_LO, Math.min(PITCH_HI, pitch));
+      note.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch));
     }
     this._reselectByNotes(new Set(moves.map(m => m.note)));
     this._refreshTotals();
@@ -520,7 +536,7 @@ export class AppState extends EventTarget {
   // selected notes by onset time — notes sharing a startTick (a chord) get one
   // value. Sets velocities directly — a one-shot edit, nothing persisted.
   applyVelocityCurve(indices, from, to, shape) {
-    const members = indices.map(i => this.notes[i]).filter(Boolean);
+    const members = this._notesAt(indices);
     if (!members.length) return;
     this._pushUndo();
     const ease   = SCALE_EASINGS[shape] ?? SCALE_EASINGS.Linear;
@@ -563,18 +579,14 @@ export class AppState extends EventTarget {
   addTempoPoint(tick, value) {
     this._pushUndo();
     this.tempoPoints = upsertCurvePoint(this.tempoPoints, tick, value);
-    this._invalidateTimeline();
-    this.totalTime = this.tickToTime(this.totalTicks);
-    this.dispatch('tempochanged');
+    this._commitTempoChange();
   }
 
   removeTempoPointAt(index) {
     if (index < 0 || index >= this.tempoPoints.length) return;
     this._pushUndo();
     this.tempoPoints.splice(index, 1);
-    this._invalidateTimeline();
-    this.totalTime = this.tickToTime(this.totalTicks);
-    this.dispatch('tempochanged');
+    this._commitTempoChange();
   }
 
   // Called each frame during a tempo-point drag — no undo push.
@@ -582,6 +594,12 @@ export class AppState extends EventTarget {
     point.tick  = Math.max(0, tick);
     point.value = value;
     this.tempoPoints.sort((a, b) => a.tick - b.tick);
+    this._commitTempoChange();
+  }
+
+  // Common tail of every tempo-point edit: the tempo timeline changed, so drop the
+  // cached converter and re-derive the piece duration.
+  _commitTempoChange() {
     this._invalidateTimeline();
     this.totalTime = this.tickToTime(this.totalTicks);
     this.dispatch('tempochanged');
@@ -707,7 +725,7 @@ export class AppState extends EventTarget {
     const tpb = this.ticksPerBeat;
     const timeSigs = this.timeSignatures.length
       ? this.timeSignatures
-      : [{ tick: 0, numerator: 4, denominator: 4 }];
+      : [DEFAULT_TIME_SIGNATURE];
     const result = [];
     let bar = 1;
 
@@ -915,6 +933,8 @@ export function interpolateCurveAtTick(points, tick, fallback) {
 }
 
 // ── Snap grid ──────────────────────────────────────────────────────────
+
+export const PLAY_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
 export const SNAP_GRIDS = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T', '1/64', '1/64T'];
 

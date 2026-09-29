@@ -211,7 +211,7 @@
 </div>
 
 <script type="module">
-  import { state, SNAP_GRIDS, SCALE_EASINGS, snapGridTicks } from './engine/state.js';
+  import { state, SNAP_GRIDS, PLAY_SPEEDS, SCALE_EASINGS, snapGridTicks } from './engine/state.js';
   import { loadMusicXmlBuffer }      from './engine/musicxml.js';
   import { midiOut }                 from './engine/midi-out.js';
   import { PianoRoll, noteHSL, labelColorFor } from './ui/roll.js';
@@ -219,19 +219,24 @@
   import { TempoLane }               from './ui/tempo-lane.js';
   import { RegionLane }              from './ui/region-lane.js';
   import { Minimap }                 from './ui/minimap.js';
-  import { isFormFocused, PITCH_MAX } from './ui/dom-utils.js';
+  import { isFormFocused, safeSet, PITCH_MAX } from './ui/dom-utils.js';
   import { saveRevision, openServerWindow, openHistoryWindow } from './ui/server-io.js';
   import './ui/toolbar.js';
-
-  // Best-effort localStorage write — swallows quota / private-mode errors.
-  const safeSet = (key, value) => {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
-  };
 
   // localStorage keys, named once so save and load can't drift apart silently.
   const AUTOSAVE_KEY       = 'pianizer-autosave';
   const MIDI_PORT_KEY      = 'pianizer-midi-port';
   const viewKey = () => `pianizer-view-${state.pieceId}`;
+
+  // Debounce / display durations (ms)
+  const AUTOSAVE_DELAY_MS       = 1000;
+  const VIEW_SAVE_DELAY_MS      = 500;
+  const FLASH_MS                = 2000;
+  const FLASH_ERROR_MS          = 3500;  // errors run longer and are worth actually reading
+  const AUTOSAVE_RESTORED_MS    = 3000;
+
+  // During playback the view scrolls once the playhead is within this many px of the right edge.
+  const PLAYBACK_SCROLL_MARGIN = 80;
 
   // ── Canvas setup ───────────────────────────────────────────────────
   const canvas             = document.getElementById('roll');
@@ -322,16 +327,14 @@
   state.addEventListener('selectionchanged', updateStatus);
   updateStatus();
 
-  // Transient status message (e.g. a blocked edit on locked notes, or a
-  // server-storage result — see ui/server-io.js), reverts after a beat.
-  // Errors are shown in red and linger a bit longer, since they tend to run
-  // longer than a short blocked-edit phrase and are worth actually reading.
+  // Transient status message (a server-storage result — see ui/server-io.js),
+  // reverts after a beat. Errors are shown in red and linger a bit longer.
   let _flashTimer = null;
   function flashStatus(message, isError) {
     statusEl.textContent = message;
     statusEl.style.color = isError ? '#e88' : '';
     clearTimeout(_flashTimer);
-    _flashTimer = setTimeout(() => { statusEl.style.color = ''; updateStatus(); }, isError ? 3500 : 2000);
+    _flashTimer = setTimeout(() => { statusEl.style.color = ''; updateStatus(); }, isError ? FLASH_ERROR_MS : FLASH_MS);
   }
   document.addEventListener('roll-flash', e => flashStatus(e.detail.message, e.detail.isError));
 
@@ -869,8 +872,6 @@
     midiOut.requestAccess(savedMidiPort());
   })();
 
-  const SPEED_VALUES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
-
   document.addEventListener('play-speed', e => {
     const newSpeed = e.detail.speed;
     if (state.playing) {
@@ -940,9 +941,8 @@
 
     const playTick = state.timeToTick(pieceTime);
     const playX    = roll.tickToX(playTick);
-    const margin   = 80;
-    if (playX > canvas.width - margin) {
-      roll.scrollX = roll._clampScrollX(roll.scrollX + (canvas.width - margin * 2) / roll.pixelsPerTick);
+    if (playX > canvas.width - PLAYBACK_SCROLL_MARGIN) {
+      roll.scrollX = roll._clampScrollX(roll.scrollX + (canvas.width - PLAYBACK_SCROLL_MARGIN * 2) / roll.pixelsPerTick);
     }
 
     animFrame = requestAnimationFrame(tick);
@@ -985,7 +985,7 @@
       scrollY:       roll.scrollY,
       snapGrid:      state.snapGrid,
       playSpeed:     state.playSpeed,
-    }), 500);
+    }), VIEW_SAVE_DELAY_MS);
   }
 
   function restoreView() {
@@ -998,7 +998,7 @@
         if (v.scrollX       != null) roll.scrollX = roll._clampScrollX(v.scrollX);
         if (v.scrollY       != null) roll.scrollY = roll._clampScrollY(v.scrollY);
         if (v.snapGrid != null && SNAP_GRIDS.includes(v.snapGrid)) state.setSnapGrid(v.snapGrid);
-        if (v.playSpeed != null && SPEED_VALUES.includes(v.playSpeed)) restoredSpeed = v.playSpeed;
+        if (v.playSpeed != null && PLAY_SPEEDS.includes(v.playSpeed)) restoredSpeed = v.playSpeed;
       }
     } catch (_) {}
     if (state.playSpeed !== restoredSpeed) state.setPlaySpeed(restoredSpeed);
@@ -1008,7 +1008,7 @@
   function scheduleAutosave() {
     if (!state.loaded) return;
     clearTimeout(_autosaveTimer);
-    _autosaveTimer = setTimeout(() => safeSet(AUTOSAVE_KEY, state.saveProject()), 1000);
+    _autosaveTimer = setTimeout(() => safeSet(AUTOSAVE_KEY, state.saveProject()), AUTOSAVE_DELAY_MS);
   }
 
   state.addEventListener('loaded',           scheduleAutosave);
@@ -1033,7 +1033,7 @@
       restoreView();
       const n = state.notes.length;
       statusEl.textContent = `Restored from autosave · ${n} note${n !== 1 ? 's' : ''}${HELP_HINT}`;
-      setTimeout(updateStatus, 3000);
+      setTimeout(updateStatus, AUTOSAVE_RESTORED_MS);
     }
   } catch (_) {}
 

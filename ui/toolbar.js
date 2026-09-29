@@ -3,7 +3,7 @@
 // then patches only the bits that change in response to state events. No
 // framework or build step.
 
-import { state, SNAP_GRIDS } from '../engine/state.js';
+import { state, SNAP_GRIDS, PLAY_SPEEDS } from '../engine/state.js';
 import { midiOut } from '../engine/midi-out.js';
 
 const STYLE = `
@@ -106,13 +106,7 @@ export class Toolbar extends HTMLElement {
           <button data-action="stop" disabled>Stop</button>
           <button data-action="play" disabled>Play</button>
           <select data-role="speed">
-            <option value="0.25">25%</option>
-            <option value="0.5">50%</option>
-            <option value="0.75">75%</option>
-            <option value="1" selected>100%</option>
-            <option value="1.25">125%</option>
-            <option value="1.5">150%</option>
-            <option value="2">200%</option>
+            ${PLAY_SPEEDS.map(v => `<option value="${v}"${v === state.playSpeed ? ' selected' : ''}>${v * 100}%</option>`).join('')}
           </select>
           <span class="time">0:00</span>
         </div>

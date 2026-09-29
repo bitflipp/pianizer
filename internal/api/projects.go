@@ -47,7 +47,7 @@ func handleCreateProject(st store.Store) http.HandlerFunc {
 		var body struct {
 			Name string `json:"name"`
 		}
-		if !decodeJSON(w, r, &body, 4<<10) {
+		if !decodeJSON(w, r, &body, maxProjectBodyBytes) {
 			return
 		}
 		name := strings.TrimSpace(body.Name)

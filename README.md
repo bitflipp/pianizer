@@ -132,7 +132,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Ctrl+scroll | Zoom horizontal (toward cursor) |
 | + / − | Zoom in / out (toward center) |
 | Right-drag | Pan (horizontal + vertical) |
-| Home / End | Scroll to start / end |
+| Home / End | Scroll to start / end, and move playhead there |
 
 ### Playback
 
@@ -193,6 +193,9 @@ pianizer/
   internal/
     api/                HTTP handlers for /api/projects and revisions
     store/              Store interface — MariaDB-backed + in-memory implementations
+  tests/                engine (Vitest) and UI (Playwright) suites
+  tools/midi-diagnostic.html  standalone MIDI diagnostic page
+  icon.svg            favicon
 ```
 
 The Go server is entirely optional and additive — `just run` (or plain
