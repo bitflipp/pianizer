@@ -1,16 +1,10 @@
-<img src="icon.svg" alt="Pianizer icon" width="96" align="right">
+<p align="center"><img src="icon.svg" alt="Pianizer icon" width="128" height="128"></p>
 
 # Pianizer
 
 A piano roll editor for adding musical expression to quantized MIDI scores.
-Import a MusicXML file, shape note velocities and articulations by hand, draw
-sustain pedal and tempo curves, then play the result back through an external
-synth via Web MIDI.
 
-**Expression comes from deliberate editing, not randomness.** There is no
-auto-humanization — the tool is an instrument.
-
----
+Import a MusicXML file, shape note velocities and articulations by hand, draw sustain pedal and tempo curves, then play the result back through an external synth via Web MIDI. Expression comes from **deliberate editing**, not randomness: there is no auto-humanization, the tool is an instrument.
 
 ## Features
 
@@ -46,8 +40,6 @@ auto-humanization — the tool is an instrument.
 - **No build step, no dependencies** — vanilla JS ES modules, Canvas 2D, served
   with any static HTTP server
 
----
-
 ## Requirements
 
 - A browser with [Web MIDI API](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
@@ -60,9 +52,7 @@ auto-humanization — the tool is an instrument.
   or Go 1.22+ and MariaDB if you also want server-side project storage
 - [`just`](https://github.com/casey/just) to run the recipes below
 
----
-
-## Getting started
+## Usage
 
 ```sh
 git clone https://github.com/phinau/pianizer.git
@@ -92,13 +82,11 @@ binary with the frontend embedded; run it directly with `PIANIZER_DB_DSN`
 set, behind a reverse proxy that handles authentication (the server itself
 has no login of its own).
 
----
-
-## Keyboard shortcuts
+### Keyboard shortcuts
 
 Press **?** at any time to open an in-app overlay listing the shortcuts below.
 
-### Selection
+#### Selection
 
 | Key / gesture | Action |
 |---|---|
@@ -111,7 +99,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Ctrl+Z | Undo (removes the last selection change) |
 | Escape | Clear selection |
 
-### Editing
+#### Editing
 
 | Key / gesture | Action |
 |---|---|
@@ -127,7 +115,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | S | Solo / unsolo selected notes (mutually exclusive with mute) |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 
-### View
+#### View
 
 | Key / gesture | Action |
 |---|---|
@@ -137,7 +125,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Right-drag | Pan (horizontal + vertical) |
 | Home / End | Scroll to start / end, and move playhead there |
 
-### Playback
+#### Playback
 
 | Key / gesture | Action |
 |---|---|
@@ -149,7 +137,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | ← / → | Seek to prev / next bookmark |
 | Alt+click ruler | Cycle A/B loop marker at the clicked position (unset → A → both → unset; also seeks) |
 
-### Curve lanes (pedal / tempo)
+#### Curve lanes (pedal / tempo)
 
 | Key / gesture | Action |
 |---|---|
@@ -158,7 +146,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Drag point | Move control point (snaps to grid and Y; hold Ctrl to disable) |
 | Right-click | Remove nearest control point |
 
-### Soft-pedal lane (una corda)
+#### Soft-pedal lane (una corda)
 
 | Key / gesture | Action |
 |---|---|
@@ -169,9 +157,7 @@ Press **?** at any time to open an in-app overlay listing the shortcuts below.
 | Ctrl+drag | Paint / resize / move without snapping |
 | Right-click region | Remove region |
 
----
-
-## Project structure
+## How it works
 
 ```
 pianizer/
@@ -205,9 +191,7 @@ The Go server is entirely optional and additive — `just run` (or plain
 `python3 -m http.server`) runs the client standalone with no server or
 database involved at all.
 
----
-
-## Testing
+## Running the tests
 
 ```sh
 npm install          # installs Vitest + Playwright (dev only)
@@ -219,8 +203,6 @@ go test ./...        # Go store/API tests — no MariaDB needed (in-memory Store
 
 Or via `just`: `just test`, `just test-engine`, `just test-ui`, `just test-go`.
 
----
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT
