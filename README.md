@@ -68,7 +68,8 @@ cd pianizer
 just run
 ```
 
-Open `http://localhost:8000` in Chrome or Edge, click **Connect** in the toolbar
+Open `http://localhost:8000` in Chrome or Edge (`just run` doesn't launch a
+browser), click **Connect** in the toolbar
 to pick a MIDI output port, then load a MusicXML file. `just run` is
 static-only (no server, no database) — plain `python3 -m http.server` works
 too, if you'd rather not install `just`.
@@ -82,7 +83,7 @@ just run-server
 
 This runs the Go server (assets served live from disk, no rebuild needed
 while developing) against your MariaDB instance, bootstraps the schema on
-first connect, and opens the same desktop window as `just run` — now with
+first connect, and serves the same app as `just run` — now with
 "Save to server", "Server…" and "Version history" enabled in the toolbar.
 For a production deployment, `just build` produces a single `pianizer`
 binary with the frontend embedded; run it directly with `PIANIZER_DB_DSN`
