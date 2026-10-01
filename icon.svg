@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" shape-rendering="crispEdges">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <!-- Pianizer app icon: the roll's own signature view — viridis velocity bars
        (blue=soft … yellow=loud, lightness rising with velocity, colorblind-safe)
-       crossed by the white playhead, on the #1a1a1a dark tile. Square corners,
-       no glows: matches the project's high-contrast design language. Scales from
+       crossed by the white playhead, on the #1a1a1a dark tile. Rounded tile
+       corners, no glows; bars stay crisp-edged. Scales from
        favicon to taskbar from this one file (Chromium app mode uses the favicon). -->
-  <rect width="64" height="64" fill="#1a1a1a"/>
-  <rect x="0.5" y="0.5" width="63" height="63" fill="none" stroke="#3a3a3a"/>
+  <rect width="64" height="64" rx="12" fill="#1a1a1a"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="11.5" fill="none" stroke="#3a3a3a"/>
 
+  <g shape-rendering="crispEdges">
   <!-- Note bars: y top→bottom, fills sampled from noteHSL() at rising velocities -->
   <rect x="10" y="7"  width="22" height="7" fill="hsl(220,65%,37%)"/>
   <rect x="20" y="18" width="18" height="7" fill="hsl(180,71%,44%)"/>
@@ -16,4 +17,5 @@
 
   <!-- Playhead -->
   <rect x="40" y="5" width="2" height="54" fill="#ffffff"/>
+  </g>
 </svg>
