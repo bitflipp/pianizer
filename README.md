@@ -2,7 +2,7 @@
 
 # Pianizer
 
-A piano roll editor for adding musical expression to quantized MIDI scores.
+A piano roll editor with musical expression capabilities.
 
 Import a MusicXML file, shape note velocities and articulations by hand, draw sustain pedal and tempo curves, then play the result back through an external synth via Web MIDI. Expression comes from **deliberate editing**, not randomness: there is no auto-humanization, the tool is an instrument.
 
