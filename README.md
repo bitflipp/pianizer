@@ -1,3 +1,5 @@
+<img src="icon.svg" alt="Pianizer icon" width="96" align="right">
+
 # Pianizer
 
 A piano roll editor for adding musical expression to quantized MIDI scores.
