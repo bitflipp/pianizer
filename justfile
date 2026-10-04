@@ -3,7 +3,7 @@
 # Static-only: no server, no database — just the client, served over
 # localhost (ES modules + Web MIDI need a secure context). Open the URL in
 # a browser yourself; Ctrl-C stops the server.
-run port="8000":
+run port="6789":
     python3 -m http.server {{ port }} -d "{{ justfile_directory() }}"
 
 # Full app with server-side project storage. Requires PIANIZER_DB_DSN
@@ -16,7 +16,7 @@ run port="8000":
 # would be the `go run` wrapper, not the server — killing it on exit leaves
 # the real server orphaned and still holding the port, silently serving
 # stale code next time this recipe runs.
-run-server port="8000":
+run-server port="6789":
     #!/usr/bin/env bash
     set -euo pipefail
     : "${PIANIZER_DB_DSN:?set PIANIZER_DB_DSN to a MariaDB DSN, e.g. user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true}"

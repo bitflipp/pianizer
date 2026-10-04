@@ -21,7 +21,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", envOr("PIANIZER_ADDR", ":8080"), "address to listen on")
+	addr := flag.String("addr", envOr("PIANIZER_ADDR", ":6789"), "address to listen on")
 	dsn := flag.String("dsn", os.Getenv("PIANIZER_DB_DSN"), "MariaDB DSN, e.g. user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true")
 	devAssets := flag.String("dev-assets", os.Getenv("PIANIZER_DEV_ASSETS"), "serve frontend assets live from this directory instead of the embedded copy (dev only)")
 	flag.Parse()

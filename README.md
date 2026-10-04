@@ -60,7 +60,7 @@ cd pianizer
 just run
 ```
 
-Open `http://localhost:8000` in Chrome or Edge (`just run` doesn't launch a
+Open `http://localhost:6789` in Chrome or Edge (`just run` doesn't launch a
 browser), click **Connect** in the toolbar
 to pick a MIDI output port, then load a MusicXML file. `just run` is
 static-only (no server, no database) — plain `python3 -m http.server` works
