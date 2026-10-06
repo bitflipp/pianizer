@@ -10,6 +10,7 @@ run port="6789":
 # (a MariaDB DSN, e.g. user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true).
 # Serves frontend assets live from disk (-dev-assets), so editing index.html
 # or ui/*.js needs no rebuild — just a browser refresh. Open the URL yourself.
+# There's no Authelia locally, so requests act as PIANIZER_DEV_USER (default "dev").
 #
 # Built to a temp binary and exec'd directly rather than `go run`'d: `go run`
 # execs the compiled binary as a *child* process of itself, so `server_pid=$!`
@@ -24,7 +25,7 @@ run-server port="6789":
     bin_dir="$(mktemp -d)"
     trap 'rm -rf "$bin_dir"' EXIT
     go build -o "$bin_dir/pianizer-server" ./cmd/server
-    "$bin_dir/pianizer-server" -addr "localhost:{{ port }}" -dev-assets . &
+    "$bin_dir/pianizer-server" -addr "localhost:{{ port }}" -dev-assets . -dev-user "${PIANIZER_DEV_USER:-dev}" &
     server_pid=$!
     trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$bin_dir"' EXIT
     wait "$server_pid"

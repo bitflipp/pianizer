@@ -17,7 +17,25 @@ func newTestServer() *httptest.Server {
 	assets := fstest.MapFS{
 		"index.html": &fstest.MapFile{Data: []byte("<!doctype html>")},
 	}
-	return httptest.NewServer(NewMux(store.NewMemory(), assets))
+	mux := NewMux(store.NewMemory(), assets)
+	// Stand in for Authelia: requests without an explicit user are "tester".
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Remote-User") == "" {
+			r.Header.Set("Remote-User", "tester")
+		}
+		mux.ServeHTTP(w, r)
+	}))
+}
+
+func asUser(t *testing.T, user, method, url, body string) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest(method, url, strings.NewReader(body))
+	req.Header.Set("Remote-User", user)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, url, err)
+	}
+	return res
 }
 
 func postJSON(t *testing.T, url string, body string) *http.Response {
@@ -209,4 +227,67 @@ func TestInvalidRevisionBody(t *testing.T) {
 
 func itoa(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+func TestProjectsArePerUser(t *testing.T) {
+	srv := newTestServer()
+	defer srv.Close()
+
+	res := asUser(t, "alice", "POST", srv.URL+"/api/projects", `{"name":"Nocturne"}`)
+	var proj projectJSON
+	decode(t, res, &proj)
+	base := srv.URL + "/api/projects/" + itoa(proj.ID)
+	asUser(t, "alice", "POST", base+"/revisions", `{"v":1}`).Body.Close()
+
+	// Bob can't see, read, write or delete Alice's project...
+	var listed struct {
+		Projects []projectJSON `json:"projects"`
+	}
+	decode(t, asUser(t, "bob", "GET", srv.URL+"/api/projects", ""), &listed)
+	if len(listed.Projects) != 0 {
+		t.Fatalf("bob sees alice's projects: %+v", listed.Projects)
+	}
+	for _, c := range []struct{ method, path, body string }{
+		{"GET", "/revisions", ""},
+		{"POST", "/revisions", `{}`},
+		{"GET", "/revisions/1", ""},
+		{"DELETE", "/revisions/1", ""},
+	} {
+		res := asUser(t, "bob", c.method, base+c.path, c.body)
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("bob %s %s: got %d, want 404", c.method, c.path, res.StatusCode)
+		}
+		res.Body.Close()
+	}
+
+	// ...and may reuse her project name for his own.
+	res = asUser(t, "bob", "POST", srv.URL+"/api/projects", `{"name":"Nocturne"}`)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("bob create same name: got %d, want 201", res.StatusCode)
+	}
+	res.Body.Close()
+
+	// Alice's revision is untouched.
+	res = asUser(t, "alice", "GET", base+"/revisions/1", "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("alice revision: got %d, want 200", res.StatusCode)
+	}
+	res.Body.Close()
+}
+
+func TestAPIRequiresUserButAssetsDoNot(t *testing.T) {
+	mux := NewMux(store.NewMemory(), fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("x")}})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	res, _ := http.Get(srv.URL + "/api/projects")
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("api without user: got %d, want 401", res.StatusCode)
+	}
+	res.Body.Close()
+	res, _ = http.Get(srv.URL + "/index.html")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("asset without user: got %d, want 200", res.StatusCode)
+	}
+	res.Body.Close()
 }

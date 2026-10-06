@@ -25,13 +25,15 @@ func NewMemory() *Memory {
 	}
 }
 
-func (m *Memory) ListProjects(ctx context.Context) ([]Project, error) {
+func (m *Memory) ListProjects(ctx context.Context, owner string) ([]Project, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	out := make([]Project, 0, len(m.projects))
 	for _, p := range m.projects {
-		out = append(out, *p)
+		if p.Owner == owner {
+			out = append(out, *p)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		li, lj := out[i].LastSavedAt, out[j].LastSavedAt
@@ -49,27 +51,27 @@ func (m *Memory) ListProjects(ctx context.Context) ([]Project, error) {
 	return out, nil
 }
 
-func (m *Memory) CreateProject(ctx context.Context, name string) (Project, error) {
+func (m *Memory) CreateProject(ctx context.Context, owner, name string) (Project, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for _, p := range m.projects {
-		if p.Name == name {
+		if p.Owner == owner && p.Name == name {
 			return Project{}, ErrDuplicateName
 		}
 	}
 
 	m.nextID++
-	p := &Project{ID: m.nextID, Name: name, CreatedAt: time.Now().UTC()}
+	p := &Project{ID: m.nextID, Owner: owner, Name: name, CreatedAt: time.Now().UTC()}
 	m.projects[p.ID] = p
 	return *p, nil
 }
 
-func (m *Memory) ListRevisions(ctx context.Context, projectID int64) ([]RevisionMeta, error) {
+func (m *Memory) ListRevisions(ctx context.Context, owner string, projectID int64) ([]RevisionMeta, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.projects[projectID]; !ok {
+	if !m.owns(owner, projectID) {
 		return nil, ErrNotFound
 	}
 	revs := m.revisions[projectID]
@@ -80,11 +82,11 @@ func (m *Memory) ListRevisions(ctx context.Context, projectID int64) ([]Revision
 	return out, nil
 }
 
-func (m *Memory) GetRevision(ctx context.Context, projectID int64, revisionNo int) (Revision, error) {
+func (m *Memory) GetRevision(ctx context.Context, owner string, projectID int64, revisionNo int) (Revision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.projects[projectID]; !ok {
+	if !m.owns(owner, projectID) {
 		return Revision{}, ErrNotFound
 	}
 	for _, r := range m.revisions[projectID] {
@@ -95,12 +97,12 @@ func (m *Memory) GetRevision(ctx context.Context, projectID int64, revisionNo in
 	return Revision{}, ErrNotFound
 }
 
-func (m *Memory) CreateRevision(ctx context.Context, projectID int64, data string) (RevisionMeta, error) {
+func (m *Memory) CreateRevision(ctx context.Context, owner string, projectID int64, data string) (RevisionMeta, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	p, ok := m.projects[projectID]
-	if !ok {
+	if !ok || p.Owner != owner {
 		return RevisionMeta{}, ErrNotFound
 	}
 
@@ -130,12 +132,12 @@ func (m *Memory) CreateRevision(ctx context.Context, projectID int64, data strin
 	return rev.RevisionMeta, nil
 }
 
-func (m *Memory) DeleteRevision(ctx context.Context, projectID int64, revisionNo int) error {
+func (m *Memory) DeleteRevision(ctx context.Context, owner string, projectID int64, revisionNo int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	p, ok := m.projects[projectID]
-	if !ok {
+	if !ok || p.Owner != owner {
 		return ErrNotFound
 	}
 
@@ -166,4 +168,10 @@ func (m *Memory) DeleteRevision(ctx context.Context, projectID int64, revisionNo
 		p.LastSavedAt = &latest
 	}
 	return nil
+}
+
+// owns reports whether projectID exists and belongs to owner. Caller holds m.mu.
+func (m *Memory) owns(owner string, projectID int64) bool {
+	p, ok := m.projects[projectID]
+	return ok && p.Owner == owner
 }

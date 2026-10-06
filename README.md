@@ -35,8 +35,8 @@ Import a MusicXML file, shape note velocities and articulations by hand, draw su
 - **Server-side project storage** *(optional)* — a single Go binary with an
   embedded copy of the frontend, backed by MariaDB: every "Save to server"
   writes a new, immutable revision of a named project, with a version-history
-  browser to load older revisions. No login of its own — it expects to sit
-  behind an already-authenticating reverse proxy
+  browser to load older revisions. Projects are per-user,
+  keyed on the `Remote-User` header forwarded by Authelia
 - **No build step, no dependencies** — vanilla JS ES modules, Canvas 2D, served
   with any static HTTP server
 
@@ -79,8 +79,14 @@ first connect, and serves the same app as `just run` — now with
 "Save to server", "Server…" and "Version history" enabled in the toolbar.
 For a production deployment, `just build` produces a single `pianizer`
 binary with the frontend embedded; run it directly with `PIANIZER_DB_DSN`
-set, behind a reverse proxy that handles authentication (the server itself
-has no login of its own).
+set, behind Authelia (via your reverse proxy). The server has no login of its
+own: it trusts the `Remote-User` header, so it must be reachable only through
+the proxy, and every `/api/` request without that header gets a 401. Each user
+sees only their own projects. `just run-server` has no proxy, so it acts as
+`PIANIZER_DEV_USER` (default `dev`).
+
+Upgrading from a pre-per-user database: existing projects have no owner and
+are hidden until claimed once with `pianizer -adopt-orphans <username>`.
 
 ### Keyboard shortcuts
 

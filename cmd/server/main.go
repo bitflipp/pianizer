@@ -1,7 +1,7 @@
 // Command server runs the Pianizer HTTP server: the static frontend plus
-// the /api/ project-storage routes, backed by MariaDB. Auth is not handled
-// here — the app is single-user and expects to sit behind an
-// already-authenticating reverse proxy.
+// the /api/ project-storage routes, backed by MariaDB. Authentication is
+// Authelia's job: the server trusts the Remote-User header and so must be
+// reachable only through the reverse proxy (see pkg/authn).
 package main
 
 import (
@@ -24,6 +24,8 @@ func main() {
 	addr := flag.String("addr", envOr("PIANIZER_ADDR", ":6789"), "address to listen on")
 	dsn := flag.String("dsn", os.Getenv("PIANIZER_DB_DSN"), "MariaDB DSN, e.g. user:pass@tcp(127.0.0.1:3306)/pianizer?parseTime=true")
 	devAssets := flag.String("dev-assets", os.Getenv("PIANIZER_DEV_ASSETS"), "serve frontend assets live from this directory instead of the embedded copy (dev only)")
+	devUser := flag.String("dev-user", os.Getenv("PIANIZER_DEV_USER"), "act as this user when no Remote-User header is present (local dev without Authelia; never set in production)")
+	adopt := flag.String("adopt-orphans", "", "assign projects saved before per-user storage (no owner) to this user, then exit")
 	flag.Parse()
 
 	if *dsn == "" {
@@ -43,13 +45,32 @@ func main() {
 		log.Fatalf("migrate database: %v", err)
 	}
 
+	if *adopt != "" {
+		n, err := db.AdoptOrphans(context.Background(), *adopt)
+		if err != nil {
+			log.Fatalf("adopt orphans: %v", err)
+		}
+		log.Printf("assigned %d project(s) to %q", n, *adopt)
+		return
+	}
+
 	var assetFS fs.FS = assets.FS
 	if *devAssets != "" {
 		assetFS = os.DirFS(*devAssets)
 		log.Printf("serving frontend assets live from %s (dev mode)", *devAssets)
 	}
 
-	mux := api.NewMux(db, assetFS)
+	var mux http.Handler = api.NewMux(db, assetFS)
+	if *devUser != "" {
+		log.Printf("WARNING: unauthenticated requests are treated as user %q (dev mode)", *devUser)
+		inner := mux
+		mux = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Remote-User") == "" {
+				r.Header.Set("Remote-User", *devUser)
+			}
+			inner.ServeHTTP(w, r)
+		})
+	}
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 

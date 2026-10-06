@@ -29,7 +29,7 @@ func toProjectJSON(p store.Project) projectJSON {
 
 func handleListProjects(st store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		projects, err := st.ListProjects(r.Context())
+		projects, err := st.ListProjects(r.Context(), owner(r))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -56,7 +56,7 @@ func handleCreateProject(st store.Store) http.HandlerFunc {
 			return
 		}
 
-		p, err := st.CreateProject(r.Context(), name)
+		p, err := st.CreateProject(r.Context(), owner(r), name)
 		switch {
 		case errors.Is(err, store.ErrDuplicateName):
 			writeError(w, http.StatusConflict, "a project named \""+name+"\" already exists")

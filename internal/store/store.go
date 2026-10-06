@@ -18,6 +18,7 @@ var ErrDuplicateName = errors.New("project name already exists")
 // Project is a named container for a sequence of revisions.
 type Project struct {
 	ID            int64
+	Owner         string
 	Name          string
 	CreatedAt     time.Time
 	RevisionCount int
@@ -37,17 +38,22 @@ type Revision struct {
 	Data string
 }
 
-// Store is the persistence contract. Revisions are immutable and numbered
+// Store is the persistence contract. Every method is scoped to an owner (the
+// authenticated user): projects are only visible to, and project names are
+// only unique within, the user who created them. Operating on another
+// owner's project reports ErrNotFound, indistinguishable from a missing one.
+//
+// Revisions are described below. Revisions are immutable and numbered
 // per-project starting at 1, and are never renumbered — there is no update,
 // only append and delete-by-number. A deleted revision's number is not
 // reused while sibling revisions remain, since CreateRevision always numbers
 // off the current max; it can only be reused once every revision of a
 // project has been deleted.
 type Store interface {
-	ListProjects(ctx context.Context) ([]Project, error)
-	CreateProject(ctx context.Context, name string) (Project, error)
-	ListRevisions(ctx context.Context, projectID int64) ([]RevisionMeta, error)
-	GetRevision(ctx context.Context, projectID int64, revisionNo int) (Revision, error)
-	CreateRevision(ctx context.Context, projectID int64, data string) (RevisionMeta, error)
-	DeleteRevision(ctx context.Context, projectID int64, revisionNo int) error
+	ListProjects(ctx context.Context, owner string) ([]Project, error)
+	CreateProject(ctx context.Context, owner, name string) (Project, error)
+	ListRevisions(ctx context.Context, owner string, projectID int64) ([]RevisionMeta, error)
+	GetRevision(ctx context.Context, owner string, projectID int64, revisionNo int) (Revision, error)
+	CreateRevision(ctx context.Context, owner string, projectID int64, data string) (RevisionMeta, error)
+	DeleteRevision(ctx context.Context, owner string, projectID int64, revisionNo int) error
 }

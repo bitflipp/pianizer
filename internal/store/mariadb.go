@@ -41,16 +41,54 @@ func (m *MariaDB) Migrate(ctx context.Context) error {
 	if _, err := m.db.ExecContext(ctx, ddlProjectRevisions); err != nil {
 		return fmt.Errorf("create project_revisions table: %w", err)
 	}
+	return m.migrateOwner(ctx)
+}
+
+// migrateOwner upgrades a projects table created before per-user storage.
+// Existing rows get owner ” and stay invisible to every user until claimed
+// with AdoptOrphans.
+func (m *MariaDB) migrateOwner(ctx context.Context) error {
+	var n int
+	err := m.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = 'owner'`).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("check owner column: %w", err)
+	}
+	if n > 0 {
+		return nil
+	}
+	for _, stmt := range []string{ddlProjectsAddOwner, ddlProjectsDropOldKey, ddlProjectsAddOwnerKey} {
+		if _, err := m.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("add project owner: %w", err)
+		}
+	}
 	return nil
 }
 
-func (m *MariaDB) ListProjects(ctx context.Context) ([]Project, error) {
+// AdoptOrphans assigns every project without an owner (saved before
+// per-user storage existed) to owner, returning how many were claimed.
+// Fails with ErrDuplicateName if owner already has a project of the same name.
+func (m *MariaDB) AdoptOrphans(ctx context.Context, owner string) (int64, error) {
+	res, err := m.db.ExecContext(ctx, `UPDATE projects SET owner=? WHERE owner=''`, owner)
+	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			return 0, ErrDuplicateName
+		}
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (m *MariaDB) ListProjects(ctx context.Context, owner string) ([]Project, error) {
 	rows, err := m.db.QueryContext(ctx, `
 		SELECT p.id, p.name, p.created_at, COUNT(r.id), MAX(r.created_at)
 		FROM projects p
 		LEFT JOIN project_revisions r ON r.project_id = p.id
+		WHERE p.owner = ?
 		GROUP BY p.id, p.name, p.created_at
-		ORDER BY MAX(r.created_at) IS NULL, MAX(r.created_at) DESC, p.created_at DESC`)
+		ORDER BY MAX(r.created_at) IS NULL, MAX(r.created_at) DESC, p.created_at DESC`, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -72,8 +110,8 @@ func (m *MariaDB) ListProjects(ctx context.Context) ([]Project, error) {
 	return projects, rows.Err()
 }
 
-func (m *MariaDB) CreateProject(ctx context.Context, name string) (Project, error) {
-	res, err := m.db.ExecContext(ctx, `INSERT INTO projects (name) VALUES (?)`, name)
+func (m *MariaDB) CreateProject(ctx context.Context, owner, name string) (Project, error) {
+	res, err := m.db.ExecContext(ctx, `INSERT INTO projects (owner, name) VALUES (?, ?)`, owner, name)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
@@ -86,19 +124,19 @@ func (m *MariaDB) CreateProject(ctx context.Context, name string) (Project, erro
 		return Project{}, err
 	}
 	var p Project
-	err = m.db.QueryRowContext(ctx, `SELECT id, name, created_at FROM projects WHERE id=?`, id).
-		Scan(&p.ID, &p.Name, &p.CreatedAt)
+	err = m.db.QueryRowContext(ctx, `SELECT id, owner, name, created_at FROM projects WHERE id=?`, id).
+		Scan(&p.ID, &p.Owner, &p.Name, &p.CreatedAt)
 	return p, err
 }
 
-func (m *MariaDB) projectExists(ctx context.Context, projectID int64) (bool, error) {
+func (m *MariaDB) projectExists(ctx context.Context, owner string, projectID int64) (bool, error) {
 	var exists bool
-	err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)`, projectID).Scan(&exists)
+	err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=? AND owner=?)`, projectID, owner).Scan(&exists)
 	return exists, err
 }
 
-func (m *MariaDB) ListRevisions(ctx context.Context, projectID int64) ([]RevisionMeta, error) {
-	ok, err := m.projectExists(ctx, projectID)
+func (m *MariaDB) ListRevisions(ctx context.Context, owner string, projectID int64) ([]RevisionMeta, error) {
+	ok, err := m.projectExists(ctx, owner, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,11 +164,12 @@ func (m *MariaDB) ListRevisions(ctx context.Context, projectID int64) ([]Revisio
 	return out, rows.Err()
 }
 
-func (m *MariaDB) GetRevision(ctx context.Context, projectID int64, revisionNo int) (Revision, error) {
+func (m *MariaDB) GetRevision(ctx context.Context, owner string, projectID int64, revisionNo int) (Revision, error) {
 	var rev Revision
 	err := m.db.QueryRowContext(ctx, `
-		SELECT revision_no, created_at, size_bytes, data
-		FROM project_revisions WHERE project_id=? AND revision_no=?`, projectID, revisionNo).
+		SELECT r.revision_no, r.created_at, r.size_bytes, r.data
+		FROM project_revisions r JOIN projects p ON p.id = r.project_id
+		WHERE r.project_id=? AND r.revision_no=? AND p.owner=?`, projectID, revisionNo, owner).
 		Scan(&rev.RevisionNo, &rev.CreatedAt, &rev.SizeBytes, &rev.Data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Revision{}, ErrNotFound
@@ -142,7 +181,7 @@ func (m *MariaDB) GetRevision(ctx context.Context, projectID int64, revisionNo i
 // as a new immutable revision. The read-modify-write of the next number and
 // the insert happen inside one transaction with FOR UPDATE locks, so
 // concurrent saves to the same project can't race onto the same number.
-func (m *MariaDB) CreateRevision(ctx context.Context, projectID int64, data string) (RevisionMeta, error) {
+func (m *MariaDB) CreateRevision(ctx context.Context, owner string, projectID int64, data string) (RevisionMeta, error) {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return RevisionMeta{}, err
@@ -150,7 +189,7 @@ func (m *MariaDB) CreateRevision(ctx context.Context, projectID int64, data stri
 	defer tx.Rollback()
 
 	var exists bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=? FOR UPDATE)`, projectID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=? AND owner=? FOR UPDATE)`, projectID, owner).Scan(&exists); err != nil {
 		return RevisionMeta{}, err
 	}
 	if !exists {
@@ -184,9 +223,10 @@ func (m *MariaDB) CreateRevision(ctx context.Context, projectID int64, data stri
 	return RevisionMeta{RevisionNo: next, CreatedAt: createdAt, SizeBytes: size}, nil
 }
 
-func (m *MariaDB) DeleteRevision(ctx context.Context, projectID int64, revisionNo int) error {
+func (m *MariaDB) DeleteRevision(ctx context.Context, owner string, projectID int64, revisionNo int) error {
 	res, err := m.db.ExecContext(ctx,
-		`DELETE FROM project_revisions WHERE project_id=? AND revision_no=?`, projectID, revisionNo)
+		`DELETE r FROM project_revisions r JOIN projects p ON p.id = r.project_id
+		 WHERE r.project_id=? AND r.revision_no=? AND p.owner=?`, projectID, revisionNo, owner)
 	if err != nil {
 		return err
 	}

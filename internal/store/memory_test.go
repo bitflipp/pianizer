@@ -10,10 +10,10 @@ func TestMemoryCreateProjectDuplicateName(t *testing.T) {
 	m := NewMemory()
 	ctx := context.Background()
 
-	if _, err := m.CreateProject(ctx, "Nocturne"); err != nil {
+	if _, err := m.CreateProject(ctx, "u", "Nocturne"); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
-	if _, err := m.CreateProject(ctx, "Nocturne"); !errors.Is(err, ErrDuplicateName) {
+	if _, err := m.CreateProject(ctx, "u", "Nocturne"); !errors.Is(err, ErrDuplicateName) {
 		t.Fatalf("want ErrDuplicateName, got %v", err)
 	}
 }
@@ -22,11 +22,11 @@ func TestMemoryRevisionSequencingIsPerProject(t *testing.T) {
 	m := NewMemory()
 	ctx := context.Background()
 
-	a, _ := m.CreateProject(ctx, "A")
-	b, _ := m.CreateProject(ctx, "B")
+	a, _ := m.CreateProject(ctx, "u", "A")
+	b, _ := m.CreateProject(ctx, "u", "B")
 
 	for i, want := range []int{1, 2, 3} {
-		rev, err := m.CreateRevision(ctx, a.ID, "{}")
+		rev, err := m.CreateRevision(ctx, "u", a.ID, "{}")
 		if err != nil {
 			t.Fatalf("create revision %d for A: %v", i, err)
 		}
@@ -35,7 +35,7 @@ func TestMemoryRevisionSequencingIsPerProject(t *testing.T) {
 		}
 	}
 
-	rev, err := m.CreateRevision(ctx, b.ID, "{}")
+	rev, err := m.CreateRevision(ctx, "u", b.ID, "{}")
 	if err != nil {
 		t.Fatalf("create revision for B: %v", err)
 	}
@@ -48,12 +48,12 @@ func TestMemoryListRevisionsNewestFirst(t *testing.T) {
 	m := NewMemory()
 	ctx := context.Background()
 
-	p, _ := m.CreateProject(ctx, "A")
-	m.CreateRevision(ctx, p.ID, "one")
-	m.CreateRevision(ctx, p.ID, "two")
-	m.CreateRevision(ctx, p.ID, "three")
+	p, _ := m.CreateProject(ctx, "u", "A")
+	m.CreateRevision(ctx, "u", p.ID, "one")
+	m.CreateRevision(ctx, "u", p.ID, "two")
+	m.CreateRevision(ctx, "u", p.ID, "three")
 
-	revs, err := m.ListRevisions(ctx, p.ID)
+	revs, err := m.ListRevisions(ctx, "u", p.ID)
 	if err != nil {
 		t.Fatalf("list revisions: %v", err)
 	}
@@ -71,18 +71,18 @@ func TestMemoryNotFoundErrors(t *testing.T) {
 	m := NewMemory()
 	ctx := context.Background()
 
-	if _, err := m.ListRevisions(ctx, 999); !errors.Is(err, ErrNotFound) {
+	if _, err := m.ListRevisions(ctx, "u", 999); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ListRevisions unknown project: got %v, want ErrNotFound", err)
 	}
-	if _, err := m.GetRevision(ctx, 999, 1); !errors.Is(err, ErrNotFound) {
+	if _, err := m.GetRevision(ctx, "u", 999, 1); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetRevision unknown project: got %v, want ErrNotFound", err)
 	}
-	if _, err := m.CreateRevision(ctx, 999, "{}"); !errors.Is(err, ErrNotFound) {
+	if _, err := m.CreateRevision(ctx, "u", 999, "{}"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("CreateRevision unknown project: got %v, want ErrNotFound", err)
 	}
 
-	p, _ := m.CreateProject(ctx, "A")
-	if _, err := m.GetRevision(ctx, p.ID, 1); !errors.Is(err, ErrNotFound) {
+	p, _ := m.CreateProject(ctx, "u", "A")
+	if _, err := m.GetRevision(ctx, "u", p.ID, 1); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetRevision unknown revision: got %v, want ErrNotFound", err)
 	}
 }
@@ -91,19 +91,19 @@ func TestMemoryDeleteRevision(t *testing.T) {
 	m := NewMemory()
 	ctx := context.Background()
 
-	p, _ := m.CreateProject(ctx, "A")
-	m.CreateRevision(ctx, p.ID, "one")
-	m.CreateRevision(ctx, p.ID, "two")
-	m.CreateRevision(ctx, p.ID, "three")
+	p, _ := m.CreateProject(ctx, "u", "A")
+	m.CreateRevision(ctx, "u", p.ID, "one")
+	m.CreateRevision(ctx, "u", p.ID, "two")
+	m.CreateRevision(ctx, "u", p.ID, "three")
 
-	if err := m.DeleteRevision(ctx, p.ID, 2); err != nil {
+	if err := m.DeleteRevision(ctx, "u", p.ID, 2); err != nil {
 		t.Fatalf("delete revision 2: %v", err)
 	}
-	if _, err := m.GetRevision(ctx, p.ID, 2); !errors.Is(err, ErrNotFound) {
+	if _, err := m.GetRevision(ctx, "u", p.ID, 2); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("get deleted revision: got %v, want ErrNotFound", err)
 	}
 
-	revs, err := m.ListRevisions(ctx, p.ID)
+	revs, err := m.ListRevisions(ctx, "u", p.ID)
 	if err != nil {
 		t.Fatalf("list revisions: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestMemoryDeleteRevision(t *testing.T) {
 
 	// The next revision number is still one past the current max — deleting
 	// a middle revision doesn't reuse or renumber anything.
-	rev, err := m.CreateRevision(ctx, p.ID, "four")
+	rev, err := m.CreateRevision(ctx, "u", p.ID, "four")
 	if err != nil {
 		t.Fatalf("create revision after delete: %v", err)
 	}
@@ -121,10 +121,10 @@ func TestMemoryDeleteRevision(t *testing.T) {
 		t.Fatalf("new revision number = %d, want 4", rev.RevisionNo)
 	}
 
-	if err := m.DeleteRevision(ctx, p.ID, 99); !errors.Is(err, ErrNotFound) {
+	if err := m.DeleteRevision(ctx, "u", p.ID, 99); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("delete missing revision: got %v, want ErrNotFound", err)
 	}
-	if err := m.DeleteRevision(ctx, 999, 1); !errors.Is(err, ErrNotFound) {
+	if err := m.DeleteRevision(ctx, "u", 999, 1); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("delete revision of unknown project: got %v, want ErrNotFound", err)
 	}
 }
@@ -133,10 +133,10 @@ func TestMemoryGetRevisionRoundTrips(t *testing.T) {
 	m := NewMemory()
 	ctx := context.Background()
 
-	p, _ := m.CreateProject(ctx, "A")
-	m.CreateRevision(ctx, p.ID, `{"notes":[]}`)
+	p, _ := m.CreateProject(ctx, "u", "A")
+	m.CreateRevision(ctx, "u", p.ID, `{"notes":[]}`)
 
-	rev, err := m.GetRevision(ctx, p.ID, 1)
+	rev, err := m.GetRevision(ctx, "u", p.ID, 1)
 	if err != nil {
 		t.Fatalf("get revision: %v", err)
 	}

@@ -46,7 +46,7 @@ func handleListRevisions(st store.Store) http.HandlerFunc {
 			return
 		}
 
-		revs, err := st.ListRevisions(r.Context(), projectID)
+		revs, err := st.ListRevisions(r.Context(), owner(r), projectID)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			writeError(w, http.StatusNotFound, "no such project")
@@ -80,7 +80,7 @@ func handleCreateRevision(st store.Store) http.HandlerFunc {
 			return
 		}
 
-		meta, err := st.CreateRevision(r.Context(), projectID, string(body))
+		meta, err := st.CreateRevision(r.Context(), owner(r), projectID, string(body))
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			writeError(w, http.StatusNotFound, "no such project")
@@ -103,7 +103,7 @@ func handleGetRevision(st store.Store) http.HandlerFunc {
 			return
 		}
 
-		rev, err := st.GetRevision(r.Context(), projectID, revisionNo)
+		rev, err := st.GetRevision(r.Context(), owner(r), projectID, revisionNo)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			writeError(w, http.StatusNotFound, "no such project or revision")
@@ -129,7 +129,7 @@ func handleDeleteRevision(st store.Store) http.HandlerFunc {
 			return
 		}
 
-		err := st.DeleteRevision(r.Context(), projectID, revisionNo)
+		err := st.DeleteRevision(r.Context(), owner(r), projectID, revisionNo)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			writeError(w, http.StatusNotFound, "no such project or revision")

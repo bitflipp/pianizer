@@ -34,7 +34,8 @@ There is no auto-humanization magic — the tool is an instrument, not an algori
   compiled to a single binary that embeds the frontend via `go:embed`. Every
   "Save to server" writes a new immutable revision of a named project; a
   version-history UI browses and restores old ones. No login of its own —
-  the app is single-user and trusts a reverse proxy for auth entirely; no
+  projects are per-user, keyed on the `Remote-User` header Authelia forwards
+  (`pkg/authn`), so the server must only be reachable through the proxy; no
   ORM, no migration framework (`CREATE TABLE IF NOT EXISTS` on boot). This is
   the client's only server dependency and is fully additive: `just run` (or
   plain `python3 -m http.server`) still runs the client standalone with no

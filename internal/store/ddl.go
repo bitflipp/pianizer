@@ -12,10 +12,11 @@ const (
 	ddlProjects = `
 CREATE TABLE IF NOT EXISTS projects (
   id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  owner       VARCHAR(255)    NOT NULL DEFAULT '',
   name        VARCHAR(255)    NOT NULL,
   created_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_projects_name (name)
+  UNIQUE KEY uq_projects_owner_name (owner, name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 
 	ddlProjectRevisions = `
@@ -32,4 +33,12 @@ CREATE TABLE IF NOT EXISTS project_revisions (
   CONSTRAINT fk_revisions_project FOREIGN KEY (project_id)
     REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+)
+
+// Statements upgrading a pre-ownership projects table (name was globally
+// unique, no owner column). Applied only when the owner column is missing.
+const (
+	ddlProjectsAddOwner    = `ALTER TABLE projects ADD COLUMN owner VARCHAR(255) NOT NULL DEFAULT '' AFTER id`
+	ddlProjectsDropOldKey  = `ALTER TABLE projects DROP INDEX uq_projects_name`
+	ddlProjectsAddOwnerKey = `ALTER TABLE projects ADD UNIQUE KEY uq_projects_owner_name (owner, name)`
 )
