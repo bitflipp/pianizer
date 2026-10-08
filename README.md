@@ -209,6 +209,13 @@ go test ./...        # Go store/API tests — no MariaDB needed (in-memory Store
 
 Or via `just`: `just test`, `just test-engine`, `just test-ui`, `just test-go`.
 
+## AI assistance
+
+Parts of this project were written with AI assistance. The models involved:
+
+- Claude Sonnet/Opus
+- DeepSeek Flash
+
 ## License
 
 MIT
