@@ -55,7 +55,7 @@ Import a MusicXML file, shape note velocities and articulations by hand, draw su
 ## Usage
 
 ```sh
-git clone https://github.com/phinau/pianizer.git
+git clone https://github.com/bitflipp/pianizer.git
 cd pianizer
 just run
 ```
