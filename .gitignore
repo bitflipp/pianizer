@@ -4,5 +4,4 @@ test-results/
 coverage/
 .claude/settings.local.json
 /pianizer
-deploy.sh
 dist/
