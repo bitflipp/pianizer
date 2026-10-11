@@ -213,7 +213,10 @@ export function parseMusicXml(xmlText) {
   timeSigs.sort((a, b) => a.tick - b.tick);
   notes.sort((a, b) => a.startTick - b.startTick || b.pitch - a.pitch);
 
-  return { tpb, tempoMap, timeSigs, notes };
+  const title = (doc.querySelector('work > work-title')?.textContent
+    || doc.querySelector('movement-title')?.textContent || '').trim();
+
+  return { tpb, tempoMap, timeSigs, notes, title };
 }
 
 // Expands a <tremolo> note into the explicit alternating strokes that we'll show
@@ -293,5 +296,5 @@ function pitchToMidi(pitchEl) {
 export async function loadMusicXmlBuffer(arrayBuffer) {
   const text   = new TextDecoder().decode(arrayBuffer);
   const parsed = parseMusicXml(text);
-  state.loadScore(parsed.notes, parsed.tempoMap, parsed.timeSigs, parsed.tpb);
+  state.loadScore(parsed.notes, parsed.tempoMap, parsed.timeSigs, parsed.tpb, parsed.title);
 }

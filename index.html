@@ -324,6 +324,9 @@
   }
 
   state.addEventListener('loaded',           updateStatus);
+  state.addEventListener('loaded', () => {
+    document.title = state.title ? `${state.title} — Pianizer` : 'Pianizer';
+  });
   state.addEventListener('selectionchanged', updateStatus);
   updateStatus();
 

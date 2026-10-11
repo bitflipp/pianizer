@@ -61,6 +61,7 @@ export class AppState extends EventTarget {
     this.softPedalRegions = [];
 
     this.pieceId = null;
+    this.title   = '';
 
     // Undo / redo stacks — each entry is {notes, pedalPoints, tempoPoints,
     // softPedalRegions, selection}, or just {selection} for selection-only
@@ -77,7 +78,7 @@ export class AppState extends EventTarget {
 
   // ── Notes ──────────────────────────────────────────────────────────
 
-  loadScore(notes, tempoMap, timeSigs, tpb) {
+  loadScore(notes, tempoMap, timeSigs, tpb, title = '') {
     this.notes          = notes.slice().sort((a, b) => a.startTick - b.startTick);
     this._assignIds(this.notes);
     this.tempoMap       = tempoMap;
@@ -90,6 +91,7 @@ export class AppState extends EventTarget {
     this.loopA          = null;
     this.loopB          = null;
     this.pieceId        = crypto.randomUUID();
+    this.title          = title;
     this._finishLoad();
   }
 
@@ -219,6 +221,7 @@ export class AppState extends EventTarget {
     return {
       version:        1,
       pieceId:        this.pieceId,
+      title:          this.title,
       ticksPerBeat:   this.ticksPerBeat,
       tempoMap:       this.tempoMap.map(s => ({ tick: s.tick, bpm: s.bpm, time: s.time ?? 0 })),
       timeSignatures: this.timeSignatures.map(s => ({ tick: s.tick, numerator: s.numerator, denominator: s.denominator })),
@@ -248,6 +251,7 @@ export class AppState extends EventTarget {
     this.loopA          = typeof data.loopA === 'number' ? data.loopA : null;
     this.loopB          = typeof data.loopB === 'number' ? data.loopB : null;
     this.pieceId        = data.pieceId ?? crypto.randomUUID();
+    this.title          = typeof data.title === 'string' ? data.title : '';
     this._finishLoad();
   }
 
