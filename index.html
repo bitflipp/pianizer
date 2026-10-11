@@ -220,7 +220,7 @@
   import { RegionLane }              from './ui/region-lane.js';
   import { Minimap }                 from './ui/minimap.js';
   import { isFormFocused, safeSet, PITCH_MAX } from './ui/dom-utils.js';
-  import { saveRevision, openServerWindow, openHistoryWindow } from './ui/server-io.js';
+  import { getLinkedProject, saveRevision, openServerWindow, openHistoryWindow } from './ui/server-io.js';
   import './ui/toolbar.js';
 
   // localStorage keys, named once so save and load can't drift apart silently.
@@ -324,9 +324,13 @@
   }
 
   state.addEventListener('loaded',           updateStatus);
-  state.addEventListener('loaded', () => {
-    document.title = state.title ? `${state.title} — Pianizer` : 'Pianizer';
-  });
+  // Tab title: the linked server project's name, else the score's own title.
+  function updateDocumentTitle() {
+    const title = getLinkedProject(state.pieceId)?.name || state.title;
+    document.title = title ? `${title} — Pianizer` : 'Pianizer';
+  }
+  state.addEventListener('loaded', updateDocumentTitle);
+  document.addEventListener('linked-project-changed', updateDocumentTitle);
   state.addEventListener('selectionchanged', updateStatus);
   updateStatus();
 

@@ -32,6 +32,7 @@ export function getLinkedProject(pieceId) {
 export function setLinkedProject(pieceId, project) {
   if (!pieceId) return;
   safeSet(linkKey(pieceId), { id: project.id, name: project.name });
+  document.dispatchEvent(new CustomEvent('linked-project-changed'));
 }
 
 async function request(method, path, body) {
