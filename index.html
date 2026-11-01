@@ -221,6 +221,7 @@
   import { Minimap }                 from './ui/minimap.js';
   import { isFormFocused, safeSet, PITCH_MAX } from './ui/dom-utils.js';
   import { getLinkedProject, saveRevision, openServerWindow, openHistoryWindow } from './ui/server-io.js';
+  import { buildMidiFile } from './engine/midi-file.js';
   import './ui/toolbar.js';
 
   // localStorage keys, named once so save and load can't drift apart silently.
@@ -762,9 +763,9 @@
     return new Response(stream).text();
   }
 
-  function projectFilename(d = new Date()) {
+  function projectFilename(ext = 'json.gz', d = new Date()) {
     const p = (n, w = 2) => String(n).padStart(w, '0');
-    return `${p(d.getFullYear(), 4)}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json.gz`;
+    return `${p(d.getFullYear(), 4)}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.${ext}`;
   }
 
   document.addEventListener('save-project', async () => {
@@ -773,6 +774,14 @@
     const blob = await gzip(json);
     const url  = URL.createObjectURL(blob);
     const a    = Object.assign(document.createElement('a'), { href: url, download: projectFilename() });
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.addEventListener('export-midi', () => {
+    if (!state.loaded) return;
+    const url = URL.createObjectURL(new Blob([buildMidiFile(state)], { type: 'audio/midi' }));
+    const a   = Object.assign(document.createElement('a'), { href: url, download: projectFilename('mid') });
     a.click();
     URL.revokeObjectURL(url);
   });

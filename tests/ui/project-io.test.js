@@ -48,3 +48,13 @@ test('loads a legacy uncompressed .json project', async ({ page }) => {
   await loadBuffer(page, 'pianizer-project.json', plain);
   await page.waitForFunction(() => window._state.notes.length === 3);
 });
+
+test('exports a Standard MIDI File named with a timestamp', async ({ page }) => {
+  const downloadPromise = page.waitForEvent('download');
+  await page.evaluate(() => document.dispatchEvent(new Event('export-midi')));
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^\d{8}-\d{4}\.mid$/);
+  const buffer = readFileSync(await download.path());
+  expect(buffer.subarray(0, 4).toString('latin1')).toBe('MThd');
+  expect(buffer.includes(Buffer.from('MTrk'))).toBe(true);
+});

@@ -83,6 +83,7 @@ export class Toolbar extends HTMLElement {
           <button data-action="load">Load MusicXML</button>
           <button data-action="load-project">Load project</button>
           <button data-action="save-project" disabled>Save project</button>
+          <button data-action="export-midi" disabled title="Download a Standard MIDI File of the current rendition">Export MIDI</button>
         </div>
       </div>
       <div class="group">
@@ -130,6 +131,7 @@ export class Toolbar extends HTMLElement {
     shadow.appendChild(inner);
 
     this._saveBtn  = shadow.querySelector('[data-action="save-project"]');
+    this._exportBtn = shadow.querySelector('[data-action="export-midi"]');
     this._saveRevisionBtn = shadow.querySelector('[data-action="save-revision"]');
     this._undoBtn  = shadow.querySelector('[data-action="undo"]');
     this._redoBtn  = shadow.querySelector('[data-action="redo"]');
@@ -147,6 +149,7 @@ export class Toolbar extends HTMLElement {
     shadow.querySelector('[data-action="load"]').addEventListener('click', emit('load-file'));
     shadow.querySelector('[data-action="load-project"]').addEventListener('click', emit('load-project'));
     this._saveBtn.addEventListener('click', emit('save-project'));
+    this._exportBtn.addEventListener('click', emit('export-midi'));
     this._saveRevisionBtn.addEventListener('click', emit('save-revision'));
     shadow.querySelector('[data-action="open-server"]').addEventListener('click', emit('open-server'));
     shadow.querySelector('[data-action="open-history"]').addEventListener('click', emit('open-history'));
@@ -182,6 +185,7 @@ export class Toolbar extends HTMLElement {
   _syncLoaded() {
     const has = state.loaded;
     this._saveBtn.disabled = !has;
+    this._exportBtn.disabled = !has;
     this._saveRevisionBtn.disabled = !has;
     this._stopBtn.disabled = !has;
     this._playBtn.disabled = !has;

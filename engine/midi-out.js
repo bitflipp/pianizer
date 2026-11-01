@@ -8,7 +8,7 @@ import { state, interpolateCurveAtTick } from './state.js';
 // acoustic action (or a wonky soft-synth voice-steal, e.g. FluidSynth) has time
 // to reset — a held-until-re-strike note otherwise yields a weak or dropped
 // repeat. Hardcoded rather than user-configurable; see schedulePlayback.
-const RESTRIKE_GAP_MS = 50;
+export const RESTRIKE_GAP_MS = 50;
 
 // Lookahead scheduler: every SCHEDULE_INTERVAL_MS, schedule events up to LOOKAHEAD_S ahead.
 const LOOKAHEAD_S          = 0.15;
@@ -23,8 +23,8 @@ const CC_GRACE_S           = 0.1;  // a pedal event this far in the past is skip
 const NOTE_CHASE_GRACE_S   = 0.05; // notes starting this far before the start point still play
 
 // MIDI control-change numbers
-const CC_SUSTAIN         = 64;
-const CC_SOFT_PEDAL      = 67;
+export const CC_SUSTAIN         = 64;
+export const CC_SOFT_PEDAL      = 67;
 const CC_ALL_SOUND_OFF   = 120;
 const CC_ALL_NOTES_OFF   = 123;
 
@@ -278,7 +278,7 @@ export class MidiOut {
 // that changes the output, and self-thinning for slow ramps. The held value at
 // startTime is asserted eagerly in schedulePlayback (see there), so events at
 // or before it are intentionally excluded here.
-function buildPedalEvents(startTime) {
+export function buildPedalEvents(startTime) {
   const pts = state.pedalPoints;
   const events = [];
   const push = (tick, value) => {
@@ -306,7 +306,7 @@ function buildPedalEvents(startTime) {
 // contributes exactly two events: CC67=127 at its start, CC67=0 at its end —
 // no ramp samples. The held value at startTime is asserted eagerly in
 // schedulePlayback, so an edge at or before it is intentionally excluded.
-function buildSoftPedalEvents(startTime) {
+export function buildSoftPedalEvents(startTime) {
   const events = [];
   for (const r of state.softPedalRegions) {
     const tOn  = state.tickToTime(r.startTick);

@@ -54,6 +54,7 @@ pianizer/
     state.js                 ← AppState (EventTarget), single source of truth
     musicxml.js              ← MusicXML score-partwise parser
     midi-out.js              ← Web MIDI output: MidiOut class, lookahead scheduler
+    midi-file.js             ← Standard MIDI File export (format 0, tempo curve baked into real time)
   ui/
     roll.js                  ← PianoRoll canvas: render, rect selection, hover, pan, note editing
     curve-lane.js            ← CurveLane base class: shared pedal/tempo lane logic
@@ -101,7 +102,7 @@ Two JS suites, both run by `npm test` (the Go store/API tests run separately via
 `go test ./...` / `just test-go`, against an in-memory Store — no MariaDB needed):
 
 - **Vitest engine tests** (`tests/engine/test.js`, `test.state.js`,
-  `test.musicxml.js`) cover `engine/state.js` and `engine/musicxml.js` in
+  `test.musicxml.js`, `test.midi-file.js`) cover `engine/state.js` and `engine/musicxml.js` in
   isolation — pure JS, no DOM beyond `DOMParser`. Coverage is collected for
   those two files only (`vitest.config.js`). Run alone with `npm run test:engine`.
 - **Playwright UI tests** (`tests/ui/smoke.test.js`, `notes.test.js`,
